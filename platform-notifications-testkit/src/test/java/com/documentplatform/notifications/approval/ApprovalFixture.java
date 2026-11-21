@@ -50,6 +50,7 @@ final class ApprovalFixture {
     static final EventTypeId WAITING = EventTypeId.of("approval.print-waiting");
     static final EventTypeId APPROVED = EventTypeId.of("approval.print-approved");
     static final EventTypeId DECLINED = EventTypeId.of("approval.print-declined");
+    static final EventTypeId EXPIRED = EventTypeId.of("approval.print-expired");
     static final String PRINT = "print";
 
     static final TenantId TENANT = TenantId.of("t1");
@@ -104,6 +105,8 @@ final class ApprovalFixture {
                 .register(EventType.builder(WAITING.value(), "Print request waiting", EventKind.BUSINESS)
                         .schedule(Schedule.every4Hours()).recipients(APPROVER).time("expiresAt", "Expires").build())
                 .register(EventType.builder(APPROVED.value(), "Print request approved", EventKind.BUSINESS)
+                        .schedule(Schedule.every4Hours()).recipients(APPROVER).build())
+                .register(EventType.builder(EXPIRED.value(), "Print request expired", EventKind.BUSINESS)
                         .schedule(Schedule.every4Hours()).recipients(APPROVER).build())
                 .register(EventType.builder(DECLINED.value(), "Print request declined", EventKind.BUSINESS)
                         .schedule(Schedule.every4Hours()).recipients(APPROVER).build())

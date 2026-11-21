@@ -152,12 +152,16 @@ create table notif_approval_request (
     decided_by_name text,
     decided_at      timestamptz,
     reason          text,
+    expiry_told_at  timestamptz,          -- when the requester was told it expired undecided (if the type says so)
     primary key (tenant_id, request_id),
     check (expires_at > created_at),
     check ((decision is null) = (decided_by is null) and (decision is null) = (decided_by_name is null)
         and (decision is null) = (decided_at is null)),
     check (decision is distinct from 'DECLINED' or reason is not null),
-    check (decided_by is distinct from requester)
+    check (decided_by is distinct from requester),
+    check (expiry_told_at is null or decision is null)
 );
 
 create index notif_approval_request_expires_idx on notif_approval_request (expires_at);
+create index notif_approval_request_untold_idx on notif_approval_request (expires_at)
+    where decision is null and expiry_told_at is null;

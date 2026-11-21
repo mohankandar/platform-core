@@ -205,7 +205,7 @@ link or its token.
 | `retry.max-delay` | `30m` | The wait doubles up to this. |
 | `retry.give-up-after` | `24h` | Stop retrying a message this long after it was made, and report it. |
 | `lease` | `5m` | How long one app instance holds a message it is sending. Must be longer than the timeouts added up. |
-| `retention` | `30d` | How long sent and failed messages are kept. |
+| `retention` | `30d` | How long sent and failed messages are kept; also how long approval requests are kept after they expire (purged daily). |
 | `tick-interval` | `1m` | How often alerts for ongoing problems and due summaries are checked (1 s to 5 min). |
 | `sender.poll-interval` | `10s` | How often the sender looks for retries and other instances' messages (1 s to 5 min). |
 | `sender.batch-size` | `100` | Messages per send round (1 to 1000). |
@@ -286,7 +286,10 @@ cannot approve.
   approver role may use them. Nothing calls back into Teams or Slack, so no inbound connection to your network is
   needed.
 - The first decision counts. Someone who clicks later sees "Already approved by … at …".
-- Links stop working when the request expires (24 hours unless the app says otherwise).
+- Links stop working when the request expires (24 hours unless the app says otherwise). If the app's request type
+  says so, the requester is told by e-mail when a request expires with nobody deciding (once per request).
+- Old requests are deleted once a day: those that expired more than `retention` ago (default 30 days, the same
+  setting as for sent messages). The app's own audit keeps every decision.
 
 **To switch approval links on:**
 

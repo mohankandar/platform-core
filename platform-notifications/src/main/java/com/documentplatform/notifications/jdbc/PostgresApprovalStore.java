@@ -15,8 +15,12 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static com.documentplatform.notifications.jdbc.Sql.instant;
@@ -100,6 +104,42 @@ public final class PostgresApprovalStore implements ApprovalStore {
             try (PreparedStatement ps = c.prepareStatement("delete from notif_approval_request where expires_at < ?")) {
                 ps.setObject(1, ts(before));
                 return ps.executeUpdate();
+            }
+        });
+    }
+
+    /**
+     * One statement: the oldest untold expired requests are locked with {@code SKIP LOCKED}, so two instances at the
+     * same moment claim different rows, and marked told.
+     */
+    @Override
+    public List<ApprovalRequest> claimExpiredUndecided(Set<String> types, Instant now, int limit) {
+        if (types.isEmpty() || limit <= 0) {
+            return List.of();
+        }
+        return Sql.run(ds, "claim expired approval requests", c -> {
+            try (PreparedStatement ps = c.prepareStatement("""
+                    update notif_approval_request set expiry_told_at = ?
+                    where (tenant_id, request_id) in (
+                        select tenant_id, request_id from notif_approval_request
+                        where decision is null and expiry_told_at is null and expires_at <= ?
+                          and request_type = any (?)
+                        order by expires_at
+                        limit ?
+                        for update skip locked)
+                    returning *""")) {
+                ps.setObject(1, ts(now));
+                ps.setObject(2, ts(now));
+                ps.setArray(3, c.createArrayOf("text", types.toArray()));
+                ps.setInt(4, limit);
+                List<ApprovalRequest> out = new ArrayList<>();
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        out.add(request(rs));
+                    }
+                }
+                out.sort(Comparator.comparing(ApprovalRequest::expiresAt));
+                return out;
             }
         });
     }

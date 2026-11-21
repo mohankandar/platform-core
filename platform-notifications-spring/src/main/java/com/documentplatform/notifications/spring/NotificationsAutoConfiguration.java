@@ -214,9 +214,10 @@ public class NotificationsAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    NotificationWorkers notificationWorkers(Notifier notifier, SenderSignal signal, NotificationsConfig config) {
+    NotificationWorkers notificationWorkers(Notifier notifier, SenderSignal signal, NotificationsConfig config,
+                                            ObjectProvider<Approvals> approvals) {
         return new NotificationWorkers(notifier, signal, Clock.systemUTC(), config.tickInterval(),
-                config.pollInterval());
+                config.pollInterval(), approvals.getIfUnique(), config.retention());
     }
 
     @Configuration(proxyBeanMethods = false)

@@ -290,3 +290,31 @@ supported. Password login and the internal relay stay as they are.
 11. **The table was added to V1**, which has not been released (the tagged releases predate notifications), as in
     P005 (and P011 for the licensing tables). The version stays 1.
 12. **Old requests are deleted by the app** (`Approvals.purgeExpiredBefore`); the module does not schedule it.
+
+### Owner answers to the P016 questions (2026-11-21)
+
+- **Q1. Teams and Slack keep their links.** They are not personal (anyone in the channel may click), but the approver
+  role check, the own-request check and the confirming click on the app's page still apply.
+- **Q2. Yes: the requester is told when a request expires with nobody deciding.** An optional "expired" event type on
+  `ApprovalType`, raised by the tick, sent to the requester.
+- **Q3. Yes: the Spring module purges old approval requests daily**: those that expired more than the outbox retention
+  ago (`platform.notifications.retention`, default 30 days). This replaces P016 decision 12 for apps that use the
+  Spring module.
+- **Q4. No key ring for now.** One link key; replacing it ends the links already sent (P016 decision 6 stands).
+
+### Added in P017 (owner answers Q2 and Q3)
+
+- **`ApprovalType.whenExpired(eventType)`** names the app's event type for "expired, nobody decided" (for example
+  "Print request expired"); without it the requester is not told, as before. The event type must be in the catalogue
+  and not continuous, checked at startup like the other three.
+- **`Approvals.tellExpired(now)`** claims the requests of those types that expired undecided and were not yet told,
+  and sends each requester one e-mail (`Notifier.publishToPerson`, like the approved and declined outcomes: event
+  name, record identifier, the expiry time, the link; no names). Each request is told **once**: the store marks it
+  (`notif_approval_request.expiry_told_at`, added to V1, still unreleased) in one `UPDATE … FOR UPDATE SKIP LOCKED`,
+  so several app instances never tell twice. A request past its expiry cannot be decided any more, so a told request
+  stays undecided (check constraint).
+- **The Spring tick** (`NotificationWorkers`, every `tick-interval`) calls `tellExpired` when approval links are on,
+  and **once a day** (at the first tick after start, then every 24 hours) `purgeExpiredBefore(now − retention)`. The
+  purge runs first, so a request that expired longer ago than the retention (after a long outage) is deleted, not
+  announced late. A failure is logged once with its neutral reason, like the other workers.
+- An app without the Spring module calls `tellExpired` from its own scheduler and purges as before.

@@ -23,3 +23,48 @@ Case fields carry the business's own labels and values (contract number, member 
 5. **Removing a field = switching it off, never deleting.** Existing values stay.
 6. **Sensitive fields (owner, 2026-11-21, option A):** a sensitive case field (e.g. borrower name, address) is visible in the document (it is a case field, so not redacted in that entity) and stored **only encrypted**, never as readable text in any table, log or backup. It is **searchable by exact match only**, through a one-way fingerprint (keyed hash) of the normalised value; matching ignores capitals and extra spaces. No partial search on sensitive fields; partial search only on non-sensitive fields (e.g. contract or loan number). Name and address fields are marked sensitive by default; the Business Admin decides. Encryption and the fingerprint key come from the shared secrets/encryption capability (built with value storage, next task).
 7. App rules stay in the apps, e.g. LexaVault: a case field and a redaction item are mutually exclusive per entity; SSN, card number, CVV, PIN and other locked items can never be case fields.
+
+## Mapping from the apps' current models (P017)
+
+Recorded by P017 from the code of both apps (read only, 2026-11-21). Used in each app's switch-over; nothing is in
+production, so there is no data migration. `LegacyTypeMappingTest` shows each line keeps what the app's own validator
+accepts and how it normalises. Open points are questions in `docs/work/P017-report.md`.
+
+### LexaVault `business_identifier_definitions` (changelogs 008, 019, 020, 022)
+
+| LexaVault today | platform-fields |
+|---|---|
+| `TEXT` | `TEXT` |
+| `NUMERIC` (digits only, leading zeros kept) | `NUMBER` with pattern `[0-9]+` (NUMBER alone also takes a leading minus) |
+| `ALPHANUMERIC` | `TEXT` with pattern `[A-Za-z0-9]+` |
+| `EMAIL`, `UUID`, `CUSTOM_PATTERN` | the same type (`UUID` is stored in lower case; matching is unchanged) |
+| `ALLOW_LIST` (+ `allowed_values`) | `DROPDOWN` (+ `options`, up to 100) |
+| `allowed_values` on another type | `DROPDOWN` with those values (the values already had to pass the type) |
+| `case_normalization` PRESERVE / UPPER / LOWER | `letterCase` PRESERVE / UPPER / LOWER (LexaVault's default UPPER stays explicit) |
+| `strip_separators_flag` | `strip` = `SEPARATORS` (dashes and spaces) |
+| `exact_length`, `min_length`, `max_length`, `custom_pattern` | the same rules |
+| `required_flag`, `primary_flag`, `searchable_flag`, `displayable_flag`, `display_order`, `active_flag` | the same flags (`searchMode` EXACT) |
+| `extractable_flag` | app-only setting, attached by key (`FieldDefinitions.putExtension`, for example `extractable=true`) |
+| `identifier_key` (`[a-z][a-z0-9_-]{0,63}`), `label` (128) | `key` (wider: `[A-Za-z][A-Za-z0-9_.-]{0,99}`), `label` (200) |
+| one active primary per tenant (index 008-06); primary values unique (019, 020) | stays a LexaVault rule: the shared model allows several primary fields (Vero). Value uniqueness belongs to value storage (next task). |
+| new: `sensitive`, `multiValue`, MONEY, DATE, ADDRESS | set by the Business Admin; names and addresses sensitive by default |
+
+### Vero `metadata_field_definitions` (changelogs 001, 003, 032)
+
+| Vero today | platform-fields |
+|---|---|
+| `TEXT`, `DATE`, `EMAIL`, `UUID` | the same type (DATE also takes `11/21/2026`; stored as `2026-11-21`) |
+| `INTEGER` | `NUMBER` (a leading `+` is no longer taken) |
+| `DECIMAL` | `MONEY` with its currency when it is an amount; otherwise `TEXT` with pattern `-?[0-9]+(\.[0-9]+)?` (loses min/max). See question 1. |
+| `DATETIME` | `TEXT` with an ISO 8601 pattern (no calendar check). See question 1. |
+| `BOOLEAN` | `DROPDOWN` with `true`, `false` and `letterCase` LOWER |
+| `normalization` NONE / TRIM / UPPERCASE / LOWERCASE / DIGITS_ONLY | always trimmed with single spaces, then PRESERVE / PRESERVE / UPPER / LOWER / `strip` NON_DIGITS |
+| `search_mode` EXACT / PREFIX / PARTIAL | `searchMode` EXACT / PREFIX / PARTIAL (sensitive fields: EXACT only, rule 6) |
+| `validation_rules` exactLength, minLength, maxLength, pattern, min, max | `exactLength`, `minLength`, `maxLength`, `pattern`; `minValue` / `maxValue` (NUMBER and MONEY). A pattern on DATE, UUID, DROPDOWN, MONEY or ADDRESS is not taken. |
+| `business_identifier` (several per source) | `primary` (several allowed) |
+| `required`, `searchable`, `active` | the same flags |
+| `version`, `effective_at`, `retired_at` (a new row per revision) | `version` plus one history entry per change (`fld_field_definition_history`) |
+| `metadata_field_display_order` | `displayOrder` |
+| record title fields | app-only setting, attached by key |
+| `field_key` (`[A-Za-z][A-Za-z0-9_.-]{0,99}`), `display_label` (200) | `key`, `label` (same limits) |
+| per `source_id` (sending system) | per entity and product. See question 2. |

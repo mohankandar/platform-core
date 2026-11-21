@@ -5,6 +5,7 @@ import com.documentplatform.notifications.RoleId;
 
 import java.time.Duration;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * A kind of request an app lets approvers decide through links, for example a print request. Registered by the app;
@@ -18,9 +19,12 @@ import java.util.Objects;
  * @param approverRole  who may decide: the message goes to the holders of this role, and the app is asked again at
  *                      decision time whether the person still holds it
  * @param validFor      how long the request and its links stay open (default 24 hours; 5 minutes to 30 days)
+ * @param expiredEvent  optional: the app's event type telling the requester "expired, nobody decided". Raised by the
+ *                      notifications tick ({@link Approvals#tellExpired}) once per request. Null: the requester is not
+ *                      told.
  */
 public record ApprovalType(String id, EventTypeId requestEvent, EventTypeId approvedEvent, EventTypeId declinedEvent,
-                           RoleId approverRole, Duration validFor) {
+                           RoleId approverRole, Duration validFor, EventTypeId expiredEvent) {
 
     public static final Duration DEFAULT_VALID_FOR = Duration.ofHours(24);
     static final Duration MIN_VALID_FOR = Duration.ofMinutes(5);
@@ -38,6 +42,12 @@ public record ApprovalType(String id, EventTypeId requestEvent, EventTypeId appr
         }
     }
 
+    /** Without an "expired" event: the requester is not told when nobody decides. */
+    public ApprovalType(String id, EventTypeId requestEvent, EventTypeId approvedEvent, EventTypeId declinedEvent,
+                        RoleId approverRole, Duration validFor) {
+        this(id, requestEvent, approvedEvent, declinedEvent, approverRole, validFor, null);
+    }
+
     /** With the default of 24 hours. */
     public static ApprovalType of(String id, EventTypeId requestEvent, EventTypeId approvedEvent,
                                   EventTypeId declinedEvent, RoleId approverRole) {
@@ -46,6 +56,17 @@ public record ApprovalType(String id, EventTypeId requestEvent, EventTypeId appr
 
     /** The same type, open for another duration. */
     public ApprovalType validFor(Duration duration) {
-        return new ApprovalType(id, requestEvent, approvedEvent, declinedEvent, approverRole, duration);
+        return new ApprovalType(id, requestEvent, approvedEvent, declinedEvent, approverRole, duration, expiredEvent);
+    }
+
+    /** The same type, telling the requester through this event type when the request expires undecided. */
+    public ApprovalType whenExpired(EventTypeId event) {
+        return new ApprovalType(id, requestEvent, approvedEvent, declinedEvent, approverRole, validFor,
+                Objects.requireNonNull(event, "event"));
+    }
+
+    /** The "expired" event type, if the app gave one. */
+    public Optional<EventTypeId> expired() {
+        return Optional.ofNullable(expiredEvent);
     }
 }

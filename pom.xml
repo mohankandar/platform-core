@@ -21,6 +21,8 @@
         <module>platform-identity-jdbc</module>
         <module>platform-identity-testkit</module>
         <module>platform-setup</module>
+        <module>platform-fields</module>
+        <module>platform-fields-testkit</module>
     </modules>
     <properties>
         <maven.compiler.release>21</maven.compiler.release>

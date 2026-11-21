@@ -37,7 +37,10 @@ public class NotificationsProperties {
     /** How long a sender holds a message it is sending; must be longer than the send timeouts. */
     private Duration lease = Duration.ofMinutes(5);
 
-    /** How long sent and failed messages stay in the outbox. */
+    /**
+     * How long sent and failed messages stay in the outbox; also how long approval requests are kept after they
+     * expire (purged daily).
+     */
     private Duration retention = Duration.ofDays(30);
 
     /** How often condition alerts and due summaries are raised. */

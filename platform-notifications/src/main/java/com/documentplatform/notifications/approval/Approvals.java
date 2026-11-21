@@ -13,12 +13,15 @@ import java.lang.System.Logger.Level;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -47,6 +50,9 @@ public final class Approvals {
     /** The time field a request event may declare to show when the request expires. */
     public static final String EXPIRES_FIELD = "expiresAt";
 
+    /** How many expired requests {@link #tellExpired} claims at a time. */
+    static final int EXPIRY_BATCH = 100;
+
     private final Map<String, ApprovalType> types;
     private final EventCatalogue catalogue;
     private final ApprovalStore store;
@@ -69,7 +75,9 @@ public final class Approvals {
             if (byId.put(t.id(), t) != null) {
                 throw new IllegalArgumentException("Request type registered twice: " + t.id());
             }
-            for (EventTypeId event : List.of(t.requestEvent(), t.approvedEvent(), t.declinedEvent())) {
+            List<EventTypeId> events = new ArrayList<>(List.of(t.requestEvent(), t.approvedEvent(), t.declinedEvent()));
+            t.expired().ifPresent(events::add);
+            for (EventTypeId event : events) {
                 EventType type = catalogue.find(event).orElseThrow(() -> new IllegalArgumentException(
                         "Request type " + t.id() + " names an event type the catalogue does not have: " + event));
                 if (type.continuous()) {
@@ -178,6 +186,51 @@ public final class Approvals {
      */
     public int purgeExpiredBefore(Instant before) {
         return store.purgeExpiredBefore(before);
+    }
+
+    /**
+     * Tells each requester whose request expired with nobody deciding, for the request types that name an "expired"
+     * event ({@link ApprovalType#whenExpired}): an e-mail to that one person, like the approved and declined
+     * outcomes. Each request is told once, also with several app instances (the store claims it). Called by the
+     * notifications tick; an app without the Spring module calls it from its own scheduler.
+     *
+     * @return how many requesters were told
+     */
+    public int tellExpired(Instant now) {
+        Set<String> withEvent = new HashSet<>();
+        types.values().forEach(t -> t.expired().ifPresent(e -> withEvent.add(t.id())));
+        if (withEvent.isEmpty()) {
+            return 0;
+        }
+        Instant at = now.truncatedTo(ChronoUnit.MILLIS);
+        int told = 0;
+        List<ApprovalRequest> batch;
+        do {
+            batch = store.claimExpiredUndecided(withEvent, at, EXPIRY_BATCH);
+            for (ApprovalRequest r : batch) {
+                ApprovalType type = types.get(r.type());
+                NotificationEvent.Builder event = NotificationEvent.builder(type.expiredEvent(), r.tenant())
+                        .entity(r.entity()).occurredAt(r.expiresAt());
+                if (r.identifier() != null) {
+                    event.identifier(r.identifier());
+                }
+                if (r.link() != null) {
+                    event.link(r.link());
+                }
+                try {
+                    notifier.publishToPerson(event.build(), r.requester());
+                    told++;
+                    LOG.log(Level.INFO, "Approval request {0} of tenant {1} expired undecided; the requester is told",
+                            r.id(), r.tenant());
+                } catch (RuntimeException notQueued) {
+                    // Claimed but not queued: the requester sees the expiry in the app.
+                    LOG.log(Level.WARNING, "Approval request {0} of tenant {1} expired undecided; the requester''s "
+                            + "message could not be queued ({2})", r.id(), r.tenant(),
+                            notQueued.getClass().getSimpleName());
+                }
+            }
+        } while (batch.size() == EXPIRY_BATCH);
+        return told;
     }
 
     private ApprovalResult finish(Checked c, SignedInPerson person, String reason, Instant now) {
