@@ -1,5 +1,6 @@
 package com.documentplatform.notifications.spring;
 
+import com.documentplatform.notifications.ActionLinks;
 import com.documentplatform.notifications.ConditionStore;
 import com.documentplatform.notifications.EventCatalogue;
 import com.documentplatform.notifications.NotificationSettings;
@@ -8,7 +9,15 @@ import com.documentplatform.notifications.OutboxStore;
 import com.documentplatform.notifications.RecipientResolver;
 import com.documentplatform.notifications.SettingsStore;
 import com.documentplatform.notifications.SummaryStore;
+import com.documentplatform.notifications.approval.ActionTokens;
+import com.documentplatform.notifications.approval.ApprovalAudit;
+import com.documentplatform.notifications.approval.ApprovalLinks;
+import com.documentplatform.notifications.approval.ApprovalStore;
+import com.documentplatform.notifications.approval.ApprovalType;
+import com.documentplatform.notifications.approval.Approvals;
+import com.documentplatform.notifications.approval.ApproverCheck;
 import com.documentplatform.notifications.jdbc.NotificationSchema;
+import com.documentplatform.notifications.jdbc.PostgresApprovalStore;
 import com.documentplatform.notifications.jdbc.PostgresConditionStore;
 import com.documentplatform.notifications.jdbc.PostgresOutboxStore;
 import com.documentplatform.notifications.jdbc.PostgresSettingsStore;
@@ -134,8 +143,9 @@ public class NotificationsAutoConfiguration {
     @ConditionalOnMissingBean
     Notifier notifier(NotificationSettings settings, ObjectProvider<RecipientResolver> recipients,
                       NotificationChannels channels, OutboxStore outbox, SummaryStore summaries,
-                      ConditionStore conditions, NotificationsConfig config, SenderSignal signal) {
-        return Notifier.builder(settings, required(recipients, RecipientResolver.class,
+                      ConditionStore conditions, NotificationsConfig config, SenderSignal signal,
+                      ObjectProvider<ActionLinks> actionLinks) {
+        Notifier.Builder b = Notifier.builder(settings, required(recipients, RecipientResolver.class,
                         "the app's recipient resolver (role → people)"))
                 .channels(channels.channels())
                 .outbox(outbox).summaries(summaries).conditions(conditions)
@@ -143,8 +153,63 @@ public class NotificationsAutoConfiguration {
                 .lease(config.lease())
                 .keepFinishedFor(config.retention())
                 .batchSize(config.batchSize())
-                .whenQueued(signal::raise)
-                .build();
+                .whenQueued(signal::raise);
+        actionLinks.ifUnique(b::actionLinks);
+        return b.build();
+    }
+
+    /**
+     * Approval links, switched on by {@code platform.notifications.approvals.link-key-secret}. The app supplies its
+     * request types ({@link ApprovalType} beans) and its {@link ApprovalAudit}; it may supply an
+     * {@link ApproverCheck}, otherwise the recipient resolver answers who holds the approver role.
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnProperty(prefix = NotificationsProperties.PREFIX + ".approvals", name = "link-key-secret")
+    static class ApprovalConfiguration {
+
+        @Bean
+        @ConditionalOnMissingBean
+        ApprovalStore notificationApprovalStore(NotificationTables tables) {
+            return new PostgresApprovalStore(tables.dataSource());
+        }
+
+        @Bean
+        @ConditionalOnMissingBean
+        ActionTokens notificationActionTokens(NotificationsConfig config, ObjectProvider<SecretResolver> secrets) {
+            return new ActionTokens(required(secrets, SecretResolver.class, "the reader of the secret store (the "
+                    + "approval link key)"), approvalConfig(config).keySecret());
+        }
+
+        @Bean
+        @ConditionalOnMissingBean
+        ApprovalLinks notificationApprovalLinks(ApprovalStore store, ActionTokens tokens, NotificationsConfig config) {
+            return new ApprovalLinks(store, tokens, approvalConfig(config).pagePath());
+        }
+
+        @Bean
+        @ConditionalOnMissingBean
+        Approvals approvals(ObjectProvider<ApprovalType> types, NotificationSettings settings, ApprovalStore store,
+                            ActionTokens tokens, Notifier notifier, ObjectProvider<ApproverCheck> approvers,
+                            ObjectProvider<RecipientResolver> recipients, ObjectProvider<ApprovalAudit> audit) {
+            List<ApprovalType> all = types.orderedStream().toList();
+            if (all.isEmpty()) {
+                throw new NotificationsConfigException(List.of("Approval links are switched on ("
+                        + NotificationsProperties.PREFIX + ".approvals.link-key-secret) but the app registers no "
+                        + "request types: give at least one ApprovalType bean"));
+            }
+            ApproverCheck check = approvers.getIfUnique();
+            if (check == null) {
+                check = ApproverCheck.from(required(recipients, RecipientResolver.class,
+                        "the app's recipient resolver (role → people)"));
+            }
+            return Approvals.builder(all, settings.catalogue(), store, tokens, notifier).approvers(check)
+                    .audit(required(audit, ApprovalAudit.class, "the app's audit of approval decisions")).build();
+        }
+
+        private static NotificationsConfig.ApprovalLinksConfig approvalConfig(NotificationsConfig config) {
+            return config.approvals().orElseThrow(() -> new NotificationsConfigException(List.of(
+                    NotificationsProperties.PREFIX + ".approvals.link-key-secret: not valid")));
+        }
     }
 
     @Bean

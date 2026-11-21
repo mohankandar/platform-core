@@ -28,6 +28,16 @@ final class Keys {
         return "ev-" + UUID.randomUUID();
     }
 
+    /** The occurrence of the message asking for a decision on one request: one per request. */
+    static String actionRequest(TenantId tenant, String requestId) {
+        return hash("q", tenant.value(), requestId);
+    }
+
+    /** One recipient's copy of a message whose links are made for each recipient. */
+    static String forPerson(String messageKey, String userId) {
+        return messageKey + "." + hash("p", userId).substring(2, 18);
+    }
+
     static String condition(ConditionKey key, Instant since) {
         return hash("c", key.type().value(), key.tenant().value(),
                 key.entity() == null ? "" : key.entity().value(),

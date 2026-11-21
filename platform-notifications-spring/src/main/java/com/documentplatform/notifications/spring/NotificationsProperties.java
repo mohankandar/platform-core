@@ -32,6 +32,7 @@ public class NotificationsProperties {
     private final Webhook webhook = new Webhook();
     private final Retry retry = new Retry();
     private final Sender sender = new Sender();
+    private final Approvals approvals = new Approvals();
 
     /** How long a sender holds a message it is sending; must be longer than the send timeouts. */
     private Duration lease = Duration.ofMinutes(5);
@@ -80,6 +81,37 @@ public class NotificationsProperties {
 
     public Sender getSender() {
         return sender;
+    }
+
+    public Approvals getApprovals() {
+        return approvals;
+    }
+
+    /** Approval links in messages (Approve / Decline). Switched on by giving the link key's secret reference. */
+    public static class Approvals {
+        /**
+         * Secret reference of the key that signs the links (at least 32 characters, for example from
+         * {@code openssl rand -base64 48}). Never the key itself.
+         */
+        private String linkKeySecret;
+        /** Path of the app's approval page; the link's token is added as the last path segment. */
+        private String linkPath = "/approvals/link";
+
+        public String getLinkKeySecret() {
+            return linkKeySecret;
+        }
+
+        public void setLinkKeySecret(String linkKeySecret) {
+            this.linkKeySecret = linkKeySecret;
+        }
+
+        public String getLinkPath() {
+            return linkPath;
+        }
+
+        public void setLinkPath(String linkPath) {
+            this.linkPath = linkPath;
+        }
     }
 
     public Duration getLease() {

@@ -142,8 +142,8 @@ Repeat for each channel that should receive notifications. Each one gets its own
 
 ## 4. Database
 
-The notifications tables all start with `notif_`. There are seven: tenant, destination, event settings, outbox,
-summary items, conditions and the schema version.
+The notifications tables all start with `notif_`. There are eight: tenant, destination, event settings, outbox,
+summary items, conditions, approval requests and the schema version.
 
 **Creating and upgrading the tables is a separate schema step that you run.** It is part of the app's own schema step.
 The SQL files ship inside the app under `db/platform/notifications` (`V1__notifications.sql`, …).
@@ -156,7 +156,7 @@ The SQL files ship inside the app under `db/platform/notifications` (`V1__notifi
    grant usage on schema <app_schema> to <app_user>;
    grant select, insert, update, delete on
        notif_tenant, notif_destination, notif_event_settings,
-       notif_outbox, notif_summary_item, notif_condition
+       notif_outbox, notif_summary_item, notif_condition, notif_approval_request
      to <app_user>;
    grant select on notif_schema_version to <app_user>;
    ```
@@ -175,6 +175,8 @@ The SQL files ship inside the app under `db/platform/notifications` (`V1__notifi
 **What the tables hold:** ids, the admins' settings, and the text of outgoing messages. That text contains only the
 event name, a record number, counts, times and a link into the app. The tables hold no passwords, no webhook
 addresses, no e-mail addresses and no document content. Sent and failed messages are deleted after 30 days.
+Approval requests (section 8) hold user ids, the decider's display name and the reason given for a decline; never a
+link or its token.
 
 ## 5. Settings
 
@@ -207,6 +209,8 @@ addresses, no e-mail addresses and no document content. Sent and failed messages
 | `tick-interval` | `1m` | How often alerts for ongoing problems and due summaries are checked (1 s to 5 min). |
 | `sender.poll-interval` | `10s` | How often the sender looks for retries and other instances' messages (1 s to 5 min). |
 | `sender.batch-size` | `100` | Messages per send round (1 to 1000). |
+| `approvals.link-key-secret` | — | **Path** of the key that signs approval links (section 8). Leave out for no approval links. |
+| `approvals.link-path` | `/approvals/link` | The path of the app's approval page. Change it only if the app's release notes say so. |
 
 Destination ids may use letters, digits, `.`, `_` and `-`. Lower-case ids such as `ops-teams` are simplest. To keep
 capitals or `_` in an id, put it in brackets: `platform.notifications.teams[Ops_Teams]=…`.
@@ -268,3 +272,48 @@ the time of the last token request and when the token expires. The token itself 
 
 The health page shows ids, states, codes and reasons only, never an address, login or secret. A destination that is
 down does not mark the whole app as unhealthy. The notifications entry shows `DEGRADED` instead.
+
+## 8. Approval links (Approve / Decline in the message)
+
+Some messages ask for a decision, for example "Print request waiting". They carry two links, **Approve** and
+**Decline**. A link opens the app's approval page for that one request. The approver signs in as usual, sees the
+request and confirms with one more click. Opening a link never decides anything, so a mail scanner that opens links
+cannot approve.
+
+- **E-mail:** each approver gets their own e-mail with their own links. A link works only for the person it was sent
+  to, and only while they still hold the approver role. The requester gets no links and is told the outcome by e-mail.
+- **Teams and Slack:** the links open the same page in the browser. Anyone in the channel who signs in and holds the
+  approver role may use them. Nothing calls back into Teams or Slack, so no inbound connection to your network is
+  needed.
+- The first decision counts. Someone who clicks later sees "Already approved by … at …".
+- Links stop working when the request expires (24 hours unless the app says otherwise).
+
+**To switch approval links on:**
+
+1. Make a random key of at least 32 characters, for example:
+
+   ```
+   openssl rand -base64 48
+   ```
+
+2. Store it in the secret store, for example under `notifications/approval-link-key`.
+3. Give its **path** (not the key) in the settings:
+
+   ```yaml
+   platform:
+     notifications:
+       approvals:
+         link-key-secret: notifications/approval-link-key
+   ```
+
+4. Make sure the app address in the tenant settings is the address approvers reach the app on. The links are made
+   under it.
+
+**Replacing the key:** put a new key in the same secret. Links already sent stop working (the approver can still
+decide in the app). No restart is needed.
+
+**If the key is missing or unreadable**, request messages are not sent, with the code `ACTION_KEY_NOT_FOUND` (not in
+the secret store), `ACTION_KEY_INVALID` (shorter than 32 characters) or `SECRET_UNAVAILABLE` (secret store down;
+retried). Other codes for these messages: `ACTION_REQUEST_CLOSED` (the request was decided or expired before the
+message went out; nothing is sent) and `ACTION_LINKS_NOT_AVAILABLE` (the app has approval requests but approval links
+are not switched on).

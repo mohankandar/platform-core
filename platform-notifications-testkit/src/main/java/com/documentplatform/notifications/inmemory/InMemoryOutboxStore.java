@@ -104,6 +104,7 @@ public final class InMemoryOutboxStore implements OutboxStore {
     private static OutboxEntry with(OutboxEntry e, OutboxState state, int attempts, Instant next, FailureCode failure,
                                     Instant finished) {
         return new OutboxEntry(e.key(), e.tenant(), e.destination(), e.channel(), e.entity(), e.recipientRoles(),
-                e.eventTypes(), e.message(), state, attempts, e.createdAt(), next, failure, finished);
+                e.eventTypes(), e.message(), state, attempts, e.createdAt(), next, failure, finished,
+                e.recipientUser());
     }
 }

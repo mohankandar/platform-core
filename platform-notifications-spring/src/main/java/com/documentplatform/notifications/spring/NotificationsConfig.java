@@ -1,5 +1,6 @@
 package com.documentplatform.notifications.spring;
 
+import com.documentplatform.notifications.AppLink;
 import com.documentplatform.notifications.DestinationId;
 import com.documentplatform.notifications.RetryPolicy;
 import com.documentplatform.notifications.email.MailAuth;
@@ -28,7 +29,11 @@ import static com.documentplatform.notifications.spring.NotificationsProperties.
 public record NotificationsConfig(Optional<MailServer> mail, Map<DestinationId, SecretRef> teams,
                                   Map<DestinationId, SecretRef> slack, WebhookOptions webhookOptions,
                                   RetryPolicy retry, Duration lease, Duration retention, Duration tickInterval,
-                                  Duration pollInterval, int batchSize) {
+                                  Duration pollInterval, int batchSize, Optional<ApprovalLinksConfig> approvals) {
+
+    /** Approval links: the key's secret reference and the app's page path. */
+    public record ApprovalLinksConfig(SecretRef keySecret, AppLink pagePath) {
+    }
 
     private static final Pattern HOST = Pattern.compile("[A-Za-z0-9.:\\[\\]_-]{1,253}");
     private static final Pattern ADDRESS = Pattern.compile("[^@\\s]+@[^@\\s]+");
@@ -101,11 +106,34 @@ public record NotificationsConfig(Optional<MailServer> mail, Map<DestinationId, 
             problems.add(PREFIX + ".sender.batch-size: must be between 1 and 1000, was " + batch);
         }
 
+        Optional<ApprovalLinksConfig> approvals = approvals(p.getApprovals(), problems);
+
         if (!problems.isEmpty()) {
             throw new NotificationsConfigException(problems);
         }
         return new NotificationsConfig(mail, teams, slack, webhookOptions, retry, lease, retention,
-                p.getTickInterval(), p.getSender().getPollInterval(), batch);
+                p.getTickInterval(), p.getSender().getPollInterval(), batch, approvals);
+    }
+
+    private static Optional<ApprovalLinksConfig> approvals(NotificationsProperties.Approvals a, List<String> problems) {
+        String key = PREFIX + ".approvals.";
+        boolean pathChanged = a.getLinkPath() != null && !a.getLinkPath().trim().equals("/approvals/link");
+        if (blank(a.getLinkKeySecret())) {
+            if (pathChanged) {
+                problems.add(key + "link-key-secret: missing; approval links need the secret reference of the key "
+                        + "that signs them (or remove " + key + "link-path)");
+            }
+            return Optional.empty();
+        }
+        SecretRef ref = ref(key + "link-key-secret", a.getLinkKeySecret(), "the approval link key", problems);
+        AppLink path = null;
+        try {
+            path = AppLink.of(a.getLinkPath() == null ? "" : a.getLinkPath().trim());
+        } catch (RuntimeException e) {
+            problems.add(key + "link-path: must be a path in the app such as /approvals/link (letters, digits and "
+                    + "/ _ . -, no query string)");
+        }
+        return ref == null || path == null ? Optional.empty() : Optional.of(new ApprovalLinksConfig(ref, path));
     }
 
     private static Optional<MailServer> mail(NotificationsProperties.Mail m, List<String> problems) {

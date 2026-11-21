@@ -29,6 +29,7 @@ import java.io.UnsupportedEncodingException;
 import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
@@ -48,6 +49,16 @@ import java.util.Properties;
  * Jakarta Mail's debug output is off and the authentication trace is never enabled.
  */
 public final class EmailChannel implements Channel {
+
+    /**
+     * Angus Mail logs recipients' addresses to java.util.logging at FINE, and traces the whole SMTP conversation, the
+     * message text included, at FINEST, whatever {@code mail.debug} says. That would put addresses and the one-click
+     * links' tokens in a log, so both are kept off: before each send, these loggers are set back to INFO if something
+     * (for example a "log everything" setting) opened them. Held here so the setting is not lost with the loggers.
+     */
+    private static final List<java.util.logging.Logger> SMTP_TRACE = List.of(
+            java.util.logging.Logger.getLogger("org.eclipse.angus.mail.smtp"),
+            java.util.logging.Logger.getLogger("org.eclipse.angus.mail.smtp.protocol"));
 
     private final MailServerDirectory servers;
     private final SecretResolver secrets;
@@ -113,6 +124,11 @@ public final class EmailChannel implements Channel {
             password = secret.get().reveal();
         }
 
+        for (java.util.logging.Logger trace : SMTP_TRACE) {
+            if (trace.isLoggable(java.util.logging.Level.FINE)) {
+                trace.setLevel(java.util.logging.Level.INFO);
+            }
+        }
         Session session = Session.getInstance(properties(server));
         MimeMessage mail;
         try {

@@ -49,8 +49,9 @@ public final class PostgresOutboxStore implements OutboxStore {
             try (PreparedStatement ps = c.prepareStatement("""
                     insert into notif_outbox (message_key, tenant_id, destination_id, channel, entity_id,
                         recipient_roles, event_types, message_kind, subject, body_lines, link, state, attempts,
-                        created_at, next_attempt_at, claimed_until, last_failure, finished_at)
-                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, null, ?, ?)
+                        created_at, next_attempt_at, claimed_until, last_failure, finished_at, action_request,
+                        recipient_user)
+                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, null, ?, ?, ?, ?)
                     on conflict (message_key) do nothing""")) {
                 Message m = e.message();
                 ps.setString(1, e.key());
@@ -70,6 +71,8 @@ public final class PostgresOutboxStore implements OutboxStore {
                 ps.setObject(15, ts(e.nextAttemptAt()));
                 ps.setString(16, e.lastFailure() == null ? null : e.lastFailure().name());
                 ps.setObject(17, ts(e.finishedAt()));
+                ps.setString(18, m.actionRequest());
+                ps.setString(19, e.recipientUser());
                 return ps.executeUpdate() == 1;
             }
         });
@@ -179,7 +182,8 @@ public final class PostgresOutboxStore implements OutboxStore {
         String link = rs.getString("link");
         String failure = rs.getString("last_failure");
         Message message = new Message(MessageKind.valueOf(rs.getString("message_kind")), rs.getString("subject"),
-                Sql.list(rs, "body_lines", s -> s), link == null ? null : URI.create(link));
+                Sql.list(rs, "body_lines", s -> s), link == null ? null : URI.create(link),
+                rs.getString("action_request"), List.of());
         return new OutboxEntry(rs.getString("message_key"), TenantId.of(rs.getString("tenant_id")),
                 DestinationId.of(rs.getString("destination_id")), ChannelKind.valueOf(rs.getString("channel")),
                 entity == null ? null : EntityId.of(entity),
@@ -187,6 +191,6 @@ public final class PostgresOutboxStore implements OutboxStore {
                 new HashSet<>(Sql.list(rs, "event_types", EventTypeId::of)), message,
                 OutboxState.valueOf(rs.getString("state")), rs.getInt("attempts"), instant(rs, "created_at"),
                 instant(rs, "next_attempt_at"), failure == null ? null : FailureCode.valueOf(failure),
-                instant(rs, "finished_at"));
+                instant(rs, "finished_at"), rs.getString("recipient_user"));
     }
 }

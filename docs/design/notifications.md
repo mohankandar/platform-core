@@ -201,3 +201,92 @@ supported. Password login and the internal relay stay as they are.
   `MAIL_OAUTH_APP_UNKNOWN`, `MAIL_OAUTH_CREDENTIAL_INVALID`, `MAIL_OAUTH_TOKEN_REFUSED`, `MAIL_OAUTH_UNEXPECTED_REPLY`,
   `MAIL_OAUTH_SEND_AS_NOT_ALLOWED`, `MAIL_SMTP_AUTH_DISABLED` (all permanent). The existing mail codes still apply.
 - **Health** shows the sign-in mode, and for Microsoft 365 the token state, code, last fetch and expiry time.
+
+### Owner answers to the P015 questions (2026-11-21)
+
+- **C1. Row-level security gets its own design task** before any hosting work starts (see `docs/design/setup.md`
+  section 2a).
+- **C2. Certificate rotation: replace the secret's content** once the new certificate is uploaded to Entra; the next
+  token fetch picks it up. No second "next" certificate reference.
+- **C3. `Add-MailboxPermission` is documented now**; the Exchange RBAC for Applications option is added when a customer
+  asks for it.
+- **C4. No Graph `sendMail` for now.** SMTP with XOAUTH2 stays.
+
+## 6. Approval links (agreed design, owner 2026-11-21)
+
+- **Approvers act from the e-mail, Teams or Slack message through one-click links** (Approve / Decline), not
+  in-chat buttons: Teams and Slack callbacks cannot reach on-premises installs, and incoming webhooks do not support
+  them.
+- **A link opens the app's small approval page for that one request.** The module provides the shared parts; each app
+  builds its page and its request types.
+- **Safety:**
+  - Opening a link never decides anything: the page needs one more click, a POST (e-mail scanners open links).
+  - A link works only for the recipient it was sent to, and only while they still hold the approver role (re-checked
+    at decision time through the app).
+  - Nobody approves their own request.
+  - Links expire with the request: default 24 hours, per request type.
+  - Decline requires a reason.
+  - Messages still follow the content rule.
+- **Group approvals:** the first decision wins. Later clicks see "Already approved/declined by <name> at <time>" and
+  change nothing. Of two decisions at the same moment exactly one wins, enforced by the database. The requester is
+  notified of the outcome. The app audits every decision.
+- **Built (P016):** signed, single-recipient, expiring action tokens (no secrets or document data inside; HMAC with a
+  key from the `SecretResolver`); a decision store (Postgres table `notif_approval_request` in the same schema run,
+  and in memory in the testkit) with first-decision-wins; an API for the app (create a request and its links, check a
+  link for the signed-in person, decide, outcome message to the requester); Teams, Slack and e-mail layouts with the
+  two links.
+
+### How it works (P016)
+
+- **`approval.Approvals`** is the app's API: `create` saves the request and publishes the "waiting" message;
+  `open(token, person)` is for the page's GET and decides nothing; `decide(token, person, reason)` is for the POST;
+  `decide(requestId, action, person, reason)` is for the app's own list screen.
+- **Checks, in order:** token signature and tenant → sent to this person (e-mail links) → request exists → not the
+  person's own → still holds the approver role (`ApproverCheck`, asked of the app every time) → already decided?
+  (shown, nothing changes) → not expired → a reason, to decline. Refusals have fixed codes and texts
+  (`ApprovalRefusal`).
+- **Tokens (`ActionTokens`):** `base64url(payload).base64url(HMAC-SHA256)`, about 100 characters, the last segment of
+  the link path. The payload is a version, the action, person-or-channel, the request id, the expiry and 16 bytes of a
+  SHA-256 hash of the recipient's user id (or the channel's destination id). The signature also covers the tenant id.
+  The key (at least 32 characters) is read through the `SecretResolver` on every use and never kept.
+- **Links are made at send time, never stored.** The outbox row names the request (`action_request`); the sender asks
+  `ActionLinks` (`approval.ApprovalLinks`) for each recipient's links. A request decided or expired before the message
+  went out is not sent (`ACTION_REQUEST_CLOSED`).
+- **First decision wins in the database:** one `UPDATE … WHERE decision IS NULL AND expires_at > now`; check
+  constraints refuse a decision by the requester and a decline without a reason.
+- **The requester's outcome** is the app's "approved" or "declined" event type, sent to that one person
+  (`Notifier.publishToPerson`, address from `RecipientResolver.person`). It carries the event name, the record's
+  identifier, the time and the link; never the decider's name or the reason.
+- **Spring:** `platform.notifications.approvals.link-key-secret` switches it on; `approvals.link-path` (default
+  `/approvals/link`) is the app's page. The app supplies `ApprovalType` beans and an `ApprovalAudit`; an
+  `ApproverCheck` is optional (default: the recipient resolver's role holders).
+
+### Decisions made in P016
+
+1. **E-mail links are per person; Teams and Slack links are per channel.** A webhook posts to everyone in the channel,
+   so its links name the destination, and the page checks the signed-in person's approver role (and own request) as
+   for e-mail. E-mail goes to each approver separately, each with their own links and `Message-ID`.
+2. **The approver role decides who gets the e-mail**, not the request event type's recipient roles: only role holders
+   could decide anyway. The event type's on/off switch and destinations still apply.
+3. **Request and outcome messages go at once**, whatever frequency the admin chose for their event types: a summary
+   cannot carry links that end with each request, and the outcome is for one person.
+4. **The outcome goes by e-mail only**, to the first e-mail destination of the outcome event type, or else the
+   tenant's e-mail destination. Teams and Slack channels are not one person.
+5. **Each link carries its action.** The page confirms that action; to choose the other, the approver uses the other
+   link (or the app's own screen).
+6. **HMAC-SHA256, one key.** Replacing the key ends the links already sent (at most 24 hours by default); the approver
+   can still decide in the app. No key ring.
+7. **A temporary failure for one approver's e-mail sends the message again to all of them** under the same per-person
+   `Message-ID`s: the accepted at-least-once window (A1).
+8. **The reason is free text, kept only in `notif_approval_request`** (trimmed, up to 2000 characters, no control
+   characters but line breaks and tabs), for the app's page and audit. It is never put in a message or a log, and
+   `toString()` leaves it out.
+9. **Audit:** `ApprovalAudit.record` is called for every `decide` call (decided, already decided, refused), after the
+   decision is stored and the requester's message is queued. Opening a link is not audited.
+10. **The SMTP library's own trace is kept off.** Angus Mail logs addresses at FINE and the whole message (now with link
+    tokens) at FINEST to java.util.logging, whatever `mail.debug` says. `EmailChannel` sets those two loggers back to
+    INFO before each send. The JDBC driver's FINEST trace (the app's database logging) still shows stored values such
+    as the reason; tokens are never stored, so never in it.
+11. **The table was added to V1**, which has not been released (the tagged releases predate notifications), as in
+    P005 (and P011 for the licensing tables). The version stays 1.
+12. **Old requests are deleted by the app** (`Approvals.purgeExpiredBefore`); the module does not schedule it.

@@ -1,6 +1,7 @@
 package com.documentplatform.notifications;
 
 import java.lang.System.Logger.Level;
+import java.net.URI;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -63,6 +64,7 @@ public final class Notifier {
     private final Duration keepFinishedFor;
     private final int batchSize;
     private final Runnable whenQueued;
+    private final ActionLinks actionLinks;
 
     private Notifier(Builder b) {
         this.settings = Objects.requireNonNull(b.settings, "settings");
@@ -83,6 +85,7 @@ public final class Notifier {
         this.keepFinishedFor = b.keepFinishedFor;
         this.batchSize = b.batchSize;
         this.whenQueued = b.whenQueued;
+        this.actionLinks = b.actionLinks;
     }
 
     public static Builder builder(NotificationSettings settings, RecipientResolver recipients) {
@@ -106,6 +109,96 @@ public final class Notifier {
             routed = route(new Occurrence(Keys.newEvent(), event, type, MessageKind.EVENT, at, null, 0), now);
         }
         return queued(routed);
+    }
+
+    /**
+     * Publishes a message that asks for a decision on one request (for example "Approval waiting: LN 12345"), with
+     * one-click links made at send time by the {@link ActionLinks} ({@link Builder#actionLinks}). It goes at once,
+     * whatever frequency the event type has (a summary cannot carry links that end with each request), to the
+     * destinations its settings chose. E-mail goes to the holders of {@code approverRole}, each with their own links;
+     * Teams and Slack get one set of links for the channel. Publishing the same request again finds the saved message.
+     *
+     * @param requestId the request (letters, digits, {@code . _ -}); the links name it
+     */
+    public List<DeliveryReport> publishActionRequest(NotificationEvent event, String requestId, RoleId approverRole) {
+        EventType type = check(event);
+        Text.require(requestId, Text.ID, "Request id");
+        Objects.requireNonNull(approverRole, "approverRole");
+        if (type.continuous()) {
+            throw new NotificationException(IS_A_CONDITION, "Continuous event types are reported as conditions");
+        }
+        List<Routed> reports = new ArrayList<>();
+        synchronized (this) {
+            Instant now = now();
+            Instant at = event.occurredAt() == null ? now : event.occurredAt();
+            Occurrence o = new Occurrence(Keys.actionRequest(event.tenant(), requestId), event, type, MessageKind.EVENT,
+                    at, null, 0);
+            EventSettings s = settings.effective(event.tenant(), event.entity(), event.type());
+            Optional<Routed> stop = notRouted(event, s);
+            if (stop.isPresent()) {
+                return List.of(stop.get().report());
+            }
+            TenantSettings t = settings.tenant(event.tenant()).orElseThrow();
+            Message message = MessageBuilder.single(o, t).forRequest(requestId);
+            for (DestinationId destination : t.targetsFor(s.destinations())) {
+                ChannelKind kind = t.kindOf(destination);
+                Set<RoleId> roles = kind == ChannelKind.EMAIL ? Set.of(approverRole) : Set.of();
+                reports.add(enqueue(OutboxEntry.pending(Keys.forDestination(o.key(), destination), event.tenant(),
+                        destination, kind, event.entity(), roles, Set.of(event.type()), message, now)));
+            }
+        }
+        return queued(reports);
+    }
+
+    /**
+     * Publishes an event to one person by e-mail (for example the requester, told that their request was approved).
+     * It goes at once, if the event type is switched on, to the first e-mail destination its settings chose, or else
+     * the tenant's e-mail destination; Teams and Slack are left out, because their channels are not one person. The
+     * person's address is asked of {@link RecipientResolver#person} at send time.
+     */
+    public List<DeliveryReport> publishToPerson(NotificationEvent event, String userId) {
+        EventType type = check(event);
+        Text.require(userId, Text.ID, "User id");
+        if (type.continuous()) {
+            throw new NotificationException(IS_A_CONDITION, "Continuous event types are reported as conditions");
+        }
+        Routed routed;
+        synchronized (this) {
+            Instant now = now();
+            Instant at = event.occurredAt() == null ? now : event.occurredAt();
+            EventSettings s = settings.effective(event.tenant(), event.entity(), event.type());
+            Optional<Routed> stop = notRouted(event, s);
+            if (stop.isPresent()) {
+                return List.of(stop.get().report());
+            }
+            TenantSettings t = settings.tenant(event.tenant()).orElseThrow();
+            Optional<DestinationId> mail = t.targetsFor(s.destinations()).stream()
+                    .filter(d -> t.kindOf(d) == ChannelKind.EMAIL).findFirst()
+                    .or(() -> t.targetsFor(Set.of()).stream().findFirst());
+            if (mail.isEmpty()) {
+                return List.of(new DeliveryReport(event.tenant(), Set.of(event.type()), null, MessageKind.EVENT,
+                        DeliveryStatus.NO_DESTINATION, null));
+            }
+            Occurrence o = new Occurrence(Keys.newEvent(), event, type, MessageKind.EVENT, at, null, 0);
+            routed = enqueue(OutboxEntry.toPerson(Keys.forDestination(o.key(), mail.get()), event.tenant(),
+                    mail.get(), event.entity(), userId, Set.of(event.type()), MessageBuilder.single(o, t), now));
+        }
+        return queued(List.of(routed));
+    }
+
+    /** DISABLED or NO_DESTINATION, when the event goes nowhere. */
+    private Optional<Routed> notRouted(NotificationEvent e, EventSettings s) {
+        Set<EventTypeId> types = Set.of(e.type());
+        if (!s.enabled()) {
+            return Optional.of(Routed.of(new DeliveryReport(e.tenant(), types, null, MessageKind.EVENT,
+                    DeliveryStatus.DISABLED, null)));
+        }
+        Optional<TenantSettings> tenant = settings.tenant(e.tenant());
+        if (tenant.map(t -> t.targetsFor(s.destinations())).orElse(List.of()).isEmpty()) {
+            return Optional.of(Routed.of(new DeliveryReport(e.tenant(), types, null, MessageKind.EVENT,
+                    DeliveryStatus.NO_DESTINATION, null)));
+        }
+        return Optional.empty();
     }
 
     /**
@@ -353,7 +446,7 @@ public final class Notifier {
     /** One attempt at a claimed message, and its outcome recorded in the outbox. */
     private DeliveryReport attempt(OutboxEntry entry, Instant now) {
         int attempts = entry.attempts() + 1;
-        SendResult result = send(entry);
+        SendResult result = send(entry, now);
         MessageKind kind = entry.message().kind();
         if (result.sent()) {
             outbox.markSent(entry.key(), attempts, now);
@@ -387,7 +480,7 @@ public final class Notifier {
         return new DeliveryReport(tenant, types, destination, kind, DeliveryStatus.FAILED, code);
     }
 
-    private SendResult send(OutboxEntry entry) {
+    private SendResult send(OutboxEntry entry, Instant now) {
         Optional<TenantSettings> tenant = settings.tenant(entry.tenant());
         if (tenant.isEmpty() || tenant.get().kindOf(entry.destination()) != entry.channel()) {
             return SendResult.failed(FailureCode.DESTINATION_NOT_CONNECTED);
@@ -399,6 +492,9 @@ public final class Notifier {
         Set<Recipient> people = new LinkedHashSet<>();
         if (entry.channel() == ChannelKind.EMAIL) {
             try {
+                if (entry.recipientUser() != null) {
+                    recipients.person(entry.tenant(), entry.recipientUser()).ifPresent(people::add);
+                }
                 // The IT Admin is a tenant-level role: asked without the entity, even for a per-entity event.
                 entry.recipientRoles().stream().sorted((a, b) -> a.value().compareTo(b.value()))
                         .forEach(role -> people.addAll(recipients.resolve(entry.tenant(),
@@ -410,9 +506,78 @@ public final class Notifier {
                 return SendResult.failed(FailureCode.NO_RECIPIENTS);
             }
         }
+        String request = entry.message().actionRequest();
+        if (request != null) {
+            return sendWithLinks(entry, channel, people, request, tenant.get().appBaseUrl(), now);
+        }
+        return deliver(channel, new OutgoingMessage(entry.tenant(), entry.destination(), entry.channel(), people,
+                entry.message(), entry.key()));
+    }
+
+    /**
+     * A message asking for a decision: e-mail goes to each person on their own with their own links (and not to the
+     * requester); a channel gets one set of links. A temporary failure for one person sends the whole message again
+     * later, under the same per-person keys (e-mail {@code Message-ID}s), so the others may get it twice: the accepted
+     * at-least-once window.
+     */
+    private SendResult sendWithLinks(OutboxEntry entry, Channel channel, Set<Recipient> people, String request,
+                                     URI appBaseUrl, Instant now) {
+        if (actionLinks == null) {
+            return SendResult.failed(FailureCode.ACTION_LINKS_NOT_AVAILABLE);
+        }
+        if (entry.channel() != ChannelKind.EMAIL) {
+            ActionLinks.Result links = links(entry, request, new ActionAudience.Channel(entry.destination()),
+                    appBaseUrl, now);
+            if (links.failed()) {
+                return SendResult.failed(links.failure());
+            }
+            return deliver(channel, new OutgoingMessage(entry.tenant(), entry.destination(), entry.channel(), Set.of(),
+                    entry.message().withActions(links.links()), entry.key()));
+        }
+        SendResult temporary = null;
+        SendResult permanent = null;
+        int sent = 0;
+        for (Recipient person : people.stream().sorted((a, b) -> a.userId().compareTo(b.userId())).toList()) {
+            ActionLinks.Result links = links(entry, request, new ActionAudience.Person(person.userId()), appBaseUrl,
+                    now);
+            if (links.failed()) {
+                return SendResult.failed(links.failure()); // closed request or no key: nobody gets it
+            }
+            if (links.links().isEmpty()) {
+                continue; // for example the requester
+            }
+            SendResult r = deliver(channel, new OutgoingMessage(entry.tenant(), entry.destination(), entry.channel(),
+                    Set.of(person), entry.message().withActions(links.links()),
+                    Keys.forPerson(entry.key(), person.userId())));
+            if (r.sent()) {
+                sent++;
+            } else if (r.failure().retryable()) {
+                temporary = temporary == null ? r : temporary;
+            } else {
+                permanent = permanent == null ? r : permanent;
+            }
+        }
+        if (temporary != null) {
+            return temporary;
+        }
+        if (permanent != null) {
+            return permanent;
+        }
+        return sent == 0 ? SendResult.failed(FailureCode.NO_RECIPIENTS) : SendResult.ok();
+    }
+
+    private ActionLinks.Result links(OutboxEntry entry, String request, ActionAudience audience, URI base,
+                                     Instant now) {
         try {
-            return channel.send(new OutgoingMessage(entry.tenant(), entry.destination(), entry.channel(), people,
-                    entry.message(), entry.key()));
+            return actionLinks.linksFor(entry.tenant(), request, audience, base, now);
+        } catch (RuntimeException fault) {
+            return ActionLinks.Result.failed(FailureCode.SENDER_FAILED);
+        }
+    }
+
+    private static SendResult deliver(Channel channel, OutgoingMessage message) {
+        try {
+            return channel.send(message);
         } catch (RuntimeException senderFault) {
             // The exception text may hold a server reply or an address: it is not kept.
             return SendResult.failed(FailureCode.SENDER_FAILED);
@@ -440,6 +605,7 @@ public final class Notifier {
         private Duration keepFinishedFor = Duration.ofDays(30);
         private int batchSize = 100;
         private Runnable whenQueued = () -> { };
+        private ActionLinks actionLinks;
 
         private Builder(NotificationSettings settings, RecipientResolver recipients) {
             this.settings = settings;
@@ -517,6 +683,15 @@ public final class Notifier {
          */
         public Builder whenQueued(Runnable wake) {
             this.whenQueued = Objects.requireNonNull(wake, "wake");
+            return this;
+        }
+
+        /**
+         * Makes the one-click links of messages that ask for a decision ({@link Notifier#publishActionRequest}).
+         * Without it such messages fail with {@link FailureCode#ACTION_LINKS_NOT_AVAILABLE}.
+         */
+        public Builder actionLinks(ActionLinks links) {
+            this.actionLinks = Objects.requireNonNull(links, "links");
             return this;
         }
 

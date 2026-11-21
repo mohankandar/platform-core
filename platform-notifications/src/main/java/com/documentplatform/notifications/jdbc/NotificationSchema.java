@@ -41,7 +41,7 @@ public final class NotificationSchema {
 
     /** The tables the code reads and writes at runtime. */
     public static final List<String> TABLES = List.of("notif_tenant", "notif_destination", "notif_event_settings",
-            "notif_outbox", "notif_summary_item", "notif_condition");
+            "notif_outbox", "notif_summary_item", "notif_condition", "notif_approval_request");
 
     /** Holds the version of the files that were run. */
     public static final String VERSION_TABLE = "notif_schema_version";

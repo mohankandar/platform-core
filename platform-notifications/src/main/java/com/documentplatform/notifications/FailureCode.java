@@ -50,7 +50,13 @@ public enum FailureCode {
     CHANNEL_NOT_AVAILABLE("No sender is installed for %s", false),
     NO_RECIPIENTS("No one holds the recipient roles", false),
     RECIPIENTS_UNAVAILABLE("The holders of the recipient roles could not be looked up", true),
-    SENDER_FAILED("The %s sender stopped with an unexpected fault", true);
+    SENDER_FAILED("The %s sender stopped with an unexpected fault", true),
+
+    // Messages that ask for a decision (approval links)
+    ACTION_REQUEST_CLOSED("The request was decided or expired before the message went out", false),
+    ACTION_LINKS_NOT_AVAILABLE("No maker of approval links is installed", false),
+    ACTION_KEY_NOT_FOUND("The approval link key is not in the secret store", false),
+    ACTION_KEY_INVALID("The approval link key in the secret store is too short (at least 32 characters)", false);
 
     private final String template;
     private final boolean retryable;

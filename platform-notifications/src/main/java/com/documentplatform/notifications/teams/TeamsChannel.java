@@ -72,8 +72,15 @@ public final class TeamsChannel implements Channel, AutoCloseable {
         }
         Map<String, Object> card = map("$schema", "http://adaptivecards.io/schemas/adaptive-card.json",
                 "type", "AdaptiveCard", "version", "1.4", "body", body);
+        // One-click links (Approve, Decline) open the app's page in the browser; nothing calls back into Teams.
+        List<Object> actions = new ArrayList<>();
+        m.actions().forEach(a -> actions.add(map("type", "Action.OpenUrl", "title", a.label(), "url",
+                a.url().toString())));
         if (m.link() != null) {
-            card.put("actions", List.of(map("type", "Action.OpenUrl", "title", OPEN_LABEL, "url", m.link().toString())));
+            actions.add(map("type", "Action.OpenUrl", "title", OPEN_LABEL, "url", m.link().toString()));
+        }
+        if (!actions.isEmpty()) {
+            card.put("actions", actions);
         }
         Map<String, Object> attachment = map("contentType", "application/vnd.microsoft.card.adaptive",
                 "contentUrl", null, "content", card);

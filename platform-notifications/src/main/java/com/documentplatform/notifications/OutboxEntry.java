@@ -18,11 +18,13 @@ import java.util.Set;
  * @param nextAttemptAt  when it may be tried (again)
  * @param lastFailure    the code of the last failed attempt; null if none failed
  * @param finishedAt     when it was sent or given up; null while pending
+ * @param recipientUser  the one person who receives it by e-mail, by user id, looked up at send time
+ *                       ({@link RecipientResolver#person}); null when it goes to the holders of the recipient roles
  */
 public record OutboxEntry(String key, TenantId tenant, DestinationId destination, ChannelKind channel, EntityId entity,
                           Set<RoleId> recipientRoles, Set<EventTypeId> eventTypes, Message message, OutboxState state,
                           int attempts, Instant createdAt, Instant nextAttemptAt, FailureCode lastFailure,
-                          Instant finishedAt) {
+                          Instant finishedAt, String recipientUser) {
 
     public OutboxEntry {
         Text.require(key, Text.ID, "Outbox key");
@@ -35,6 +37,21 @@ public record OutboxEntry(String key, TenantId tenant, DestinationId destination
         Objects.requireNonNull(state, "state");
         Objects.requireNonNull(createdAt, "createdAt");
         Objects.requireNonNull(nextAttemptAt, "nextAttemptAt");
+        if (recipientUser != null) {
+            Text.require(recipientUser, Text.ID, "User id");
+            if (!recipientRoles.isEmpty() || channel != ChannelKind.EMAIL) {
+                throw new IllegalArgumentException("A message to one person is an e-mail without recipient roles");
+            }
+        }
+    }
+
+    /** A message to the holders of the recipient roles (or to a channel). */
+    public OutboxEntry(String key, TenantId tenant, DestinationId destination, ChannelKind channel, EntityId entity,
+                       Set<RoleId> recipientRoles, Set<EventTypeId> eventTypes, Message message, OutboxState state,
+                       int attempts, Instant createdAt, Instant nextAttemptAt, FailureCode lastFailure,
+                       Instant finishedAt) {
+        this(key, tenant, destination, channel, entity, recipientRoles, eventTypes, message, state, attempts,
+                createdAt, nextAttemptAt, lastFailure, finishedAt, null);
     }
 
     /** A new message, due at once. */
@@ -42,6 +59,13 @@ public record OutboxEntry(String key, TenantId tenant, DestinationId destination
                                       EntityId entity, Set<RoleId> roles, Set<EventTypeId> types, Message message,
                                       Instant now) {
         return new OutboxEntry(key, tenant, destination, channel, entity, roles, types, message, OutboxState.PENDING, 0,
-                now, now, null, null);
+                now, now, null, null, null);
+    }
+
+    /** A new e-mail to one person, due at once. */
+    public static OutboxEntry toPerson(String key, TenantId tenant, DestinationId destination, EntityId entity,
+                                       String userId, Set<EventTypeId> types, Message message, Instant now) {
+        return new OutboxEntry(key, tenant, destination, ChannelKind.EMAIL, entity, Set.of(), types, message,
+                OutboxState.PENDING, 0, now, now, null, null, userId);
     }
 }

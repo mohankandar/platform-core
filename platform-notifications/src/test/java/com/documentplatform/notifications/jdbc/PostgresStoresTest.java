@@ -64,7 +64,8 @@ class PostgresStoresTest {
 
     @Test
     void migrationCreatesOnlyNotifTables() {
-        assertEquals(List.of("notif_condition", "notif_destination", "notif_event_settings", "notif_outbox",
+        assertEquals(List.of("notif_approval_request", "notif_condition", "notif_destination", "notif_event_settings",
+                "notif_outbox",
                 "notif_schema_version", "notif_summary_item", "notif_tenant"), Pg.tables(ds));
     }
 

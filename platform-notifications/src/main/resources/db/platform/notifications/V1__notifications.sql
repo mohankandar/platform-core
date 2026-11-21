@@ -78,7 +78,12 @@ create table notif_outbox (
     next_attempt_at timestamptz not null,
     claimed_until   timestamptz,
     last_failure    text,
-    finished_at     timestamptz
+    finished_at     timestamptz,
+    -- A message asking for a decision names its request; its one-click links are made at send time, never stored.
+    action_request  text,
+    -- A message to one person (for example the requester, told the outcome): their user id, never their address.
+    recipient_user  text,
+    check (recipient_user is null or (channel = 'EMAIL' and cardinality(recipient_roles) = 0))
 );
 
 create index notif_outbox_due_idx on notif_outbox (next_attempt_at) where state in ('PENDING', 'SENDING');
@@ -126,3 +131,33 @@ create table notif_condition (
     updated_at    timestamptz not null,
     primary key (tenant_id, event_type, entity_id, identifier)
 );
+
+-- Requests waiting for a decision through one-click links (approval.Approvals), and the decision. The first decision
+-- wins: it is written only while decision is null and the request has not expired, so of two decisions at the same
+-- moment exactly one is stored. The app keeps its own audit of every decision. No tokens are stored: links are signed
+-- and checked against this row. The reason of a decline is the decider's own text: shown on the app's page, never put
+-- in a message or a log.
+create table notif_approval_request (
+    tenant_id       text        not null,
+    request_id      uuid        not null,
+    entity_id       text        not null,
+    request_type    text        not null,
+    requester       text        not null, -- user id
+    identifier      text,
+    link            text,
+    created_at      timestamptz not null,
+    expires_at      timestamptz not null,
+    decision        text check (decision in ('APPROVED', 'DECLINED')),
+    decided_by      text,                 -- user id
+    decided_by_name text,
+    decided_at      timestamptz,
+    reason          text,
+    primary key (tenant_id, request_id),
+    check (expires_at > created_at),
+    check ((decision is null) = (decided_by is null) and (decision is null) = (decided_by_name is null)
+        and (decision is null) = (decided_at is null)),
+    check (decision is distinct from 'DECLINED' or reason is not null),
+    check (decided_by is distinct from requester)
+);
+
+create index notif_approval_request_expires_idx on notif_approval_request (expires_at);

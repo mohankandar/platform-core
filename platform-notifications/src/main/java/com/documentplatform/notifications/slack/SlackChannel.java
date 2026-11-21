@@ -56,9 +56,15 @@ public final class SlackChannel implements Channel, AutoCloseable {
         for (String section : sections(m.lines())) {
             blocks.add(map("type", "section", "text", plain(section)));
         }
+        // One-click links (Approve, Decline) are link buttons: they open the app's page, nothing calls back.
+        List<Object> buttons = new ArrayList<>();
+        m.actions().forEach(a -> buttons.add(map("type", "button", "text", plain(a.label()), "url",
+                a.url().toString())));
         if (m.link() != null) {
-            blocks.add(map("type", "actions", "elements",
-                    List.of(map("type", "button", "text", plain(OPEN_LABEL), "url", m.link().toString()))));
+            buttons.add(map("type", "button", "text", plain(OPEN_LABEL), "url", m.link().toString()));
+        }
+        if (!buttons.isEmpty()) {
+            blocks.add(map("type", "actions", "elements", buttons));
         }
         // "text" is the notification preview; Slack reads it as mrkdwn, so & < > are escaped.
         return Json.write(map("text", escapeMrkdwn(m.subject()), "blocks", blocks));

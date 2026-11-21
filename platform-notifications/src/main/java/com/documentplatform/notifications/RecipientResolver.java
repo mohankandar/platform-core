@@ -1,5 +1,6 @@
 package com.documentplatform.notifications;
 
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -13,4 +14,15 @@ public interface RecipientResolver {
      * @return the people holding the role; empty if none
      */
     Set<Recipient> resolve(TenantId tenant, EntityId entity, RoleId role);
+
+    /**
+     * One person by user id, for a message to that person only (for example the requester of an approval, told the
+     * outcome). Asked at send time. The default knows no one, so such messages fail with {@code NO_RECIPIENTS} until
+     * the app implements it.
+     *
+     * @return the person, or empty if the app does not know them (any more)
+     */
+    default Optional<Recipient> person(TenantId tenant, String userId) {
+        return Optional.empty();
+    }
 }
