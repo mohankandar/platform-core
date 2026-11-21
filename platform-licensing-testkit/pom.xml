@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.documentplatform.platform</groupId>
+        <artifactId>platform-core</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>platform-licensing-testkit</artifactId>
+    <description>Test support for platform-licensing: in-memory usage ledger, last-seen store and signing-key resolver,
+        and throwaway test keys and licences. For the apps' tests only (test scope); never on a production classpath.</description>
+    <dependencies>
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-licensing</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

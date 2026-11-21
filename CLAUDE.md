@@ -14,6 +14,9 @@ classpath). platform-core is not a server, has no `main`, and is never deployed 
 | `platform-notifications-testkit` | Test support for notifications: in-memory channel, recipient resolver, secret resolver and stores. Test scope only; never in production code. |
 | `platform-notifications-spring` | Spring Boot wiring for notifications: auto-configuration, `platform.notifications.*` properties (validated at startup), startup check of the `notif_` tables (never creates them), scheduled tick and background sender, health indicator per destination. Install guide: `docs/install/notifications.md`. |
 
+| `platform-licensing` | Licensing (plain Java, no Spring, no runtime dependencies): Ed25519-signed licence file and verifier with refusal codes, licence states with 30-day grace, clock-rollback check, usage levels (never blocks), hash-chained usage ledger interface, usage file export and verifier, licence-issuing command (`IssueLicenceCommand`, our side only). Design: `docs/design/licensing.md`; formats: `docs/design/licensing-file-format.md`. |
+| `platform-licensing-testkit` | Test support for licensing: in-memory usage ledger, last-seen store, signing-key resolver, throwaway test keys and licences. Test scope only. |
+
 New capability = new module, added to the root `<modules>` list **and** to `platform-bom`.
 
 ## One version

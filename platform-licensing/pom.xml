@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.documentplatform.platform</groupId>
+        <artifactId>platform-core</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>platform-licensing</artifactId>
+    <description>Licensing capability: the signed licence (Ed25519, JDK crypto), licence states with grace, clock-rollback
+        check, usage levels, hash-chained usage ledger and usage file export, and the licence-issuing command.
+        Plain Java, no Spring, no runtime dependencies.</description>
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>
