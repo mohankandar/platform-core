@@ -120,7 +120,7 @@ Same layout as `platform-notifications-spring`:
 
 **Of the 414 existing tests, 409 pass unchanged. The other 5 were the P009 `ClockGuardTest` cases**, which checked
 that a rollback is refused. O1 reverses that rule, so I rewrote them for the new behaviour (9 cases now). No other
-existing test changed, apart from replacing one test-only helper name.
+existing test changed; `UsageLedgerTest` and `IssueLicenceCommandTest` only gained new tests.
 
 Postgres tests run in Testcontainers (Postgres 16) and connect as a **DML-only user** (SELECT, INSERT, UPDATE, DELETE
 only). The required scenarios are covered:
