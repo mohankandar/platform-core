@@ -9,16 +9,30 @@
     <artifactId>platform-licensing-spring</artifactId>
     <description>Spring Boot wiring for platform-licensing: auto-configuration of the LicenceService on the app's
         DataSource (Postgres stores), validated configuration properties (platform.licensing: trusted public keys, product
-        code, clock tolerance), the startup check of the lic_ tables and of the stored licence, and a health indicator.</description>
+        code, clock tolerance), the startup check of the lic_ tables and of the stored licence, a health indicator, and
+        licensing notifications (event types, hourly check) when the app has platform-notifications.</description>
     <dependencies>
         <dependency>
             <groupId>com.documentplatform.platform</groupId>
             <artifactId>platform-licensing</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- Licensing notifications only when the app has platform-notifications; licensing works without it. -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-notifications</artifactId>
+            <version>${project.version}</version>
+            <optional>true</optional>
+        </dependency>
         <dependency>
             <groupId>com.documentplatform.platform</groupId>
             <artifactId>platform-licensing-testkit</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-notifications-testkit</artifactId>
             <version>${project.version}</version>
             <scope>test</scope>
         </dependency>

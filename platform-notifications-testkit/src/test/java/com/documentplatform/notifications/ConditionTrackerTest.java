@@ -91,6 +91,19 @@ class ConditionTrackerTest {
     }
 
     @Test
+    void aSupersededConditionEndsWithoutRecoveredAndStopsRepeating() {
+        f.via(f.notifier).conditionFailing(store("primary"));
+        f.advance(Duration.ofMinutes(15));
+        ConditionKey key = ConditionKey.of(store("primary"));
+        f.notifier.conditionSuperseded(key);
+        assertFalse(f.notifier.isConditionActive(key));
+        assertTrue(f.via(f.notifier).conditionCleared(key).isEmpty(), "nothing left to recover");
+        assertTrue(f.advance(Duration.ofHours(8)).isEmpty(), "no repeats");
+        assertEquals(List.of(MessageKind.CONDITION_ALERT), sentKinds());
+        f.notifier.conditionSuperseded(key); // a second call finds nothing
+    }
+
+    @Test
     void clearedBeforeTheThresholdSendsNothing() {
         f.via(f.notifier).conditionFailing(store("primary"));
         f.advance(Duration.ofMinutes(10));

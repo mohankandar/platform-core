@@ -22,7 +22,7 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.security.PrivateKey;
+import com.documentplatform.licensing.TrustedKeys;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
@@ -42,9 +42,10 @@ import java.util.Set;
 import java.util.random.RandomGenerator;
 
 /**
- * The licence-issuing command (our side only). Builds a licence from options, signs it with the key read from the
- * secret store, writes the licence file and appends a record to the issued-records file. Every run, issued or
- * refused, is written to the run log. Nothing it writes or prints contains key material or the signature.
+ * The licence-issuing command (our side only). Builds a licence from options, has it signed by the {@link Signer}
+ * (Vault Transit in production: the private key never leaves Vault), writes the licence file and appends a record to
+ * the issued-records file. Every run, issued or refused, is written to the run log (with the Vault request IDs, which
+ * match Vault's audit log). Nothing it writes or prints contains key material, a Vault token or the signature.
  *
  * <pre>
  * issue-licence --customer "Example Customer Ltd" --products PRODUCT_A,PRODUCT_B
@@ -53,7 +54,12 @@ import java.util.random.RandomGenerator;
  *     --deployment HOSTED|ON_PREM
  *     --slot [SLOT_ID@]PRODUCT:TYPE=AMOUNT[,PRODUCT:TYPE=AMOUNT...]   (repeat per slot)
  *     [--tenant-id TEN-...]   (new version for an existing tenant; omit for a new customer)
- *     --key-id lic-2026-01  --records issued.jsonl  --out licence.json  [--run-log issued.runs.log]
+ *     --key-id lic-2026[:VERSION]  --records issued.jsonl  --out licence.json  [--run-log issued.runs.log]
+ *
+ * issue-licence --export-trusted-keys lic-2026[,lic-2027]  --out trusted-keys.json  [--run-log ...]
+ *
+ * Vault (every form): [--vault-addr https://vault:8200]  (else VAULT_ADDR)   [--vault-mount transit]
+ *     [--vault-login token|userpass]  (token: VAULT_TOKEN)   [--vault-user NAME  [--vault-login-mount userpass]]
  * </pre>
  *
  * Exit codes: 0 issued; 1 refused (the message starts with the {@link IssueError} code); 2 options wrong.
@@ -63,29 +69,63 @@ public final class IssueLicenceCommand {
     private static final System.Logger LOG = System.getLogger(IssueLicenceCommand.class.getName());
     static final int MAX_INSTALL_DAYS = 60;
 
-    private static final Set<String> SINGLE = Set.of("--customer", "--products", "--type", "--kind", "--starts",
+    private static final Set<String> VAULT_OPTIONS = Set.of("--vault-addr", "--vault-mount", "--vault-login",
+            "--vault-user", "--vault-login-mount");
+    private static final Set<String> SINGLE = union(Set.of("--customer", "--products", "--type", "--kind", "--starts",
             "--expires", "--updates-until", "--deployment", "--tenant-id", "--key-id", "--records", "--out", "--run-log",
-            "--reset-last-seen", "--valid-days");
-    private static final Set<String> RESET_OPTIONS = Set.of("--reset-last-seen", "--valid-days", "--tenant-id",
-            "--key-id", "--records", "--out", "--run-log");
+            "--reset-last-seen", "--valid-days", "--export-trusted-keys"), VAULT_OPTIONS);
+    private static final Set<String> RESET_OPTIONS = union(Set.of("--reset-last-seen", "--valid-days", "--tenant-id",
+            "--key-id", "--records", "--out", "--run-log"), VAULT_OPTIONS);
+    private static final Set<String> EXPORT_OPTIONS = union(Set.of("--export-trusted-keys", "--out", "--run-log",
+            "--records"), VAULT_OPTIONS);
     static final int DEFAULT_RESET_DAYS = 7;
     static final int MAX_RESET_DAYS = 30;
     private static final String SLOT = "--slot";
 
-    private final SigningKeyResolver keys;
+    /** Opens the signer for one run, from the run's options (Vault address, login). */
+    @FunctionalInterface
+    public interface SignerFactory {
+        /** @throws IssueException when the options or the environment do not give a usable signer */
+        Signer open(Map<String, String> options);
+    }
+
+    private final SignerFactory signers;
     private final Clock clock;
     private final IdGenerator ids;
+    private Signer signer;
 
-    public IssueLicenceCommand(SigningKeyResolver keys, Clock clock, RandomGenerator random) {
-        this.keys = Objects.requireNonNull(keys, "keys");
+    public IssueLicenceCommand(SignerFactory signers, Clock clock, RandomGenerator random) {
+        this.signers = Objects.requireNonNull(signers, "signers");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.ids = new IdGenerator(random);
     }
 
+    /** With one signer for every run (tests). */
+    public IssueLicenceCommand(Signer signer, Clock clock, RandomGenerator random) {
+        this(options -> signer, clock, random);
+        Objects.requireNonNull(signer, "signer");
+    }
+
+    /** Signs with Vault Transit ({@link VaultTransitSigner#from}); the private key never leaves Vault. */
     public static void main(String[] args) {
-        int code = new IssueLicenceCommand(new EnvironmentSigningKeyResolver(System.getenv()), Clock.systemUTC(),
-                new SecureRandom()).run(Arrays.asList(args), System.out, System.err);
+        int code = new IssueLicenceCommand(options -> VaultTransitSigner.from(options, System.getenv(),
+                VaultTransitSigner.consolePrompt()), Clock.systemUTC(), new SecureRandom())
+                .run(Arrays.asList(args), System.out, System.err);
         System.exit(code);
+    }
+
+    private static Set<String> union(Set<String> a, Set<String> b) {
+        Set<String> s = new HashSet<>(a);
+        s.addAll(b);
+        return Set.copyOf(s);
+    }
+
+    /** The run's signer, opened on first use (so wrong options never reach Vault). */
+    private Signer signer(Map<String, String> options) {
+        if (signer == null) {
+            signer = signers.open(options);
+        }
+        return signer;
     }
 
     /** The result of an issued licence. */
@@ -94,17 +134,42 @@ public final class IssueLicenceCommand {
 
     /** Runs the command; returns the exit code. */
     public int run(List<String> args, PrintStream out, PrintStream err) {
+        try {
+            return runOnce(args, out, err);
+        } finally {
+            if (signer != null) {
+                signer.close();
+                signer = null;
+            }
+        }
+    }
+
+    private int runOnce(List<String> args, PrintStream out, PrintStream err) {
         Map<String, String> options = null;
         try {
             Parsed parsed = parse(args);
             options = parsed.single();
+            if (options.containsKey("--export-trusted-keys")) {
+                TrustedKeys exported = exportKeys(parsed);
+                Path file = Path.of(options.get("--out"));
+                out.println("Exported " + exported.keyIds().size() + " public key(s) " + exported.keyIds()
+                        + " -> " + file);
+                out.println("Install config (key IDs with ':' need the brackets):");
+                out.println("platform:\n  licensing:\n    trusted-keys:");
+                for (String id : exported.keyIds()) {
+                    out.println("      \"[" + id + "]\": " + Ed25519.encodePublic(exported.key(id).orElseThrow()));
+                }
+                runLog(options, "KEYS_EXPORTED", null, null, null, exported.keyIds());
+                LOG.log(System.Logger.Level.INFO, "Exported public keys {0}", exported.keyIds());
+                return 0;
+            }
             if (options.containsKey("--reset-last-seen")) {
                 LastSeenReset reset = issueReset(parsed);
                 String summary = "Issued last-seen reset " + reset.resetId() + " for tenant " + reset.tenantId()
                         + ": sets the latest time seen to " + reset.resetTo() + ", valid until " + reset.notAfter()
                         + ", key " + reset.keyId() + " -> " + options.get("--out");
                 out.println(summary);
-                runLog(options, "RESET_ISSUED", null, null, reset);
+                runLog(options, "RESET_ISSUED", null, null, reset, null);
                 LOG.log(System.Logger.Level.INFO, summary);
                 return 0;
             }
@@ -115,17 +180,17 @@ public final class IssueLicenceCommand {
                     .map(EntitySlot::slotId).toList() + ", key " + issued.licence().keyId() + ", payload sha256 "
                     + issued.payloadSha256().substring(0, 12) + "... -> " + issued.licenceFile();
             out.println(summary);
-            runLog(options, "ISSUED", null, issued.licence(), null);
+            runLog(options, "ISSUED", null, issued.licence(), null, null);
             LOG.log(System.Logger.Level.INFO, summary);
             return 0;
         } catch (IssueException e) {
             err.println(e.getMessage());
-            runLog(options != null ? options : lenient(args), "REFUSED", e.code(), null, null);
+            runLog(options != null ? options : lenient(args), "REFUSED", e.code(), null, null, null);
             LOG.log(System.Logger.Level.WARNING, "Licence not issued: {0}", e.code());
             return e.code() == IssueError.ISSUE_BAD_OPTION || e.code() == IssueError.ISSUE_MISSING_OPTION ? 2 : 1;
         } catch (RuntimeException e) {
             err.println("Licence not issued: unexpected " + e.getClass().getSimpleName() + ".");
-            runLog(options != null ? options : lenient(args), "FAILED", null, null, null);
+            runLog(options != null ? options : lenient(args), "FAILED", null, null, null, null);
             LOG.log(System.Logger.Level.ERROR, "Licence not issued: unexpected {0}", e.getClass().getSimpleName());
             return 1;
         }
@@ -213,18 +278,19 @@ public final class IssueLicenceCommand {
             throw new IssueException(IssueError.ISSUE_UNKNOWN_TENANT, "Tenant " + shown(tenantId)
                     + " was never issued a licence.");
         }
+        Signer s = signer(o);
+        String signingKey = s.resolveKeyId(keyId);
         Instant now = clock.instant();
         LastSeenReset reset;
         try {
             reset = new LastSeenReset(ids.next("RST", records.allIds()), tenantId, resetTo,
-                    now.plus(java.time.Duration.ofDays(days)), now, keyId);
+                    now.plus(java.time.Duration.ofDays(days)), now, signingKey);
         } catch (IllegalArgumentException e) {
             throw new IssueException(IssueError.ISSUE_BAD_OPTION, e.getMessage() + ".");
         }
-        PrivateKey key = privateKey(keyId);
         String file;
         try {
-            file = reset.sign(key);
+            file = reset.sign(message -> signWith(s, signingKey, message));
         } catch (IllegalArgumentException e) {
             throw new IssueException(IssueError.ISSUE_KEY_INVALID, "Key ID " + keyId + ".");
         }
@@ -358,16 +424,17 @@ public final class IssueLicenceCommand {
             }
         }
         String licenceId = ids.next("LIC", taken);
+        String signingKey = signer(o).resolveKeyId(keyId);
         Instant now = clock.instant();
         Licence licence;
         try {
             licence = new Licence(licenceId, version, customer, tenantId, products, slots, type, kind, starts,
-                    expires, updatesUntil, deployment, keyId, now);
+                    expires, updatesUntil, deployment, signingKey, now);
         } catch (IllegalArgumentException | NullPointerException e) {
             throw new IssueException(IssueError.ISSUE_INVALID_LICENCE, e.getMessage() + ".");
         }
 
-        String file = sign(licence);
+        String file = sign(signer(o), licence);
         String payloadSha = Ed25519.sha256Hex(LicenceFormat.signedMessage(LicenceFormat.payload(licence)));
         try {
             if (out.toAbsolutePath().getParent() != null) {
@@ -392,26 +459,74 @@ public final class IssueLicenceCommand {
         return new Issued(licence, out, payloadSha);
     }
 
-    private PrivateKey privateKey(String keyId) {
-        Optional<PrivateKey> key;
+    /** One signature; a signer's own refusal keeps its code, anything else it throws is reported without its text. */
+    private static byte[] signWith(Signer signer, String keyId, byte[] message) {
         try {
-            key = keys.resolve(keyId);
-        } catch (IllegalArgumentException e) {
-            throw new IssueException(IssueError.ISSUE_KEY_INVALID, "Key ID " + keyId + ".");
+            return signer.sign(keyId, message);
+        } catch (IssueException e) {
+            throw e;
         } catch (RuntimeException e) {
             throw new IssueException(IssueError.ISSUE_KEY_UNAVAILABLE, "Key ID " + keyId + " ("
                     + e.getClass().getSimpleName() + ").");
         }
-        return key.orElseThrow(() -> new IssueException(IssueError.ISSUE_KEY_NOT_FOUND, "Key ID " + keyId + "."));
     }
 
-    private String sign(Licence licence) {
-        PrivateKey key = privateKey(licence.keyId());
+    private static String sign(Signer signer, Licence licence) {
         try {
-            return LicenceSigner.sign(licence, key);
+            return LicenceSigner.sign(licence, message -> signWith(signer, licence.keyId(), message));
         } catch (IllegalArgumentException e) {
             throw new IssueException(IssueError.ISSUE_KEY_INVALID, "Key ID " + licence.keyId() + ".");
         }
+    }
+
+    /**
+     * Writes the public keys of every version of the named signing keys into the trusted-keys file apps ship:
+     * {@code --export-trusted-keys lic-2026[,lic-2027] --out trusted-keys.json}. Public keys only.
+     */
+    private TrustedKeys exportKeys(Parsed p) {
+        Map<String, String> o = p.single();
+        for (String name : o.keySet()) {
+            if (!EXPORT_OPTIONS.contains(name)) {
+                throw new IssueException(IssueError.ISSUE_BAD_OPTION, name + " is not used with --export-trusted-keys;"
+                        + " an export takes " + new java.util.TreeSet<>(EXPORT_OPTIONS) + ".");
+            }
+        }
+        if (!p.slots().isEmpty()) {
+            throw new IssueException(IssueError.ISSUE_BAD_OPTION, "--slot is not used with --export-trusted-keys.");
+        }
+        Path out = Path.of(required(o, "--out"));
+        if (Files.exists(out)) {
+            throw new IssueException(IssueError.ISSUE_OUTPUT_EXISTS, out.toString());
+        }
+        Map<String, java.security.PublicKey> all = new java.util.TreeMap<>();
+        Signer s = signer(o);
+        for (String name : required(o, "--export-trusted-keys").split(",")) {
+            String n = name.strip();
+            try {
+                all.putAll(s.publicKeys(n));
+            } catch (IssueException e) {
+                throw e;
+            } catch (RuntimeException e) {
+                throw new IssueException(IssueError.ISSUE_KEY_UNAVAILABLE, "Key " + shown(n) + " ("
+                        + e.getClass().getSimpleName() + ").");
+            }
+        }
+        if (all.isEmpty()) {
+            throw new IssueException(IssueError.ISSUE_KEY_NOT_FOUND, "The keys named have no versions.");
+        }
+        TrustedKeys keys = TrustedKeys.of(all);
+        try {
+            if (out.toAbsolutePath().getParent() != null) {
+                Files.createDirectories(out.toAbsolutePath().getParent());
+            }
+            Files.writeString(out, keys.toJson(), StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW,
+                    StandardOpenOption.WRITE);
+        } catch (FileAlreadyExistsException e) {
+            throw new IssueException(IssueError.ISSUE_OUTPUT_EXISTS, out.toString());
+        } catch (IOException e) {
+            throw new IssueException(IssueError.ISSUE_OUTPUT_UNWRITABLE, out + ": " + e.getClass().getSimpleName());
+        }
+        return keys;
     }
 
     /** {@code PRODUCT:TYPE=AMOUNT[,PRODUCT:TYPE=AMOUNT...]} */
@@ -494,13 +609,17 @@ public final class IssueLicenceCommand {
     }
 
     private void runLog(Map<String, String> options, String outcome, IssueError code, Licence licence,
-                        LastSeenReset reset) {
-        if (options == null || options.get("--records") == null) {
+                        LastSeenReset reset, java.util.Collection<String> exportedKeyIds) {
+        if (options == null || (options.get("--records") == null && options.get("--run-log") == null)) {
             return; // nothing to locate the log by; stderr and the logger have the refusal
         }
-        Path records = Path.of(options.get("--records"));
-        Path log = options.containsKey("--run-log") ? Path.of(options.get("--run-log"))
-                : records.resolveSibling(records.getFileName() + ".runs.log");
+        Path log;
+        if (options.containsKey("--run-log")) {
+            log = Path.of(options.get("--run-log"));
+        } else {
+            Path records = Path.of(options.get("--records"));
+            log = records.resolveSibling(records.getFileName() + ".runs.log");
+        }
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("at", clock.instant().toString());
         m.put("outcome", outcome);
@@ -519,8 +638,20 @@ public final class IssueLicenceCommand {
             m.put("resetTo", reset.resetTo().toString());
             m.put("notAfter", reset.notAfter().toString());
         }
-        Optional.ofNullable(options.get("--key-id")).filter(k -> k.matches("[a-z0-9._-]{1,64}"))
+        // The key that signed (Vault: name and version); else the key ID asked for, if it has the shape of one.
+        String keyId = licence != null ? licence.keyId() : reset != null ? reset.keyId() : options.get("--key-id");
+        Optional.ofNullable(keyId).filter(k -> k.matches("[a-z0-9._-]{1,64}(:[0-9]{1,9})?"))
                 .ifPresent(k -> m.put("keyId", k));
+        if (exportedKeyIds != null) {
+            m.put("keyIds", List.copyOf(exportedKeyIds));
+        }
+        if (signer != null) {
+            m.put("signer", signer.describe());
+            List<String> refs = signer.auditReferences();
+            if (!refs.isEmpty()) {
+                m.put("signerAuditRefs", refs);
+            }
+        }
         Optional.ofNullable(options.get("--out")).map(f -> Path.of(f).getFileName())
                 .ifPresent(f -> m.put("out", shown(f.toString())));
         try {

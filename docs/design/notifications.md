@@ -175,3 +175,10 @@ Listed so the model covers them. Kind: B = business, T = technical, C = critical
     wins.
 16. **New dependencies, all Apache-2.0:** `spring-boot-autoconfigure` (compile), `spring-boot-actuator` (optional),
     and `spring-boot-test` and `assertj-core` (test). AssertJ's `byte-buddy` is excluded.
+
+### Added in P011 (licensing notifications)
+
+- **`Notifier.conditionSuperseded(key)`** ends a condition without a Recovered message, for when a more serious
+  condition about the same thing takes over (licence grace ends and "intake stopped" starts). Nothing is queued.
+- The licensing event types are registered by the app from `platform-licensing-spring` (`LicensingEvents.register`);
+  this module still has no event types of its own.

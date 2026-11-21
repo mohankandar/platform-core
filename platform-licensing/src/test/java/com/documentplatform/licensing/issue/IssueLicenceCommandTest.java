@@ -51,11 +51,11 @@ class IssueLicenceCommandTest {
     @BeforeEach
     void setUp() {
         records = dir.resolve("issued.jsonl");
-        env.put(EnvironmentSigningKeyResolver.variableFor(KEY_ID), PRIVATE_B64);
+        env.put(EnvironmentSigner.variableFor(KEY_ID), PRIVATE_B64);
     }
 
     private int run(RandomGenerator random, String... args) {
-        return new IssueLicenceCommand(new EnvironmentSigningKeyResolver(env), clock, random)
+        return new IssueLicenceCommand(new EnvironmentSigner(env), clock, random)
                 .run(Arrays.asList(args), new PrintStream(outBytes, true, StandardCharsets.UTF_8),
                         new PrintStream(errBytes, true, StandardCharsets.UTF_8));
     }
@@ -251,7 +251,7 @@ class IssueLicenceCommandTest {
 
     @Test
     void anInvalidStoredKeyIsReportedWithoutItsValue() {
-        env.put(EnvironmentSigningKeyResolver.variableFor(KEY_ID), "bm90LWEta2V5LXNlY3JldA==");
+        env.put(EnvironmentSigner.variableFor(KEY_ID), "bm90LWEta2V5LXNlY3JldA==");
         assertEquals(1, run(base(nextOut(), "PRODUCTION")));
         assertTrue(err().startsWith("ISSUE_KEY_INVALID: "), err());
         assertFalse(err().contains("bm90LWEta2V5LXNlY3JldA"));
@@ -259,10 +259,10 @@ class IssueLicenceCommandTest {
 
     @Test
     void anUnreachableSecretStoreIsReported() {
-        SigningKeyResolver down = keyId -> {
+        Signer down = (keyId, message) -> {
             throw new IllegalStateException("connection refused");
         };
-        int code = new IssueLicenceCommand(down, clock, new java.security.SecureRandom())
+        int code = new IssueLicenceCommand((Signer) down, clock, new java.security.SecureRandom())
                 .run(base(nextOut(), "PRODUCTION"), new PrintStream(outBytes), new PrintStream(errBytes, true, StandardCharsets.UTF_8));
         assertEquals(1, code);
         assertTrue(err().startsWith("ISSUE_KEY_UNAVAILABLE: "), err());

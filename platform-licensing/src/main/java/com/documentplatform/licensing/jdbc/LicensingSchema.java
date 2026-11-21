@@ -35,7 +35,7 @@ public final class LicensingSchema {
 
     /** The tables the code reads and writes at runtime. */
     public static final List<String> TABLES = List.of("lic_licence", "lic_last_seen", "lic_clock_reset", "lic_usage",
-            "lic_chain_head");
+            "lic_chain_head", "lic_notice_sent");
 
     /** Holds the version of the files that were run. */
     public static final String VERSION_TABLE = "lic_schema_version";

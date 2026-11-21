@@ -5,9 +5,11 @@ import com.documentplatform.licensing.LastSeenStore;
 import com.documentplatform.licensing.LicenceService;
 import com.documentplatform.licensing.LicenceStore;
 import com.documentplatform.licensing.LicenceVerifier;
+import com.documentplatform.licensing.NoticeLog;
 import com.documentplatform.licensing.jdbc.LicensingSchema;
 import com.documentplatform.licensing.jdbc.PostgresLastSeenStore;
 import com.documentplatform.licensing.jdbc.PostgresLicenceStore;
+import com.documentplatform.licensing.jdbc.PostgresNoticeLog;
 import com.documentplatform.licensing.jdbc.PostgresUsageLedger;
 import com.documentplatform.licensing.usage.UsageLedger;
 import org.springframework.beans.factory.ObjectProvider;
@@ -80,6 +82,14 @@ public class LicensingAutoConfiguration {
     @ConditionalOnMissingBean
     UsageLedger licensingUsageLedger(LicensingTables tables) {
         return new PostgresUsageLedger(tables.dataSource());
+    }
+
+    /** Used only by licensing notifications; lazy, so apps without notifications never touch its table. */
+    @Bean
+    @Lazy
+    @ConditionalOnMissingBean
+    NoticeLog licensingNoticeLog(LicensingTables tables) {
+        return new PostgresNoticeLog(tables.dataSource());
     }
 
     @Bean

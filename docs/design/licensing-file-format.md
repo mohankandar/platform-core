@@ -44,7 +44,7 @@ A strict subset of JSON, so each value has exactly one canonical form:
 | `expiresOn` | SUBSCRIPTION only: last valid day (inclusive, UTC) |
 | `updatesUntil` | PERPETUAL only: last product release date covered |
 | `deployment` | `HOSTED` or `ON_PREM` |
-| `keyId` | signing key ID (`[a-z0-9][a-z0-9._-]{0,63}`) |
+| `keyId` | signing key ID: a name `[a-z0-9][a-z0-9._-]{0,63}`, optionally `:VERSION` (Vault Transit key name and version, for example `lic-2026:1`; since P011) |
 | `issuedAt` | time |
 
 Allowance `type` and its unit: `PAGES_PER_MONTH` (pages), `STORAGE` (GB, 10^9 bytes), `CONCURRENT_SEATS` (seats),
@@ -143,11 +143,14 @@ old keys stay until no licence signed with them is in use.
   `updatesUntil`, `deployment`, `keyId`, `issuedAt`, `payloadSha256`, `licenceFile`. No key material, no signature.
   New IDs are checked against every ID in this file.
 - **Run log** (`--run-log`, default `<records>.runs.log`, JSON Lines): one line per run, issued or refused:
-  `at`, `outcome` (`ISSUED`, `REFUSED`, `FAILED`), `code`, `licenceId`, `version`, `tenantId`, `kind`, `keyId`,
-  `out` (file name).
-- **Signing key**: read through `SigningKeyResolver`. The default (`EnvironmentSigningKeyResolver`) reads
-  `PLATFORM_LICENCE_KEY_<KEY ID>` (upper case, other characters as `_`), Base64 PKCS#8, set for the one run from the
-  secret store.
+  `at`, `outcome` (`ISSUED`, `RESET_ISSUED`, `KEYS_EXPORTED`, `REFUSED`, `FAILED`), `code`, `licenceId`, `version`,
+  `tenantId`, `kind`, `keyId` (the key that signed, with its version), `keyIds` (an export), `out` (file name),
+  `signer` (`vault-transit`), `signerAuditRefs` (the Vault request IDs of this run's signatures, which match Vault's
+  audit log). Never a token, a key or a signature.
+- **Signing** (since P011): through the `Signer` interface, `sign(keyId, bytes)`. The command uses
+  `VaultTransitSigner`: the message goes to Vault Transit (`POST /v1/transit/sign/<name>`) and only the signature comes
+  back; the private key never leaves Vault. Each signature is checked against the key's public key before the file is
+  written. Set-up and the Vault policy: `docs/install/licence-signing.md`.
 
 ## 5. Usage ledger record (hash chain)
 
@@ -217,6 +220,7 @@ Run by the app's schema step as a separate Flyway run with history table `lic_sc
 | `lic_clock_reset` | IDs of applied last-seen resets |
 | `lic_usage` | the usage ledger (section 5) |
 | `lic_chain_head` | one row: newest sequence and hash |
+| `lic_notice_sent` | IDs of licensing notifications already published (event, tenant, slot, licence or month, band), so a restart never publishes one twice (P011) |
 
 No secrets, key material, prices or document data in any table. The runtime user needs SELECT, INSERT, UPDATE and
 DELETE on the `lic_` tables and SELECT on `lic_schema_version`.

@@ -27,7 +27,7 @@ public record LicensingConfig(TrustedKeys trustedKeys, String productCode, Strin
                 try {
                     Licence.requireKeyId(id);
                 } catch (IllegalArgumentException e) {
-                    problems.add(prefix + "trusted-keys: key ID '" + id.replaceAll("[^A-Za-z0-9._-]", "?")
+                    problems.add(prefix + "trusted-keys: key ID '" + id.replaceAll("[^A-Za-z0-9._:-]", "?")
                             + "' is not valid: " + e.getMessage());
                     return;
                 }

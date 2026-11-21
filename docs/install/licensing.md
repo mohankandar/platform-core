@@ -33,7 +33,7 @@ The tables hold no secrets, no prices and no document data.
 
 | Setting | What to give |
 |---|---|
-| `platform.licensing.trusted-keys.<key ID>` | The public keys shipped with this release (key ID and Base64 key). Keep older keys after an upgrade. |
+| `platform.licensing.trusted-keys.<key ID>` | The public keys shipped with this release (key ID and Base64 key). Keep older keys after an upgrade. Key IDs with a version, such as `lic-2026:1`, must be written in brackets so the `:` is kept: `"[lic-2026:1]": MCowBQYDK2VwAyEA...` in YAML, `platform.licensing.trusted-keys[lic-2026:1]=...` in a properties file. |
 | `platform.licensing.product-code` | The app's product code (set by the app's own install guide). |
 | `platform.licensing.tenant-id` | Optional. Your tenant ID from the licence. When set, a licence for any other tenant is refused. |
 | `platform.licensing.clock-tolerance` | Optional, default `1h`. How far the server clock may be behind before a warning is shown. |
@@ -88,3 +88,35 @@ clock is behind. It never shows keys or signatures.
 
 `LICENCE_WARNING` and `INTAKE_STOPPED` do not mark the app unhealthy, so a load balancer keeps it in service.
 `DOWN` appears only if the stored licence is edited while the app runs.
+
+## 6. Licensing notifications
+
+When the app also uses platform notifications, licensing tells people about the licence and usage by e-mail, Teams
+or Slack, through the notification settings your admins already use. Without platform notifications nothing is sent
+and licensing works the same.
+
+| Event | Kind | Default | Goes to |
+|---|---|---|---|
+| Licence expiring (60, 30, 7 and 1 days before) | business, per entity | once a day at 08:00 | Business Admin |
+| Licence expired, grace period running | business, per entity, **critical** | at once, repeated daily, Recovered when renewed | Business Admin and IT Admin |
+| Intake stopped, licence expired (after grace) | business, per entity, **critical** | at once, repeated daily, Recovered when renewed | Business Admin and IT Admin |
+| Server clock behind | technical, **critical** | at once, repeated every 4 hours, Recovered when correct | IT Admin |
+| Usage near limit (80%, adjustable 50–99%) | business, per entity | once a day at 08:00 | Business Admin |
+| Usage at limit (100%) | business, per entity | once a day at 08:00 | Business Admin |
+| Usage over limit | business, per entity | once a day at 08:00, repeated daily, Recovered at the new month | Business Admin |
+| Version not covered by licence updates | technical | once a day at 08:00 | IT Admin |
+
+Business events are sent for each **activated** entity slot only. Admins can change frequency and recipients within
+the usual rules (critical events stay on and go to the IT Admin). Messages contain the event, the entity, counts,
+dates and a link into the app; never keys, signatures or prices.
+
+The check runs on every app instance every hour; restarts and several instances never send anything twice. The table
+`lic_notice_sent` remembers what was sent (it is created by the licensing schema step; no extra grant is needed
+beyond the `lic_` grants in section 1).
+
+| Setting | What to give |
+|---|---|
+| `platform.licensing.notifications.enabled` | Optional, default `true`. `false` switches licensing notifications off. |
+| `platform.licensing.notifications.check-interval` | Optional, default `1h` (1 minute to 24 hours). |
+| `platform.licensing.notifications.link` | Optional. The app page messages link to, as a path such as `/admin/licence` (set by the app's own guide). |
+| `platform.licensing.notifications.release-version`, `release-date` | Set by the app's release; used for "Version not covered by licence updates". |

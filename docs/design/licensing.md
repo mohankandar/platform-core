@@ -43,7 +43,8 @@ Source of truth: the owner's Shared capabilities thread (project doc `Licensing-
 
 - Builds and signs a licence from an input file (customer, products, entity slots and allowances, kind, dates, deployment).
 - Generates tenant and entity-slot IDs unique across all customers (random, collision-checked against its own issued records).
-- Reads the signing key from the secret store; writes a record of every licence issued (no key material in it); every run logged.
+- Reads the signing key from the secret store; writes a record of every licence issued (no key material in it); every
+  run logged. *(Since P011 the key never leaves the secret store: signing happens in Vault Transit; see section 8.)*
 - Later wrapped by the Platform Console (request by Account Manager, approval by Licensing Admin).
 
 ## 6. Setup command (`platform-setup`, later task)
@@ -102,8 +103,8 @@ Reads the licence, stores it, creates customer, tenant and entity slots, loads t
     uses `--tenant-id`, and an existing slot is kept with `--slot SLOT_ID@…`.
 13. IDs: `TEN-`, `ENT-`, `LIC-` (and `RST-` for resets) plus 16 Crockford base32 characters, checked against all
     issued IDs.
-14. Licensing has its own `SigningKeyResolver` (no dependency on notifications); the default reads one environment
-    variable set for the run.
+14. Licensing has its own signing interface (no dependency on notifications). *(P011: `SigningKeyResolver` and the
+    environment-variable default were replaced by `Signer.sign(keyId, bytes)` and Vault Transit.)*
 15. Clock tolerance defaults to 1 hour; it can be changed.
 16. The usage export has its own chain across files. The ledger's chain check, including the head since O4, is
     written into the export header; an export is never refused.
@@ -112,3 +113,26 @@ Reads the licence, stores it, creates customer, tenant and entity slots, loads t
 ### P010 decisions
 
 See `docs/work/P010-report.md`, section "Decisions I had to make".
+
+### Owner answers to the P010 questions (2026-11-21)
+
+- **Q1. Product code not in the licence:** keep it as stopped intake. Start-up is not refused.
+- **Q2. Tenant ID:** `platform.licensing.tenant-id` becomes required in the `platform-setup` task (which writes it),
+  not now.
+- **Q3. Reset validity:** 7 days by default, at most 30. Confirmed.
+- **Q4. Resets stay out of the issued records** (run log only).
+- **Q5. Wiping both usage tables accepted:** it looks like a new, empty ledger; the next usage export shows a chain
+  start that does not match the previous file (`EXPORT_START_MISMATCH`).
+
+### P011 decisions (notification events and Vault signing)
+
+See `docs/work/P011-report.md`, section "Decisions I had to make". In short:
+
+- **Licensing notifications** live in `platform-licensing-spring`, with `platform-notifications` as an optional
+  dependency. The app registers the event types (`LicensingEvents.register`) and supplies `ActivatedSlots`. Business
+  events are published per activated entity slot (owner decision); clock and version events are technical, per
+  tenant. An hourly check publishes; one-off events are claimed in `lic_notice_sent` first, so restarts and several
+  instances never publish twice; conditions use `conditionFailing` / `conditionCleared`.
+- **Signing:** `Signer.sign(keyId, bytes)` replaces `SigningKeyResolver`. Production signing is `VaultTransitSigner`
+  (Vault Transit ed25519; the private key never leaves Vault). Key ID = Transit key name + version (`lic-2026:1`), so
+  the key-ID rule now allows an optional `:VERSION`. Set-up: `docs/install/licence-signing.md`.

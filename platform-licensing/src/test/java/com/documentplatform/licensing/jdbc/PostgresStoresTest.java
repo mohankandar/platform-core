@@ -191,6 +191,31 @@ class PostgresStoresTest {
     }
 
     @Test
+    void aNoticeIsClaimedOnceAcrossInstancesAndCanBeReleasedAndPurged() throws Exception {
+        DataSource app = Pg.migrated().appUser(DML);
+        Instant t = Instant.parse("2026-11-21T10:00:00Z");
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        List<Future<Boolean>> claims = new ArrayList<>();
+        for (int i = 0; i < 16; i++) {
+            // A new store per claim, like separate app instances on one database.
+            claims.add(pool.submit(() -> new PostgresNoticeLog(app).claim("expiring:TEN-1:LIC-1:v1:ENT-1:30", t)));
+        }
+        int won = 0;
+        for (Future<Boolean> f : claims) {
+            won += f.get() ? 1 : 0;
+        }
+        pool.shutdown();
+        assertEquals(1, won, "exactly one instance publishes");
+
+        PostgresNoticeLog log = new PostgresNoticeLog(app);
+        log.release("expiring:TEN-1:LIC-1:v1:ENT-1:30");
+        assertTrue(log.claim("expiring:TEN-1:LIC-1:v1:ENT-1:30", t), "a released claim can be made again");
+        assertTrue(log.claim("usage-near:TEN-1:ENT-1:2026-11", t.plusSeconds(3600)));
+        assertEquals(1, log.purgeBefore(t.plusSeconds(60)));
+        assertFalse(log.claim("usage-near:TEN-1:ENT-1:2026-11", t), "the newer claim is kept");
+    }
+
+    @Test
     void noTableHoldsSecretsPricesOrDocumentData() {
         Pg db = Pg.migrated();
         List<String> columns = new ArrayList<>();

@@ -1,1 +1,2 @@
 com.documentplatform.licensing.spring.LicensingAutoConfiguration
+com.documentplatform.licensing.spring.notifications.LicensingNotificationsAutoConfiguration

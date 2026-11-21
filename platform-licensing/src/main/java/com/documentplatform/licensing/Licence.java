@@ -37,7 +37,7 @@ public record Licence(
 
     private static final Pattern ID = Pattern.compile("[A-Z0-9][A-Z0-9-]{2,63}");
     private static final Pattern PRODUCT = Pattern.compile("[A-Z][A-Z0-9_]{1,31}");
-    private static final Pattern KEY_ID = Pattern.compile("[a-z0-9][a-z0-9._-]{0,63}");
+    private static final Pattern KEY_ID = Pattern.compile("[a-z0-9][a-z0-9._-]{0,63}(:[1-9][0-9]{0,8})?");
 
     public Licence {
         requireId(licenceId, "licence ID");
@@ -125,10 +125,14 @@ public record Licence(
         }
     }
 
-    /** Key IDs: 1 to 64 of a-z 0-9 '.' '_' '-', starting with a letter or digit. */
+    /**
+     * Key IDs: a name of 1 to 64 of a-z 0-9 '.' '_' '-', starting with a letter or digit, optionally followed by
+     * {@code :VERSION} (a Vault Transit key name and version, for example {@code lic-2026:1}).
+     */
     public static void requireKeyId(String keyId) {
         if (keyId == null || !KEY_ID.matcher(keyId).matches()) {
-            throw new IllegalArgumentException("key ID must be 1 to 64 of a-z 0-9 . _ - (starting with a letter or digit)");
+            throw new IllegalArgumentException("key ID must be a name of 1 to 64 of a-z 0-9 . _ - (starting with a letter"
+                    + " or digit), optionally followed by :VERSION");
         }
     }
 

@@ -15,9 +15,21 @@ public enum IssueError {
     ISSUE_RECORDS_UNWRITABLE("The issued-records file cannot be written."),
     ISSUE_OUTPUT_EXISTS("The output licence file already exists; it is never overwritten."),
     ISSUE_OUTPUT_UNWRITABLE("The licence file cannot be written."),
-    ISSUE_KEY_NOT_FOUND("The secret store has no signing key under this key ID."),
-    ISSUE_KEY_INVALID("The secret store's value for this key ID is not an Ed25519 private key."),
-    ISSUE_KEY_UNAVAILABLE("The secret store could not be reached.");
+    ISSUE_KEY_NOT_FOUND("The signer has no signing key (or no such key version) under this key ID."),
+    ISSUE_KEY_INVALID("The key under this key ID is not an Ed25519 signing key."),
+    ISSUE_KEY_UNAVAILABLE("The signer failed in an unexpected way."),
+    ISSUE_KEY_EXPORTABLE("The Vault key allows export or plaintext backup, so its private key could leave Vault; it is"
+            + " not used."),
+    ISSUE_SIGNATURE_MISMATCH("The signature returned does not verify with the key's public key; nothing was written."),
+    ISSUE_VAULT_NO_TOKEN("No Vault credentials: VAULT_TOKEN is not set and no --vault-login was given."),
+    ISSUE_VAULT_LOGIN_REFUSED("Vault refused the login (wrong user name or password, or the user is disabled)."),
+    ISSUE_VAULT_PERMISSION_DENIED("Vault refused the request: the token does not carry the licensing-signer policy,"
+            + " or has expired."),
+    ISSUE_VAULT_UNREACHABLE("Vault could not be reached at the address given (connection refused, timeout or"
+            + " unknown host)."),
+    ISSUE_VAULT_TLS("The TLS connection to Vault failed: its certificate is not trusted by this Java runtime."),
+    ISSUE_VAULT_SEALED("Vault is sealed or in standby and cannot sign until it is unsealed."),
+    ISSUE_VAULT_ERROR("Vault answered with an error or a reply this command does not understand.");
 
     private final String meaning;
 

@@ -6,8 +6,8 @@
 --
 -- What is stored: the signed licence files as received (customer name, IDs, products, allowances, dates), the latest
 -- time seen, the IDs of applied last-seen resets, the usage ledger (slot, product, type, month, amount, unit, billable
--- flag, hashes) and its chain head. What is never stored: secrets or key material (apps hold public keys only, in
--- config), prices, document data.
+-- flag, hashes) and its chain head, and the keys of licensing notifications already published. What is never
+-- stored: secrets or key material (apps hold public keys only, in config), prices, document data.
 --
 -- This is the only place the lic_ tables are created or changed. The app never runs DDL at startup: it checks
 -- lic_schema_version and stops with a specific message if the tables are missing or at another version. At runtime
@@ -73,4 +73,11 @@ create table lic_chain_head (
     sequence   bigint      not null,
     hash       text        not null,
     updated_at timestamptz not null default now()
+);
+
+-- Licensing notifications already published (P011), so a restart or a second app instance never publishes one twice.
+-- The ID names what the notice is (event, tenant, slot, licence or month, band), never message content.
+create table lic_notice_sent (
+    notice_id   text        primary key,
+    recorded_at timestamptz not null
 );

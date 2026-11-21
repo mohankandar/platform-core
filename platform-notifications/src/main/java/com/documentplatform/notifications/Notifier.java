@@ -145,6 +145,15 @@ public final class Notifier {
     }
 
     /**
+     * Ends a condition without a Recovered message, because a more serious condition about the same thing takes over
+     * (for example "licence in grace" when grace ends and "intake stopped" starts). Nothing is queued; a second call
+     * finds nothing.
+     */
+    public synchronized void conditionSuperseded(ConditionKey key) {
+        conditions.remove(key);
+    }
+
+    /**
      * Raises due condition alerts, puts due summaries in the outbox and clears out finished messages older than the
      * retention. Then it sends what is due ({@link #sendDue(Instant)}), including retries and messages a stopped
      * process left behind. Called by the app's scheduler. Returns what happened to the messages it raised and sent.

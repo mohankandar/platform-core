@@ -70,4 +70,70 @@ public class LicensingProperties {
     public void setClockTolerance(Duration clockTolerance) {
         this.clockTolerance = clockTolerance;
     }
+
+    /** Licensing notifications; used only when the app has platform-notifications. */
+    private final Notifications notifications = new Notifications();
+
+    public Notifications getNotifications() {
+        return notifications;
+    }
+
+    /** {@code platform.licensing.notifications.*}, checked by {@code LicensingNotificationsConfig}. */
+    public static class Notifications {
+
+        /** Switches licensing notifications off when false (licensing itself keeps working). */
+        private boolean enabled = true;
+
+        /** How often the licence state and usage are checked (1 minute to 24 hours). */
+        private Duration checkInterval = Duration.ofHours(1);
+
+        /** Where messages point in the app, as a path (for example /admin/licence). Optional. */
+        private String link;
+
+        /** This app version, shown in "version not covered by licence updates" (for example 2.4.0). Optional. */
+        private String releaseVersion;
+
+        /** This app version's release date (YYYY-MM-DD); without it "version not covered" is not checked. */
+        private String releaseDate;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public Duration getCheckInterval() {
+            return checkInterval;
+        }
+
+        public void setCheckInterval(Duration checkInterval) {
+            this.checkInterval = checkInterval;
+        }
+
+        public String getLink() {
+            return link;
+        }
+
+        public void setLink(String link) {
+            this.link = link;
+        }
+
+        public String getReleaseVersion() {
+            return releaseVersion;
+        }
+
+        public void setReleaseVersion(String releaseVersion) {
+            this.releaseVersion = releaseVersion;
+        }
+
+        public String getReleaseDate() {
+            return releaseDate;
+        }
+
+        public void setReleaseDate(String releaseDate) {
+            this.releaseDate = releaseDate;
+        }
+    }
 }

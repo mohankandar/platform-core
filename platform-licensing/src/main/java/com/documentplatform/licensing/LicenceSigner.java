@@ -15,4 +15,12 @@ public final class LicenceSigner {
     public static String sign(Licence licence, PrivateKey key) {
         return SignedDocument.sign(LicenceFormat.FORMAT, "licence", LicenceFormat.payload(licence), key);
     }
+
+    /**
+     * Signs through a signing service that keeps the private key (for example Vault Transit): only the message to
+     * sign leaves this process, and only the signature comes back.
+     */
+    public static String sign(Licence licence, SignedDocument.MessageSigner signer) {
+        return SignedDocument.sign(LicenceFormat.FORMAT, "licence", LicenceFormat.payload(licence), signer);
+    }
 }
