@@ -41,6 +41,9 @@ import java.util.Properties;
  * the outbox's idempotency key (so a resend after a crash carries the same id and mail systems can recognise it) and
  * the {@code Auto-Submitted} header, so out-of-office replies are not sent back.
  *
+ * <p>Microsoft 365 ({@link MailAuth#OAUTH2_MICROSOFT}): the sender signs in with {@code AUTH XOAUTH2} as the sender
+ * mailbox, with a token from {@link MicrosoftTokens} (client-credentials flow); no password login is tried.
+ *
  * <p>Failures come back as specific codes. Nothing from the server's reply, the login or the addresses is kept:
  * Jakarta Mail's debug output is off and the authentication trace is never enabled.
  */
@@ -49,6 +52,7 @@ public final class EmailChannel implements Channel {
     private final MailServerDirectory servers;
     private final SecretResolver secrets;
     private final SSLSocketFactory sslSocketFactory;
+    private final MicrosoftTokens tokens;
 
     public EmailChannel(MailServerDirectory servers, SecretResolver secrets) {
         this(servers, secrets, null);
@@ -59,9 +63,18 @@ public final class EmailChannel implements Channel {
      *                         trusts it; null to use the Java runtime's trust store. Server names are always checked.
      */
     public EmailChannel(MailServerDirectory servers, SecretResolver secrets, SSLSocketFactory sslSocketFactory) {
+        this(servers, secrets, sslSocketFactory, new MicrosoftTokens());
+    }
+
+    /**
+     * @param tokens where Microsoft 365 tokens are fetched and held (shared with health, which shows their state)
+     */
+    public EmailChannel(MailServerDirectory servers, SecretResolver secrets, SSLSocketFactory sslSocketFactory,
+                        MicrosoftTokens tokens) {
         this.servers = Objects.requireNonNull(servers, "servers");
         this.secrets = Objects.requireNonNull(secrets, "secrets");
         this.sslSocketFactory = sslSocketFactory;
+        this.tokens = Objects.requireNonNull(tokens, "tokens");
     }
 
     @Override
@@ -76,8 +89,18 @@ public final class EmailChannel implements Channel {
             return SendResult.failed(FailureCode.DESTINATION_NOT_CONFIGURED);
         }
         MailServer server = found.get();
+        if (out.recipients().isEmpty()) {
+            return SendResult.failed(FailureCode.NO_RECIPIENTS);
+        }
         String password = null;
-        if (server.username() != null) {
+        if (server.oauth() != null) {
+            MicrosoftTokens.Fetch token = tokens.token(server.oauth(), secrets,
+                    server.connectTimeout().plus(server.readTimeout()));
+            if (!token.ok()) {
+                return SendResult.failed(token.failure(), token.retryAfter());
+            }
+            password = token.token().reveal(); // XOAUTH2 sends the token where a password would go
+        } else if (server.username() != null) {
             Optional<Secret> secret;
             try {
                 secret = secrets.resolve(server.password());
@@ -88,9 +111,6 @@ public final class EmailChannel implements Channel {
                 return SendResult.failed(FailureCode.SECRET_NOT_FOUND);
             }
             password = secret.get().reveal();
-        }
-        if (out.recipients().isEmpty()) {
-            return SendResult.failed(FailureCode.NO_RECIPIENTS);
         }
 
         Session session = Session.getInstance(properties(server));
@@ -107,7 +127,14 @@ public final class EmailChannel implements Channel {
             transport.sendMessage(mail, mail.getAllRecipients());
             return SendResult.ok();
         } catch (MessagingException e) {
-            return SendResult.failed(classify(e, transport));
+            if (server.oauth() == null) {
+                return SendResult.failed(classify(e, transport));
+            }
+            FailureCode code = classifyMicrosoft(e, transport);
+            if (code == FailureCode.MAIL_OAUTH_SEND_AS_NOT_ALLOWED || code == FailureCode.MAIL_SMTP_AUTH_DISABLED) {
+                tokens.invalidate(server.oauth()); // a permission granted later is only in a new token
+            }
+            return SendResult.failed(code);
         } finally {
             close(transport);
         }
@@ -126,6 +153,9 @@ public final class EmailChannel implements Channel {
         props.put(p + "host", server.host());
         props.put(p + "port", Integer.toString(server.port()));
         props.put(p + "auth", Boolean.toString(server.username() != null));
+        if (server.oauth() != null) {
+            props.put(p + "auth.mechanisms", "XOAUTH2"); // the token, never a password login
+        }
         props.put(p + "from", server.fromAddress());
         props.put(p + "connectiontimeout", Long.toString(server.connectTimeout().toMillis()));
         props.put(p + "timeout", Long.toString(server.readTimeout().toMillis()));
@@ -214,6 +244,39 @@ public final class EmailChannel implements Channel {
             return FailureCode.MAIL_SERVER_UNREACHABLE;
         }
         return FailureCode.SENDER_FAILED;
+    }
+
+    /**
+     * Microsoft 365 sign-in: a refused XOAUTH2 login is told apart by Microsoft's reply. "SmtpClientAuthentication is
+     * disabled" (or a server that does not offer XOAUTH2 at all) means SMTP AUTH is off for the mailbox; any other
+     * refusal, and "SendAsDenied" when sending, means the app is not allowed to send as the mailbox. The reply text is
+     * only matched here, never kept.
+     */
+    static FailureCode classifyMicrosoft(MessagingException e, Transport transport) {
+        if (anyMessageContains(e, "SendAsDenied")) {
+            return FailureCode.MAIL_OAUTH_SEND_AS_NOT_ALLOWED;
+        }
+        if (e instanceof AuthenticationFailedException) {
+            if (anyMessageContains(e, "SmtpClientAuthentication is disabled")
+                    || anyMessageContains(e, "No authentication mech")) {
+                return FailureCode.MAIL_SMTP_AUTH_DISABLED;
+            }
+            return FailureCode.MAIL_OAUTH_SEND_AS_NOT_ALLOWED;
+        }
+        return classify(e, transport);
+    }
+
+    private static boolean anyMessageContains(Throwable e, String text) {
+        String lower = text.toLowerCase(java.util.Locale.ROOT);
+        for (Throwable t = e; t != null; ) {
+            if (t.getMessage() != null && t.getMessage().toLowerCase(java.util.Locale.ROOT).contains(lower)) {
+                return true;
+            }
+            Throwable next = t instanceof MessagingException m && m.getNextException() != null
+                    ? m.getNextException() : t.getCause();
+            t = next == t ? null : next;
+        }
+        return false;
     }
 
     private static FailureCode byReplyCode(int code, FailureCode permanent) {

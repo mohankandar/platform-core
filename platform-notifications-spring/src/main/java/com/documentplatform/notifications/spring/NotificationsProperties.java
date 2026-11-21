@@ -123,6 +123,25 @@ public class NotificationsProperties {
         private String fromName;
         private Duration connectTimeout = Duration.ofSeconds(10);
         private Duration readTimeout = Duration.ofSeconds(30);
+        /**
+         * How the sender signs in: PASSWORD (default: user name and password, or none for a relay; the customer's own
+         * mail server such as Exchange) or OAUTH2_MICROSOFT (Microsoft 365 with an Entra app, see {@link Oauth}).
+         */
+        private String auth = "PASSWORD";
+        /** Microsoft 365 sign-in, used only with auth OAUTH2_MICROSOFT. */
+        private final Oauth oauth = new Oauth();
+
+        public String getAuth() {
+            return auth;
+        }
+
+        public void setAuth(String auth) {
+            this.auth = auth;
+        }
+
+        public Oauth getOauth() {
+            return oauth;
+        }
 
         public String getHost() {
             return host;
@@ -194,6 +213,78 @@ public class NotificationsProperties {
 
         public void setReadTimeout(Duration readTimeout) {
             this.readTimeout = readTimeout;
+        }
+    }
+
+    /**
+     * {@code platform.notifications.mail.oauth.*}: the Entra app registration that sends as the sender mailbox. IDs
+     * and a secret reference only; the client secret or the certificate stays in the secret store.
+     */
+    public static class Oauth {
+        /** The Microsoft Entra directory (tenant) ID, a GUID (or the verified domain, for example customer.onmicrosoft.com). */
+        private String directoryId;
+        /** The app registration's application (client) ID, a GUID. */
+        private String clientId;
+        /** CERTIFICATE (recommended) or SECRET. */
+        private String credentialType;
+        /** Secret reference of the certificate with its private key (PEM), or of the client secret. Never the value. */
+        private String credentialSecret;
+        /** The mailbox the app sends as, for example notifications@customer.example. */
+        private String senderMailbox;
+        /** Microsoft's sign-in address; leave out (https://login.microsoftonline.com) unless you use a national cloud. */
+        private String authority;
+
+        public String getDirectoryId() {
+            return directoryId;
+        }
+
+        public void setDirectoryId(String directoryId) {
+            this.directoryId = directoryId;
+        }
+
+        public String getClientId() {
+            return clientId;
+        }
+
+        public void setClientId(String clientId) {
+            this.clientId = clientId;
+        }
+
+        public String getCredentialType() {
+            return credentialType;
+        }
+
+        public void setCredentialType(String credentialType) {
+            this.credentialType = credentialType;
+        }
+
+        public String getCredentialSecret() {
+            return credentialSecret;
+        }
+
+        public void setCredentialSecret(String credentialSecret) {
+            this.credentialSecret = credentialSecret;
+        }
+
+        public String getSenderMailbox() {
+            return senderMailbox;
+        }
+
+        public void setSenderMailbox(String senderMailbox) {
+            this.senderMailbox = senderMailbox;
+        }
+
+        public String getAuthority() {
+            return authority;
+        }
+
+        public void setAuthority(String authority) {
+            this.authority = authority;
+        }
+
+        boolean anySet() {
+            return directoryId != null || clientId != null || credentialType != null || credentialSecret != null
+                    || senderMailbox != null || authority != null;
         }
     }
 

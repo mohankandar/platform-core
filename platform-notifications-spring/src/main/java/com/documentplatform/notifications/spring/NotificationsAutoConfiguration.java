@@ -13,6 +13,8 @@ import com.documentplatform.notifications.jdbc.PostgresConditionStore;
 import com.documentplatform.notifications.jdbc.PostgresOutboxStore;
 import com.documentplatform.notifications.jdbc.PostgresSettingsStore;
 import com.documentplatform.notifications.jdbc.PostgresSummaryStore;
+import com.documentplatform.notifications.email.MailServer;
+import com.documentplatform.notifications.email.MicrosoftTokens;
 import com.documentplatform.notifications.secret.SecretResolver;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -102,16 +104,24 @@ public class NotificationsAutoConfiguration {
         return new DestinationHealth(Clock.systemUTC());
     }
 
+    /** Microsoft 365 mail tokens (auth OAUTH2_MICROSOFT): held by the e-mail sender, shown (state only) in health. */
+    @Bean
+    @ConditionalOnMissingBean
+    MicrosoftTokens notificationMailTokens(NotificationsConfig config) {
+        return new MicrosoftTokens(Clock.systemUTC(),
+                config.mail().map(MailServer::connectTimeout).orElse(MailServer.DEFAULT_CONNECT_TIMEOUT));
+    }
+
     @Bean
     @ConditionalOnMissingBean
     NotificationChannels notificationChannels(NotificationsConfig config, ObjectProvider<SecretResolver> secrets,
-                                              DestinationHealth health) {
+                                              DestinationHealth health, MicrosoftTokens tokens) {
         boolean anyChannel = config.mail().isPresent() || !config.teams().isEmpty() || !config.slack().isEmpty();
         SecretResolver resolver = anyChannel
-                ? required(secrets, SecretResolver.class, "the reader of the secret store (mail password, webhook "
-                + "addresses)")
+                ? required(secrets, SecretResolver.class, "the reader of the secret store (mail password or "
+                + "Microsoft 365 app credential, webhook addresses)")
                 : ref -> java.util.Optional.empty();
-        return new NotificationChannels(config, resolver, health);
+        return new NotificationChannels(config, resolver, health, tokens);
     }
 
     @Bean
@@ -149,8 +159,9 @@ public class NotificationsAutoConfiguration {
     static class HealthConfiguration {
         @Bean
         @ConditionalOnMissingBean
-        NotificationsHealthIndicator notificationsHealthIndicator(DestinationHealth health) {
-            return new NotificationsHealthIndicator(health);
+        NotificationsHealthIndicator notificationsHealthIndicator(DestinationHealth health, NotificationsConfig config,
+                                                                  MicrosoftTokens tokens) {
+            return new NotificationsHealthIndicator(health, config.mail().orElse(null), tokens);
         }
     }
 

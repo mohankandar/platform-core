@@ -28,8 +28,7 @@ sends nothing.
    - give it a login that may send mail (SMTP AUTH), or
    - allow the app server's address on the relay, with no login.
 
-   **Microsoft 365:** SMTP AUTH is off by default for each mailbox, so switch it on for this one. Microsoft is also
-   retiring password login for SMTP AUTH. The safer path is an Exchange Online relay connector, or your own relay.
+   **Microsoft 365:** do not use a password. Follow section 1a instead.
 3. **If there is a login,** store the sender's password in the secret store. Note the secret's path, not the password.
 4. **Give the installer:** host, port, security, user name (if any), the secret's path, and the sender address and
    display name.
@@ -40,6 +39,77 @@ sends nothing.
    `Auto-Submitted: auto-generated`, so out-of-office replies are held back.
 
 One mail server serves all e-mail notifications.
+
+## 1a. E-mail through Microsoft 365
+
+With Microsoft 365, the app signs in to `smtp.office365.com` (port 587, STARTTLS) without a password. It uses an app
+that you register in Microsoft Entra, and the app sends as one mailbox. The app's credential is a **certificate**
+(recommended) or a **client secret**. It stays in your secret store, and the config holds only its path.
+
+You need: an Entra administrator, an Exchange administrator with the Exchange Online PowerShell module, and the
+mailbox the app sends from (for example `notifications@yourcompany.com`, a shared mailbox is fine).
+
+1. **Register the app.** In the Microsoft Entra admin center, open *App registrations* and choose *New registration*.
+   - Name: for example "Notifications sender"; *Accounts in this organizational directory only*; no redirect URI.
+   - On its *Overview* page, note the **Application (client) ID** and the **Directory (tenant) ID**.
+2. **Allow it to send mail.** In the app's *API permissions*, choose *Add a permission* → *APIs my organization uses*
+   → *Office 365 Exchange Online* → *Application permissions* → **SMTP.SendAsApp**. Then choose *Grant admin consent*.
+3. **Give it a credential.**
+   - **Certificate (recommended):** make a certificate and key, for example
+     `openssl req -x509 -newkey rsa:2048 -nodes -days 730 -subj "/CN=notifications-sender" -keyout key.pem -out cert.pem`.
+     Upload `cert.pem` under *Certificates & secrets* → *Certificates*. In your secret store, save **one** secret that
+     holds the text of `cert.pem` followed by the text of `key.pem` (`BEGIN CERTIFICATE` and `BEGIN PRIVATE KEY`).
+     Then delete `key.pem` from the disk.
+   - **Client secret:** under *Certificates & secrets* → *Client secrets*, choose *New client secret*. Copy its
+     **Value** (not its ID) into your secret store at once. Note its expiry date, and replace it in time.
+
+   Note the secret's **path** in the secret store.
+4. **Register the app in Exchange Online.** In *Enterprise applications* (not *App registrations*), open the app and
+   note its **Object ID**. Then, in Exchange Online PowerShell:
+   ```
+   Connect-ExchangeOnline
+   New-ServicePrincipal -AppId <Application (client) ID> -ObjectId <Object ID from Enterprise applications> -DisplayName "Notifications sender"
+   ```
+5. **Let it use the sender mailbox:**
+   ```
+   Add-MailboxPermission -Identity notifications@yourcompany.com -User <Object ID from Enterprise applications> -AccessRights FullAccess
+   ```
+6. **Switch on SMTP AUTH for that mailbox** (it is off by default):
+   ```
+   Set-CASMailbox -Identity notifications@yourcompany.com -SmtpClientAuthenticationDisabled $false
+   ```
+   Changes in steps 2 to 6 can take up to an hour to reach all of Microsoft's servers.
+7. **Open the firewall** from the app server to `login.microsoftonline.com` (HTTPS, port 443) and to
+   `smtp.office365.com` (port 587).
+8. **Give the installer only:** the directory (tenant) ID, the application (client) ID, `CERTIFICATE` or `SECRET`,
+   the **path** of the secret, and the sender mailbox. Never the certificate, key or secret themselves.
+
+The installer sets:
+
+```
+platform.notifications.mail.auth=OAUTH2_MICROSOFT
+platform.notifications.mail.oauth.directory-id=<Directory (tenant) ID>
+platform.notifications.mail.oauth.client-id=<Application (client) ID>
+platform.notifications.mail.oauth.credential-type=CERTIFICATE
+platform.notifications.mail.oauth.credential-secret=notifications/m365-app-certificate
+platform.notifications.mail.oauth.sender-mailbox=notifications@yourcompany.com
+```
+
+Host, port and security are filled in for Microsoft 365. Do not set `mail.username` or `mail.password-secret`.
+
+If something is wrong, the health page (section 7) shows one of these codes:
+
+| Code | What to check |
+|---|---|
+| `MAIL_OAUTH_APP_UNKNOWN` | The directory ID or the client ID is wrong (step 1). |
+| `MAIL_OAUTH_CREDENTIAL_REFUSED` | The secret or certificate is wrong or has expired (step 3). |
+| `MAIL_OAUTH_CREDENTIAL_INVALID` | The secret store's certificate text is not a certificate with its private key (step 3). |
+| `MAIL_OAUTH_SEND_AS_NOT_ALLOWED` | The permission, consent, Exchange registration or mailbox permission is missing (steps 2, 4, 5). |
+| `MAIL_SMTP_AUTH_DISABLED` | SMTP AUTH is off for the mailbox (step 6). |
+| `MAIL_OAUTH_TOKEN_UNREACHABLE` | The app server cannot reach Microsoft sign-in (step 7). It is retried by itself. |
+| `MAIL_OAUTH_TOKEN_REFUSED`, `MAIL_OAUTH_UNEXPECTED_REPLY` | Microsoft refused or replied oddly. A proxy in between is a common cause. |
+
+**Your own Exchange server** keeps working as before: leave `mail.auth` out (or set `PASSWORD`) and follow section 1.
 
 ## 2. Microsoft Teams
 
@@ -118,7 +188,14 @@ addresses, no e-mail addresses and no document content. Sent and failed messages
 | `mail.password-secret` | — | **Path** of the password in the secret store. Required with `mail.username`. |
 | `mail.from-address` | — | Sender address. Required with e-mail. |
 | `mail.from-name` | — | Sender display name. |
-| `mail.connect-timeout` / `mail.read-timeout` | `10s` / `30s` | How long to wait for the mail server. |
+| `mail.connect-timeout` / `mail.read-timeout` | `10s` / `30s` | How long to wait for the mail server (and for Microsoft sign-in). |
+| `mail.auth` | `PASSWORD` | `PASSWORD` (user name and password, or a relay) or `OAUTH2_MICROSOFT` (Microsoft 365, section 1a). |
+| `mail.oauth.directory-id` | — | Microsoft 365: the Entra directory (tenant) ID. |
+| `mail.oauth.client-id` | — | Microsoft 365: the app's application (client) ID. |
+| `mail.oauth.credential-type` | — | Microsoft 365: `CERTIFICATE` or `SECRET`. |
+| `mail.oauth.credential-secret` | — | Microsoft 365: **path** of the certificate-and-key or client secret in the secret store. |
+| `mail.oauth.sender-mailbox` | — | Microsoft 365: the mailbox the app sends as. `mail.from-address` defaults to it. |
+| `mail.oauth.authority` | `https://login.microsoftonline.com` | Microsoft 365: only for a national cloud. |
 | `teams.<id>` | — | One line per Teams destination: id = **path** of the webhook address secret. |
 | `slack.<id>` | — | One line per Slack destination: id = **path** of the webhook address secret. |
 | `webhook.connect-timeout` / `webhook.request-timeout` | `10s` / `30s` | How long to wait for Teams and Slack. |
@@ -184,6 +261,10 @@ appears once the app has sent to it; Teams and Slack destinations from the confi
 | **Having problems** | The last attempt failed for a temporary reason and is being retried, or one message was refused (for example one recipient address). The `code` and `reason` say which. |
 | **Down** | It cannot work until someone fixes something, for example "Mail server refused the login" or "Teams webhook address no longer valid". Also shown when temporary failures have gone on for 15 minutes. |
 | **Not used yet** | Nothing was sent to it since the app started. |
+
+Under `mail`, the page shows how the app signs in to the mail server: `PASSWORD` or `OAUTH2_MICROSOFT`. For Microsoft
+365 it also shows the sign-in state (*Not fetched yet*, *Token valid*, *Failing* with its code, or *No token held*),
+the time of the last token request and when the token expires. The token itself is never shown.
 
 The health page shows ids, states, codes and reasons only, never an address, login or secret. A destination that is
 down does not mark the whole app as unhealthy. The notifications entry shows `DEGRADED` instead.

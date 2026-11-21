@@ -3,6 +3,7 @@ package com.documentplatform.notifications.spring;
 import com.documentplatform.notifications.Channel;
 import com.documentplatform.notifications.ChannelKind;
 import com.documentplatform.notifications.email.EmailChannel;
+import com.documentplatform.notifications.email.MicrosoftTokens;
 import com.documentplatform.notifications.secret.SecretResolver;
 import com.documentplatform.notifications.slack.SlackChannel;
 import com.documentplatform.notifications.teams.TeamsChannel;
@@ -22,9 +23,15 @@ public final class NotificationChannels implements AutoCloseable {
     private final List<AutoCloseable> closeables = new ArrayList<>();
 
     NotificationChannels(NotificationsConfig config, SecretResolver secrets, DestinationHealth health) {
+        this(config, secrets, health, new MicrosoftTokens());
+    }
+
+    /** @param tokens Microsoft 365 tokens, shared with health (used only with auth OAUTH2_MICROSOFT) */
+    NotificationChannels(NotificationsConfig config, SecretResolver secrets, DestinationHealth health,
+                         MicrosoftTokens tokens) {
         List<Channel> list = new ArrayList<>();
         config.mail().ifPresent(server -> list.add(new ObservedChannel(
-                new EmailChannel((tenant, destination) -> Optional.of(server), secrets), health)));
+                new EmailChannel((tenant, destination) -> Optional.of(server), secrets, null, tokens), health)));
         if (!config.teams().isEmpty()) {
             TeamsChannel teams = new TeamsChannel(WebhookDirectory.of(config.teams()), secrets, config.webhookOptions());
             closeables.add(teams);

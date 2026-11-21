@@ -18,6 +18,16 @@ public enum FailureCode {
     MAIL_TEMPORARILY_REFUSED("Mail server refused the message for now", true),
     MAIL_MESSAGE_REJECTED("Mail server rejected the message", false),
 
+    // Microsoft 365 sign-in (OAuth 2.0 for SMTP)
+    MAIL_OAUTH_TOKEN_UNREACHABLE("Microsoft sign-in (token endpoint) could not be reached or had a temporary fault", true),
+    MAIL_OAUTH_CREDENTIAL_REFUSED("Microsoft refused the app credential (wrong or expired client secret or certificate)", false),
+    MAIL_OAUTH_APP_UNKNOWN("Microsoft does not know the directory (tenant) ID or the application (client) ID", false),
+    MAIL_OAUTH_CREDENTIAL_INVALID("The app credential in the secret store is not a usable certificate with its private key", false),
+    MAIL_OAUTH_TOKEN_REFUSED("Microsoft refused to issue a token for sending mail", false),
+    MAIL_OAUTH_UNEXPECTED_REPLY("Microsoft sign-in replied in an unexpected way", false),
+    MAIL_OAUTH_SEND_AS_NOT_ALLOWED("The app is not allowed to send as the sender mailbox (Exchange permission missing)", false),
+    MAIL_SMTP_AUTH_DISABLED("SMTP AUTH is disabled for the sender mailbox", false),
+
     // Teams / Slack webhooks
     WEBHOOK_ADDRESS_INVALID("%s webhook address no longer valid", false),
     WEBHOOK_REJECTED("%s refused the webhook request (not authorised)", false),

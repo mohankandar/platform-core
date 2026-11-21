@@ -23,6 +23,8 @@ public final class ScriptedSmtpServer implements AutoCloseable {
     public boolean silent;
     public List<String> extensions = List.of("AUTH PLAIN LOGIN");
     public String authReply = "235 2.7.0 Authentication successful";
+    /** The reply to {@code AUTH XOAUTH2}; null for {@link #authReply}. */
+    public String xoauth2Reply;
     public String mailFromReply = "250 2.1.0 OK";
     public Function<String, String> rcptReply = address -> "250 2.1.5 OK";
     public String endOfDataReply = "250 2.0.0 queued";
@@ -93,6 +95,12 @@ public final class ScriptedSmtpServer implements AutoCloseable {
                     reply(out, "334 UGFzc3dvcmQ6");
                     record(in.readLine());
                     reply(out, authReply);
+                } else if (cmd.startsWith("AUTH XOAUTH2")) {
+                    if (cmd.trim().equals("AUTH XOAUTH2")) {
+                        reply(out, "334 ");
+                        record(in.readLine());
+                    }
+                    reply(out, xoauth2Reply != null ? xoauth2Reply : authReply);
                 } else if (cmd.startsWith("AUTH PLAIN")) {
                     if (cmd.trim().equals("AUTH PLAIN")) {
                         reply(out, "334 ");

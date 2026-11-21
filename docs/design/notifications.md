@@ -182,3 +182,22 @@ Listed so the model covers them. Kind: B = business, T = technical, C = critical
   condition about the same thing takes over (licence grace ends and "intake stopped" starts). Nothing is queued.
 - The licensing event types are registered by the app from `platform-licensing-spring` (`LicensingEvents.register`);
   this module still has no event types of its own.
+
+### Added in P015 (Microsoft 365 sign-in)
+
+Owner, 2026-11-21: the first customer's mail is Microsoft 365, the second runs its own Exchange server; both are
+supported. Password login and the internal relay stay as they are.
+
+- **`mail.auth`**: `PASSWORD` (default, unchanged) or `OAUTH2_MICROSOFT`. Microsoft 365 uses SMTP `AUTH XOAUTH2` on
+  `smtp.office365.com:587` with STARTTLS, as the sender mailbox, with a token from the OAuth 2.0 client-credentials
+  flow (Entra app registration, scope `https://outlook.office365.com/.default`, application permission
+  `SMTP.SendAsApp`).
+- **App credential**: a certificate with its private key (preferred; sent as a signed RS256 client assertion) or a
+  client secret, read only through `SecretResolver` from a reference. Never in config.
+- **Tokens** (`MicrosoftTokens`): fetched with the JDK `HttpClient`, held until 5 minutes before expiry (or half the
+  lifetime if shorter), dropped when the mail server refuses them (a newly granted permission is only in a new token).
+  Never logged, never in results, health or exceptions.
+- **New failure codes**: `MAIL_OAUTH_TOKEN_UNREACHABLE` (retried), `MAIL_OAUTH_CREDENTIAL_REFUSED`,
+  `MAIL_OAUTH_APP_UNKNOWN`, `MAIL_OAUTH_CREDENTIAL_INVALID`, `MAIL_OAUTH_TOKEN_REFUSED`, `MAIL_OAUTH_UNEXPECTED_REPLY`,
+  `MAIL_OAUTH_SEND_AS_NOT_ALLOWED`, `MAIL_SMTP_AUTH_DISABLED` (all permanent). The existing mail codes still apply.
+- **Health** shows the sign-in mode, and for Microsoft 365 the token state, code, last fetch and expiry time.
