@@ -61,8 +61,13 @@ class SlotActivationTest {
 
     /** A licence with slots S1, S2 and S3. */
     private void storeLicence() {
-        Licence base = licences.subscription(LicenceKind.PRODUCTION, LocalDate.parse("2026-01-01"),
-                LocalDate.parse("2027-12-31"));
+        storeLicence("2026-01-01", "2027-12-31");
+    }
+
+    /** A licence with slots S1, S2 and S3, from {@code starts} to {@code expires}. */
+    private void storeLicence(String starts, String expires) {
+        Licence base = licences.subscription(LicenceKind.PRODUCTION, LocalDate.parse(starts),
+                LocalDate.parse(expires));
         List<EntitySlot> slots = new ArrayList<>();
         for (String s : List.of(S1, S2, S3)) {
             slots.add(new EntitySlot(s, List.of(new Allowance(TestLicences.PRODUCT, AllowanceType.PAGES_PER_MONTH, 1000))));
@@ -135,6 +140,65 @@ class SlotActivationTest {
         LicensedSlots otherCustomer = () -> Optional.of(new LicensedSlots.Current("TEN-OTHER-0001", Set.of(S1)));
         assertEquals(NOT_IN_LICENCE, new SlotActivation(new PostgresEntityStore(app), otherCustomer, CLOCK)
                 .activate(S1, "Alpha", "admin-1").result(), "a licence of another customer does not count");
+    }
+
+    @Test
+    void activationIsAllowedInGraceAndRefusedAfterGrace() {
+        storeLicence("2026-01-01", "2026-11-11"); // NOW is 10 days after expiry: in grace
+        DataSource app = installed(Pg.migrated());
+        assertEquals(ACTIVATED, activation(app).activate(S1, "Alpha", "admin-1").result(), "in grace");
+
+        Pg after = Pg.migrated();
+        licenceStore.remove(com.documentplatform.licensing.LicenceStore.Slot.CURRENT);
+        storeLicence("2026-01-01", "2026-10-01"); // 51 days after expiry: grace over
+        DataSource app2 = installed(after);
+        ActivationOutcome refused = activation(app2).activate(S1, "Alpha", "admin-1");
+        assertEquals(LICENCE_EXPIRED, refused.result());
+        assertTrue(refused.refused());
+        assertEquals(EntityStatus.NOT_ACTIVATED, new PostgresEntityStore(app2).entity(S1).orElseThrow().status());
+        assertEquals(RENAMED, activation(app).rename(S1, "Alpha Two", "admin-1").result(),
+                "renaming is not a licensed thing");
+
+        LicensedSlots notStarted = () -> Optional.of(new LicensedSlots.Current(TENANT, Set.of(S1),
+                LicensedSlots.Standing.NOT_STARTED));
+        assertEquals(LICENCE_NOT_STARTED, new SlotActivation(new PostgresEntityStore(app2), notStarted, CLOCK)
+                .activate(S1, "Alpha", "admin-1").result());
+    }
+
+    @Test
+    void suspendAndResume() {
+        storeLicence();
+        DataSource app = installed(Pg.migrated());
+        SlotActivation activation = activation(app);
+        assertEquals(NOT_ACTIVATED, activation.suspend(S1, "admin-1").result());
+        activation.activate(S1, "Alpha", "admin-1");
+
+        ActivationOutcome suspended = activation.suspend(S1, "admin-1");
+        assertEquals(SUSPENDED, suspended.result());
+        assertFalse(suspended.refused());
+        assertEquals(EntityStatus.SUSPENDED, suspended.entity().status());
+        assertEquals("Alpha", suspended.entity().displayName(), "name and activation kept");
+        assertEquals(ALREADY_SUSPENDED, activation.suspend(S1, "admin-1").result());
+        assertTrue(new PostgresEntityStore(app).activated(TENANT).containsKey(S1), "licensing still counts it");
+
+        assertEquals(RESUMED, activation.resume(S1, "admin-2").result());
+        assertEquals(EntityStatus.ACTIVE, new PostgresEntityStore(app).entity(S1).orElseThrow().status());
+        assertEquals(NOT_SUSPENDED, activation.resume(S1, "admin-2").result());
+        assertEquals(NOT_IN_LICENCE, activation.suspend(DROPPED, "admin-1").result());
+        assertEquals(SLOT_UNKNOWN, activation.suspend("ENT-NOT-STORED", "admin-1").result());
+        assertEquals(NOT_A_SLOT_ID, activation.resume("x", "admin-1").result());
+        assertThrows(IllegalArgumentException.class, () -> activation.suspend(S1, ""));
+
+        // Resume follows the licence rule; suspend never needs a licence.
+        activation.suspend(S1, "admin-1");
+        LicensedSlots graceOver = () -> Optional.of(new LicensedSlots.Current(TENANT, Set.of(S1, S2, S3),
+                LicensedSlots.Standing.GRACE_OVER));
+        SlotActivation expired = new SlotActivation(new PostgresEntityStore(app), graceOver, CLOCK);
+        assertEquals(LICENCE_EXPIRED, expired.resume(S1, "admin-1").result());
+        assertEquals(EntityStatus.SUSPENDED, new PostgresEntityStore(app).entity(S1).orElseThrow().status());
+        SlotActivation none = new SlotActivation(new PostgresEntityStore(app), Optional::empty, CLOCK);
+        assertEquals(NO_LICENCE, none.resume(S1, "admin-1").result());
+        assertEquals(ALREADY_SUSPENDED, none.suspend(S1, "admin-1").result());
     }
 
     @Test

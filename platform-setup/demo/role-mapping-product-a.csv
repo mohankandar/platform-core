@@ -1,0 +1,8 @@
+# Format: platform-role-mapping/1
+# Product: PRODUCT_A
+# Demo values only. entity_name stays empty: the Business Admin names each entity when activating it.
+entity_id,entity_name,group,role
+ENT-DEMO-0001,,Demo Finance Readers,READER
+ENT-DEMO-0001,,Demo Finance Editors,EDITOR
+ENT-DEMO-0002,,Demo Legal Readers,READER
+ENT-DEMO-0002,,Demo Auditors,AUDITOR

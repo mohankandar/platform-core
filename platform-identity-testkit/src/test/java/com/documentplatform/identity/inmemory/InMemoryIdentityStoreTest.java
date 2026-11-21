@@ -80,6 +80,21 @@ class InMemoryIdentityStoreTest {
     }
 
     @Test
+    void suspendedSlotComesBackSuspended() {
+        install();
+        activation.activate(S1, "Alpha", "admin-1");
+        activation.activate(S2, "Beta", "admin-1");
+        assertEquals(SUSPENDED, activation.suspend(S2, "admin-1").result());
+        store.syncSlots(TENANT, List.of());
+        assertEquals(EntityStatus.NOT_IN_LICENCE, store.entity(S2).orElseThrow().status());
+        store.syncSlots(TENANT, List.of(S1, S2));
+        assertEquals(EntityStatus.ACTIVE, store.entity(S1).orElseThrow().status());
+        assertEquals(EntityStatus.SUSPENDED, store.entity(S2).orElseThrow().status());
+        assertEquals(RESUMED, activation.resume(S2, "admin-1").result());
+        assertEquals(NOT_SUSPENDED, activation.resume(S2, "admin-1").result());
+    }
+
+    @Test
     void oneConnectionForTwoEntitiesAndGrantsPerProduct() {
         install();
         store.insert(connection("PRODUCT_B", "api://b"), ChangeSource.SETUP, "setup");

@@ -42,12 +42,17 @@ create table idn_entity (
     display_name text        check (display_name is null or length(display_name) between 1 and 200),
     activated_by text,
     activated_at timestamptz,
+    -- While NOT_IN_LICENCE: the status the slot had when it left the licence (ACTIVE or SUSPENDED), so it comes back
+    -- as it was; null when it had never been activated. Always null in the other statuses.
+    status_before_removal text check (status_before_removal in ('ACTIVE', 'SUSPENDED')),
     created_at   timestamptz not null default now(),
     updated_at   timestamptz not null default now(),
     -- An activated slot has a name and an activation; a slot never activated has neither.
     check ((activated_at is null) = (display_name is null) and (activated_at is null) = (activated_by is null)),
     check (status not in ('ACTIVE', 'SUSPENDED') or activated_at is not null),
-    check (status <> 'NOT_ACTIVATED' or activated_at is null)
+    check (status <> 'NOT_ACTIVATED' or activated_at is null),
+    check (status = 'NOT_IN_LICENCE' or status_before_removal is null),
+    check (status_before_removal is null or activated_at is not null)
 );
 
 create index idn_entity_tenant on idn_entity (tenant_id);

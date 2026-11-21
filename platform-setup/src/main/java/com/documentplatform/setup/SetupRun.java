@@ -1,0 +1,391 @@
+package com.documentplatform.setup;
+
+import com.documentplatform.identity.IdentityConnectionStatus;
+import com.documentplatform.identity.IdentityProviderType;
+import com.documentplatform.identity.jdbc.PostgresEntityStore;
+import com.documentplatform.identity.jdbc.PostgresGroupGrantStore;
+import com.documentplatform.identity.jdbc.PostgresLoginConnectionStore;
+import com.documentplatform.identity.mapping.Grant;
+import com.documentplatform.identity.mapping.MappingError;
+import com.documentplatform.identity.mapping.MappingPlan;
+import com.documentplatform.identity.mapping.MappingRow;
+import com.documentplatform.identity.mapping.RoleMappingFile;
+import com.documentplatform.identity.mapping.SlotTargets;
+import com.documentplatform.identity.store.ChangeSource;
+import com.documentplatform.identity.store.ConnectionChange;
+import com.documentplatform.identity.store.EntityRecord;
+import com.documentplatform.identity.store.EntityStatus;
+import com.documentplatform.identity.store.LoginConnection;
+import com.documentplatform.licensing.ClockGuard;
+import com.documentplatform.licensing.EntitySlot;
+import com.documentplatform.licensing.Licence;
+import com.documentplatform.licensing.LicenceException;
+import com.documentplatform.licensing.LicenceService;
+import com.documentplatform.licensing.LicenceStore;
+import com.documentplatform.licensing.LicenceVerifier;
+import com.documentplatform.licensing.jdbc.PostgresLastSeenStore;
+import com.documentplatform.licensing.jdbc.PostgresLicenceStore;
+import com.documentplatform.licensing.jdbc.PostgresUsageLedger;
+
+import javax.sql.DataSource;
+import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.UUID;
+
+import static com.documentplatform.setup.Plan.Action.*;
+
+/**
+ * The database part of one setup run, on one connection inside one transaction that the caller opened (auto-commit
+ * off) and commits or rolls back. {@link #plan} takes the transaction-scoped advisory lock first, so two runs on the
+ * same database never interleave; then it reads everything and refuses before any write. {@link #apply} writes the
+ * plan: licence, customer, entity slots, login connection, grants. All stores work on this one connection, so a
+ * failure anywhere rolls the whole database part back and a rerun does it all again.
+ */
+final class SetupRun {
+
+    /** {@code pg_advisory_xact_lock} key of setup runs ("platsetu"). */
+    static final long LOCK_KEY = 0x706C617473657475L;
+    /** {@code changed_by} of the login connection history rows setup writes. */
+    static final String CHANGED_BY = "setup";
+    /** The role mapping files' format name; a {@code # Format:} comment must name this one. */
+    static final String MAPPING_FORMAT = "platform-role-mapping/1";
+
+    private final SetupInputs in;
+    private final Clock clock;
+    private final Connection c;
+    private final DataSource joined;
+    private final PostgresEntityStore entities;
+    private final PostgresLoginConnectionStore connections;
+    private final PostgresGroupGrantStore grants;
+    private final String tenant;
+
+    SetupRun(SetupInputs in, Clock clock, Connection c) {
+        this.in = in;
+        this.clock = clock;
+        this.c = c;
+        this.joined = Connections.joined(c);
+        this.entities = PostgresEntityStore.onConnection(c);
+        this.connections = PostgresLoginConnectionStore.onConnection(c);
+        this.grants = PostgresGroupGrantStore.onConnection(c);
+        this.tenant = in.licence().tenantId();
+    }
+
+    /** Locks, reads and checks; writes nothing (the caller rolls back after a plan-only run). */
+    Plan plan() throws SQLException {
+        try (PreparedStatement ps = c.prepareStatement("select pg_advisory_xact_lock(?)")) {
+            ps.setLong(1, LOCK_KEY);
+            ps.execute();
+        }
+        requireOnlyThisCustomer();
+        Plan p = new Plan();
+        List<Licence> afterStore = planLicence(p);
+        planCustomer(p);
+        Set<String> licensed = new TreeSet<>();
+        for (Licence l : afterStore) {
+            for (EntitySlot s : l.entitySlots()) licensed.add(s.slotId());
+        }
+        p.licensedSlots = Set.copyOf(licensed);
+        Map<String, EntityRecord> stored = planSlots(p, licensed);
+        List<MappingRow> rows = readMapping(licensed, stored);
+        planConnection(p);
+        planGrants(p, rows);
+        planConfig(p);
+        return p;
+    }
+
+    /** Writes the plan in the caller's transaction. */
+    void apply(Plan p) {
+        LicenceService service = service();
+        try {
+            service.store(in.licenceFile());
+        } catch (LicenceException e) {
+            throw new SetupException(SetupRefusal.SETUP_LICENCE_REFUSED, e.getMessage());
+        }
+        entities.saveCustomer(tenant, in.licence().customer());
+        entities.syncSlots(tenant, p.licensedSlots);
+        switch (p.connectionStep) {
+            case INSERT -> connections.insert(p.connection, ChangeSource.SETUP, CHANGED_BY);
+            case UPDATE -> connections.update(p.connection, p.connectionExpectedVersion, ChangeSource.SETUP, CHANGED_BY)
+                    .orElseThrow(() -> new SetupException(SetupRefusal.SETUP_FAILED,
+                            "The login connection was changed in the app while setup ran."));
+            case NONE -> {
+            }
+        }
+        String product = in.product();
+        p.grantsToAdd.forEach((slot, set) -> grants.add(slot, product, in.signin().issuer(), set));
+        if (in.removeUnlistedGrants()) {
+            p.grantsToRemove.forEach((slot, set) -> grants.remove(slot, product, in.signin().issuer(), set));
+        }
+    }
+
+    private LicenceService service() {
+        return new LicenceService(new PostgresLicenceStore(joined), new LicenceVerifier(in.keys()),
+                new ClockGuard(clock, new PostgresLastSeenStore(joined)), new PostgresUsageLedger(joined),
+                in.product(), tenant);
+    }
+
+    /** One installation serves one customer: another customer's licence or records refuse the run. */
+    private void requireOnlyThisCustomer() throws SQLException {
+        try (PreparedStatement ps = c.prepareStatement("select 1 from idn_customer where tenant_id <> ? "
+                + "union all select 1 from lic_licence where tenant_id <> ? limit 1")) {
+            ps.setString(1, tenant);
+            ps.setString(2, tenant);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    throw new SetupException(SetupRefusal.SETUP_OTHER_CUSTOMER_INSTALLED,
+                            "The database already holds records of a customer other than " + tenant + ".");
+                }
+            }
+        }
+    }
+
+    /** As {@link LicenceService#store}: unchanged, first, replaces, or waits for its start date. */
+    private List<Licence> planLicence(Plan p) {
+        PostgresLicenceStore store = new PostgresLicenceStore(joined);
+        LicenceVerifier verifier = new LicenceVerifier(in.keys());
+        Optional<Licence> current = readable(store, LicenceStore.Slot.CURRENT, verifier);
+        Optional<Licence> waiting = readable(store, LicenceStore.Slot.WAITING, verifier);
+        Licence file = in.licence();
+        String id = file.licenceId() + " v" + file.version();
+        for (Optional<Licence> stored : List.of(current, waiting)) {
+            if (stored.isPresent() && stored.get().licenceId().equals(file.licenceId())) {
+                p.add(UNCHANGED, "licence " + id);
+                return present(current, waiting);
+            }
+        }
+        long newest = Math.max(current.map(Licence::version).orElse(0L), waiting.map(Licence::version).orElse(0L));
+        if (file.version() < newest) {
+            throw new SetupException(SetupRefusal.SETUP_LICENCE_OLDER, "Licence " + id + " is older than version "
+                    + newest + ", which is already stored.");
+        }
+        if (file.version() == newest) {
+            throw new SetupException(SetupRefusal.SETUP_LICENCE_VERSION_CONFLICT, "Version " + newest
+                    + " is already stored as a different licence than " + file.licenceId() + ".");
+        }
+        LocalDate today = LocalDate.ofInstant(new ClockGuard(clock, new PostgresLastSeenStore(joined)).read()
+                .effective(), ZoneOffset.UTC);
+        if (current.isEmpty()) {
+            p.add(CREATE, "licence " + id + " (first licence)");
+            return List.of(file);
+        }
+        if (today.isBefore(file.startsOn())) {
+            p.add(UPDATE, "licence " + id + " stored as renewal; takes over from " + current.get().licenceId()
+                    + " v" + current.get().version() + " on " + file.startsOn());
+            return List.of(current.get(), file);
+        }
+        p.add(UPDATE, "licence " + id + " replaces " + current.get().licenceId() + " v" + current.get().version());
+        return List.of(file);
+    }
+
+    private static List<Licence> present(Optional<Licence> a, Optional<Licence> b) {
+        List<Licence> out = new ArrayList<>();
+        a.ifPresent(out::add);
+        b.ifPresent(out::add);
+        return out;
+    }
+
+    private Optional<Licence> readable(PostgresLicenceStore store, LicenceStore.Slot slot, LicenceVerifier verifier) {
+        return store.get(slot).flatMap(row -> {
+            try {
+                return Optional.of(verifier.verify(row.file().getBytes(StandardCharsets.UTF_8), tenant));
+            } catch (LicenceException e) {
+                return Optional.empty(); // a broken stored row is replaced, as the licence command does
+            }
+        });
+    }
+
+    private void planCustomer(Plan p) {
+        Optional<String> name = entities.customerName(tenant);
+        if (name.isEmpty()) {
+            p.add(CREATE, "customer " + tenant);
+        } else if (!name.get().equals(in.licence().customer())) {
+            p.add(UPDATE, "customer " + tenant + " name from the licence");
+        } else {
+            p.add(UNCHANGED, "customer " + tenant);
+        }
+    }
+
+    private Map<String, EntityRecord> planSlots(Plan p, Set<String> licensed) {
+        Map<String, EntityRecord> stored = new TreeMap<>();
+        for (EntityRecord r : entities.entities(tenant)) stored.put(r.slotId(), r);
+        Set<String> all = new TreeSet<>(licensed);
+        all.addAll(stored.keySet());
+        for (String slot : all) {
+            EntityRecord r = stored.get(slot);
+            boolean inLicence = licensed.contains(slot);
+            if (r == null) {
+                p.add(CREATE, "entity slot " + slot + " (" + EntityStatus.NOT_ACTIVATED + ")");
+            } else if (inLicence && r.status() == EntityStatus.NOT_IN_LICENCE) {
+                p.add(UPDATE, "entity slot " + slot + " back in the licence (status as before it left)");
+            } else if (!inLicence && r.status() != EntityStatus.NOT_IN_LICENCE) {
+                p.add(UPDATE, "entity slot " + slot + " " + r.status() + " -> " + EntityStatus.NOT_IN_LICENCE
+                        + " (kept, never deleted; nobody can sign in to it)");
+            } else {
+                p.add(UNCHANGED, "entity slot " + slot + " (" + r.status() + ")");
+            }
+        }
+        return stored;
+    }
+
+    private List<MappingRow> readMapping(Set<String> licensed, Map<String, EntityRecord> stored) {
+        SlotTargets targets = slot -> {
+            EntityRecord r = stored.get(slot);
+            String name = r == null ? null : r.displayName();
+            if (licensed.contains(slot)) return Optional.of(new SlotTargets.Slot(name, true));
+            return r == null ? Optional.empty() : Optional.of(new SlotTargets.Slot(name, false));
+        };
+        RoleMappingFile.Result r = RoleMappingFile.forSlots(MAPPING_FORMAT, in.product(), in.roles(), targets)
+                .read(in.mapping());
+        if (!r.valid()) {
+            List<String> lines = r.errors().stream().map(MappingError::display).toList();
+            List<String> codes = r.errors().stream().map(e -> e.code().name()).distinct().toList();
+            throw new SetupException(SetupRefusal.SETUP_MAPPING_INVALID, "The role mapping file "
+                    + in.mappingName() + " has " + r.errors().size() + " error(s) " + codes + ".", lines);
+        }
+        return r.rows();
+    }
+
+    private void planConnection(Plan p) throws SQLException {
+        String product = in.product();
+        SigninFile.Product signin = in.productSignin();
+        Optional<LoginConnection> existing = latestConnection(product);
+        if (existing.isEmpty()) {
+            p.connectionStep = Plan.ConnectionStep.INSERT;
+            p.connection = desired(UUID.randomUUID(), 1);
+            p.add(CREATE, "login connection " + product + ": provider " + in.signin().providerId() + ", issuer "
+                    + in.signin().issuer() + ", browser client ID " + signin.browserClientId() + ", API audience "
+                    + signin.apiAudience());
+            return;
+        }
+        LoginConnection now = existing.get();
+        LoginConnection want = desired(now.connectionId(), now.configurationVersion() + 1);
+        List<String> differs = differences(now, want);
+        String label = "login connection " + product + " (version " + now.configurationVersion() + ")";
+        if (differs.isEmpty()) {
+            p.add(UNCHANGED, label);
+            return;
+        }
+        List<ConnectionChange> history = connections.history(now.connectionId());
+        ChangeSource lastSource = history.isEmpty() ? null : history.get(history.size() - 1).source();
+        boolean changedInApp = lastSource != ChangeSource.SETUP;
+        if (changedInApp && !in.replaceConnection()) {
+            p.add(CONFLICT, label + " was changed in the app since the last setup (" + String.join(", ", differs)
+                    + " differ from the sign-in file); left as it is. Run again with --replace-connection to replace "
+                    + "it with the sign-in file's values.");
+            return;
+        }
+        p.connectionStep = Plan.ConnectionStep.UPDATE;
+        p.connection = want;
+        p.connectionExpectedVersion = now.configurationVersion();
+        p.add(UPDATE, label + " -> version " + want.configurationVersion() + ": " + String.join(", ", differs)
+                + (changedInApp ? " (replaces the change made in the app)" : ""));
+    }
+
+    private LoginConnection desired(UUID id, long version) {
+        SigninFile.Product s = in.productSignin();
+        return new LoginConnection(id, tenant, in.product(), in.signin().providerId(), IdentityProviderType.OIDC,
+                in.signin().issuer(), s.browserClientId(), s.apiAudience(), null, IdentityConnectionStatus.ACTIVE,
+                version);
+    }
+
+    /** The customer's connection for the product: the ACTIVE one, else the one changed last. */
+    private Optional<LoginConnection> latestConnection(String product) throws SQLException {
+        try (PreparedStatement ps = c.prepareStatement("select connection_id from idn_login_connection "
+                + "where tenant_id = ? and product_code = ? order by (status = 'ACTIVE') desc, updated_at desc limit 1")) {
+            ps.setString(1, tenant);
+            ps.setString(2, product);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return Optional.empty();
+                return connections.find(rs.getObject(1, UUID.class));
+            }
+        }
+    }
+
+    /** Names of the fields that differ (never their values: a secret reference is a reference, but still not shown). */
+    private static List<String> differences(LoginConnection a, LoginConnection b) {
+        List<String> out = new ArrayList<>();
+        if (!a.providerId().equals(b.providerId())) out.add("providerId");
+        if (a.providerType() != b.providerType()) out.add("providerType");
+        if (!a.issuer().equals(b.issuer())) out.add("issuer");
+        if (!java.util.Objects.equals(a.browserClientId(), b.browserClientId())) out.add("browserClientId");
+        if (!a.apiAudience().equals(b.apiAudience())) out.add("apiAudience");
+        if (!java.util.Objects.equals(a.secretReference(), b.secretReference())) out.add("secretReference");
+        if (a.status() != b.status()) out.add("status");
+        return out;
+    }
+
+    /**
+     * The file is the customer's complete grant list for this product and login system: missing grants are added,
+     * grants of the customer not in the file are listed for removal (removed only with --remove-unlisted-grants).
+     */
+    private void planGrants(Plan p, List<MappingRow> rows) {
+        String product = in.product();
+        var issuer = in.signin().issuer();
+        MappingPlan mapping = MappingPlan.perProduct(rows,
+                (entity, slotId, code) -> grants.grants(slotId, code, issuer));
+        Map<String, Set<Grant>> current = grants.grantsOfCustomer(tenant, product, issuer);
+        Set<String> inFile = new LinkedHashSet<>();
+        for (MappingPlan.EntityChange change : mapping.entities()) {
+            String slot = change.slotId();
+            inFile.add(slot);
+            if (!change.toAdd().isEmpty()) p.grantsToAdd.put(slot, change.toAdd());
+            if (!change.toRemove().isEmpty()) p.grantsToRemove.put(slot, change.toRemove());
+        }
+        for (Map.Entry<String, Set<Grant>> e : current.entrySet()) {
+            if (!inFile.contains(e.getKey())) p.grantsToRemove.put(e.getKey(), e.getValue());
+        }
+        Set<String> slots = new TreeSet<>(inFile);
+        slots.addAll(p.grantsToRemove.keySet());
+        for (String slot : slots) {
+            for (Grant g : p.grantsToAdd.getOrDefault(slot, Set.of())) {
+                p.add(CREATE, "grant " + slot + " " + product + ": group \"" + g.group() + "\" -> " + g.role());
+            }
+            for (Grant g : sorted(p.grantsToRemove.getOrDefault(slot, Set.of()))) {
+                String text = "grant " + slot + " " + product + ": group \"" + g.group() + "\" -> " + g.role()
+                        + " (not in the mapping file)";
+                if (in.removeUnlistedGrants()) {
+                    p.add(REMOVE, text);
+                } else {
+                    p.add(NOT_REMOVED, text + "; kept. Run again with --remove-unlisted-grants to remove it.");
+                }
+            }
+        }
+        for (MappingPlan.EntityChange change : mapping.entities()) {
+            if (change.unchanged() > 0) {
+                p.add(UNCHANGED, "grants " + change.slotId() + " " + product + ": " + change.unchanged()
+                        + (change.unchanged() == 1 ? " grant" : " grants"));
+            }
+        }
+    }
+
+    private static List<Grant> sorted(Set<Grant> set) {
+        List<Grant> out = new ArrayList<>(set);
+        out.sort(java.util.Comparator.comparing(Grant::group).thenComparing(Grant::role));
+        return out;
+    }
+
+    private void planConfig(Plan p) {
+        ConfigFragment.State state = ConfigFragment.check(in.configOut(), tenant);
+        p.config = state;
+        String text = "config " + in.configOut().getFileName() + " (" + ConfigFragment.KEY + "=" + tenant + ")";
+        p.add(switch (state) {
+            case MISSING -> CREATE;
+            case NO_KEY -> UPDATE;
+            case SAME -> UNCHANGED;
+        }, text);
+    }
+}

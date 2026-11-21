@@ -70,7 +70,8 @@ class LicensingNotificationsWiringTest {
                 .withBean(NoticeLog.class, InMemoryNoticeLog::new)
                 .withPropertyValues("platform.licensing.trusted-keys." + licences.keyId() + "="
                                 + Ed25519.encodePublic(licences.keyPair().getPublic()),
-                        "platform.licensing.product-code=" + TestLicences.PRODUCT)
+                        "platform.licensing.product-code=" + TestLicences.PRODUCT,
+                        "platform.licensing.tenant-id=" + TestLicences.TENANT)
                 .withPropertyValues(properties);
     }
 
@@ -166,7 +167,8 @@ class LicensingNotificationsWiringTest {
                 .withInitializer(ctx -> ctx.getEnvironment().getPropertySources().addFirst(new MapPropertySource("t",
                         Map.of("platform.licensing.trusted-keys[lic-2026:1]", key,
                                 "platform.licensing.trusted-keys[" + licences.keyId() + "]", key,
-                                "platform.licensing.product-code", TestLicences.PRODUCT))))
+                                "platform.licensing.product-code", TestLicences.PRODUCT,
+                                "platform.licensing.tenant-id", TestLicences.TENANT))))
                 .run(ctx -> {
                     assertNull(ctx.getStartupFailure());
                     assertTrue(ctx.getBean(LicensingConfig.class).trustedKeys().keyIds().contains("lic-2026:1"),

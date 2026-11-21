@@ -33,9 +33,10 @@ The tables hold no secrets, no prices and no document data.
 
 | Setting | What to give |
 |---|---|
-| `platform.licensing.trusted-keys.<key ID>` | The public keys shipped with this release (key ID and Base64 key). Keep older keys after an upgrade. Key IDs with a version, such as `lic-2026:1`, must be written in brackets so the `:` is kept: `"[lic-2026:1]": MCowBQYDK2VwAyEA...` in YAML, `platform.licensing.trusted-keys[lic-2026:1]=...` in a properties file. |
+| `platform.licensing.trusted-keys-file` | The `trusted-keys.json` shipped with this release: a file path (for example `/opt/app/config/trusted-keys.json`) or `classpath:trusted-keys.json`. You do not type key IDs. After an upgrade, point it to the new release's file; it keeps the older keys. |
+| `platform.licensing.trusted-keys.<key ID>` | Instead of the file, or as well: the public keys typed in (key ID and Base64 key). Key IDs with a version, such as `lic-2026:1`, must be written in brackets so the `:` is kept: `"[lic-2026:1]": MCowBQYDK2VwAyEA...` in YAML, `platform.licensing.trusted-keys[lic-2026:1]=...` in a properties file. A key ID given both here and in the file must have the same key. |
 | `platform.licensing.product-code` | The app's product code (set by the app's own install guide). |
-| `platform.licensing.tenant-id` | Optional. Your tenant ID from the licence. When set, a licence for any other tenant is refused. |
+| `platform.licensing.tenant-id` | **Required.** Your customer ID from the licence (`TEN-…`). The setup command writes it into `platform-tenant.properties`, which the app imports. A licence for any other customer is refused. Without it the app does not start and says `platform.licensing.tenant-id is missing`. |
 | `platform.licensing.clock-tolerance` | Optional, default `1h`. How far the server clock may be behind before a warning is shown. |
 
 A wrong value stops the app with the property name and what is wrong.
@@ -105,6 +106,7 @@ and licensing works the same.
 | Usage at limit (100%) | business, per entity | once a day at 08:00 | Business Admin |
 | Usage over limit | business, per entity | once a day at 08:00, repeated daily, Recovered at the new month | Business Admin |
 | Version not covered by licence updates | technical | once a day at 08:00 | IT Admin |
+| Licence does not cover this product (intake stopped) | technical, **critical** | at once, repeated daily, Recovered when a licence with the product is stored | IT Admin |
 
 Business events are sent for each **activated** entity slot only. Admins can change frequency and recipients within
 the usual rules (critical events stay on and go to the IT Admin). Messages contain the event, the entity, counts,

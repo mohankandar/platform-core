@@ -1,0 +1,22 @@
+{
+  "format": "platform-signin/1",
+  "tenantId": "TEN-DEMO-0001",
+  "mode": "direct",
+  "loginSystem": {
+    "type": "OIDC",
+    "issuer": "https://login.demo.example/oauth2/default",
+    "providerId": "demo-okta"
+  },
+  "products": {
+    "PRODUCT_A": {
+      "browserClientId": "demo-product-a-web",
+      "apiAudience": "api://demo-product-a",
+      "roleMappingFile": "role-mapping-product-a.csv"
+    },
+    "PRODUCT_B": {
+      "browserClientId": "demo-product-b-web",
+      "apiAudience": "api://demo-product-b",
+      "roleMappingFile": "role-mapping-product-b.csv"
+    }
+  }
+}

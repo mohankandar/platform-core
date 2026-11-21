@@ -44,15 +44,16 @@ import static com.documentplatform.licensing.spring.notifications.LicensingEvent
  *       {@link NoticeLog} before they are published, under an ID that names what they are (for example "expiring,
  *       band 30, licence LIC-… v1, slot ENT-…"). A restart or a second app instance finds the claim and publishes
  *       nothing. A publish that fails gives the claim back, so the next run tries again.</li>
- *   <li><b>Continuous conditions</b> (grace, intake stopped, clock behind, over limit) are reported with
+ *   <li><b>Continuous conditions</b> (grace, intake stopped, clock behind, over limit, product not covered) are
+ *       reported with
  *       {@link Notifier#conditionFailing} on every run while they hold and {@link Notifier#conditionCleared} once they
  *       stop. The notifier keeps their state in its own store, so they alert once, repeat, and send Recovered — also
  *       across restarts. When grace ends, the grace condition is ended without Recovered
  *       ({@link Notifier#conditionSuperseded}) and "intake stopped" takes over.</li>
  * </ul>
  *
- * <p>Business events are published per activated entity slot ({@link ActivatedSlots}); the clock and version events
- * are technical and per tenant. Only event types registered in the app's catalogue are published. Licence dates are UTC
+ * <p>Business events are published per activated entity slot ({@link ActivatedSlots}); the clock, version and
+ * product-not-covered events are technical and per tenant. Only event types registered in the app's catalogue are published. Licence dates are UTC
  * days, so times are given as the exact moment (for example "Licence ends: 2027-12-01 00:00 Z", in the tenant's zone).
  *
  * <p>Logs IDs, codes and counts only.
@@ -127,6 +128,7 @@ public final class LicensingNotices {
         run.clock();
         run.usage();
         run.release();
+        run.product();
         log.purgeBefore(run.now.minus(KEEP_CLAIMS));
         if (run.published + run.failing + run.cleared > 0) {
             LOG.log(Level.INFO, "Licensing notifications for tenant {0}: {1} published, {2} conditions failing,"
@@ -258,6 +260,20 @@ public final class LicensingNotices {
                     () -> NotificationEvent.builder(RELEASE_NOT_COVERED, tenant)
                             .identifier(options.releaseVersion() != null ? options.releaseVersion() : id(l.licenceId()))
                             .time(UPDATES_ENDED, endOf(l.updatesUntil())).link(options.link()).build());
+        }
+
+        /** The licence does not list this app's product: technical, per tenant, the product code as identifier. */
+        void product() {
+            if (!on(PRODUCT_NOT_COVERED) || licence.productCode().isEmpty()) {
+                return;
+            }
+            RecordIdentifier product = id(licence.productCode().get());
+            if (!licence.productLicensed(status)) {
+                failing(NotificationEvent.builder(PRODUCT_NOT_COVERED, tenant).identifier(product)
+                        .link(options.link()).build());
+            } else {
+                clear(new ConditionKey(PRODUCT_NOT_COVERED, tenant, null, product));
+            }
         }
 
         private NotificationEvent usageEvent(EventTypeId type, EntityId entity, String allowance, UsageAssessment a) {

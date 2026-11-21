@@ -22,10 +22,16 @@ public class LicensingProperties {
     /** The public keys licences may be signed with: key ID → Base64 X.509 Ed25519 public key. Keep old keys after a rotation. */
     private Map<String, String> trustedKeys = new LinkedHashMap<>();
 
+    /**
+     * The trusted-keys file shipped with this release ({@code platform-licence-keys/1}): a file path, or
+     * {@code classpath:...}. Used instead of, or together with, {@link #trustedKeys}.
+     */
+    private String trustedKeysFile;
+
     /** This app's product code, as listed in licences (for example PRODUCT_A). */
     private String productCode;
 
-    /** This installation's tenant ID. Optional: when empty, the tenant of the stored licence is used. */
+    /** This installation's customer (tenant) ID, as in the licence (TEN-...). Required; the setup command writes it. */
     private String tenantId;
 
     /** How far the server clock may be behind the latest time seen before it is flagged. */
@@ -45,6 +51,14 @@ public class LicensingProperties {
 
     public void setTrustedKeys(Map<String, String> trustedKeys) {
         this.trustedKeys = trustedKeys;
+    }
+
+    public String getTrustedKeysFile() {
+        return trustedKeysFile;
+    }
+
+    public void setTrustedKeysFile(String trustedKeysFile) {
+        this.trustedKeysFile = trustedKeysFile;
     }
 
     public String getProductCode() {

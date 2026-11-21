@@ -26,7 +26,8 @@ public interface EntityStore {
     /**
      * Brings the customer's slots in line with a licence: missing slots are added as NOT_ACTIVATED with their derived
      * entity UUID; stored slots the licence no longer lists become NOT_IN_LICENCE; a NOT_IN_LICENCE slot listed again
-     * comes back as ACTIVE if it had been activated, else NOT_ACTIVATED. Names and activation are never touched.
+     * comes back with the status it had when it left (ACTIVE or SUSPENDED; a SUSPENDED slot never comes back ACTIVE),
+     * or NOT_ACTIVATED if it had never been activated. Names and activation are never touched.
      *
      * @throws IllegalStateException when the customer is not stored, or a slot ID belongs to another customer
      */
@@ -58,4 +59,19 @@ public interface EntityStore {
      * @return RENAMED, UNCHANGED, SLOT_UNKNOWN, NOT_ACTIVATED or NAME_TAKEN
      */
     ActivationOutcome rename(String slotId, String name);
+
+    /**
+     * Suspends an ACTIVE slot: it stays activated (and counted by licensing), but nobody may sign in to it. Only
+     * {@link SlotActivation} calls this.
+     *
+     * @return SUSPENDED, ALREADY_SUSPENDED, SLOT_UNKNOWN, NOT_ACTIVATED or NOT_IN_LICENCE
+     */
+    ActivationOutcome suspend(String slotId);
+
+    /**
+     * Makes a SUSPENDED slot ACTIVE again. Only {@link SlotActivation} calls this (after checking the licence).
+     *
+     * @return RESUMED, NOT_SUSPENDED, SLOT_UNKNOWN, NOT_ACTIVATED or NOT_IN_LICENCE
+     */
+    ActivationOutcome resume(String slotId);
 }

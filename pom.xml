@@ -20,6 +20,7 @@
         <module>platform-licensing-spring</module>
         <module>platform-identity-jdbc</module>
         <module>platform-identity-testkit</module>
+        <module>platform-setup</module>
     </modules>
     <properties>
         <maven.compiler.release>21</maven.compiler.release>

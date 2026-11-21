@@ -23,11 +23,12 @@ import java.util.List;
  *
  * Business events go to the Business Admin of each activated entity slot (licensing is per entity); critical ones also
  * to the IT Admin. Technical events go to the IT Admin. The defaults below can be changed by the admins within the
- * notification rules. Continuous conditions (grace, intake stopped, clock behind, over limit) alert once, repeat, and
- * send Recovered when they clear.
+ * notification rules. Continuous conditions (grace, intake stopped, clock behind, over limit, product not covered)
+ * alert once, repeat, and send Recovered when they clear.
  *
  * <p>Messages carry the event, the entity, counts, times and the configured link only (the content rule): the licence
- * ID or the allowance ("PRODUCT_A:PAGES_PER_MONTH") as the identifier, never keys, signatures or prices.
+ * ID, the product code or the allowance ("PRODUCT_A:PAGES_PER_MONTH") as the identifier, never keys, signatures or
+ * prices.
  */
 public final class LicensingEvents {
 
@@ -42,9 +43,12 @@ public final class LicensingEvents {
     public static final EventTypeId USAGE_AT_LIMIT = EventTypeId.of("licensing.usage-at-limit");
     public static final EventTypeId USAGE_OVER_LIMIT = EventTypeId.of("licensing.usage-over-limit");
     public static final EventTypeId RELEASE_NOT_COVERED = EventTypeId.of("licensing.release-not-covered");
+    /** The licence in force does not list this app's product (intake is stopped). A condition, with Recovered. */
+    public static final EventTypeId PRODUCT_NOT_COVERED = EventTypeId.of("licensing.product-not-covered");
 
     public static final List<EventTypeId> ALL = List.of(LICENCE_EXPIRING, LICENCE_IN_GRACE, INTAKE_STOPPED,
-            CLOCK_BEHIND, USAGE_NEAR_LIMIT, USAGE_AT_LIMIT, USAGE_OVER_LIMIT, RELEASE_NOT_COVERED);
+            CLOCK_BEHIND, USAGE_NEAR_LIMIT, USAGE_AT_LIMIT, USAGE_OVER_LIMIT, RELEASE_NOT_COVERED,
+            PRODUCT_NOT_COVERED);
 
     /** Field names (counts and times) the events carry. */
     static final String DAYS_LEFT = "daysLeft";
@@ -99,7 +103,10 @@ public final class LicensingEvents {
                 usage(USAGE_OVER_LIMIT, "Usage over limit", businessAdmin, daily).continuous(oncePerDay).build(),
                 EventType.builder(RELEASE_NOT_COVERED.value(), "Version not covered by licence updates",
                                 EventKind.TECHNICAL)
-                        .schedule(daily).recipients(itAdmin).time(UPDATES_ENDED, "Update period ended").build());
+                        .schedule(daily).recipients(itAdmin).time(UPDATES_ENDED, "Update period ended").build(),
+                EventType.builder(PRODUCT_NOT_COVERED.value(), "Licence does not cover this product",
+                                EventKind.TECHNICAL)
+                        .critical().continuous(oncePerDay).recipients(itAdmin).build());
     }
 
     private static EventType.Builder usage(EventTypeId id, String name, RoleId businessAdmin, Schedule daily) {

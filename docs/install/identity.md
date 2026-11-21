@@ -11,7 +11,8 @@ Three rules hold throughout:
 - **The app never changes the database by itself.** You create the tables with the schema step (section 1). At
   startup the app only checks them.
 - **Nothing is deleted.** Customers and entities stay. An entity that a newer licence no longer lists is marked
-  `NOT_IN_LICENCE`; nobody can sign in to it, and it comes back as it was if a later licence lists it again.
+  `NOT_IN_LICENCE`; nobody can sign in to it, and it comes back as it was if a later licence lists it again (a
+  suspended entity comes back suspended, never active).
 
 ## 1. Database
 
@@ -56,3 +57,16 @@ databases to keep them in step.
 
 Each product normally has its own database (or its own schema in one database). Run the identity schema step in each.
 Grants carry the product code, so one shared set of tables can also serve both products.
+
+## 4. Activating, suspending and resuming entities
+
+The setup command (`docs/install/setup.md`) stores your entity slots as `NOT_ACTIVATED`. Your Business Admin then
+activates and names each one in the app. The app records who did what.
+
+- **Activate** and **resume** need a licence in force that lists the entity: valid, expiring, or within the 30-day
+  grace period after expiry. After grace they are refused (`LICENCE_EXPIRED`), and before the licence's start date
+  too (`LICENCE_NOT_STARTED`), the same rule as for new work (intake).
+- **Suspend** is always allowed. A suspended entity keeps its name and its licence allowance, but nobody can sign in
+  to it until it is resumed.
+- If a newer licence drops a suspended entity and a later one lists it again, it comes back **suspended**
+  (`idn_entity.status_before_removal` remembers it while the entity is `NOT_IN_LICENCE`).

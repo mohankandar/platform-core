@@ -1,0 +1,57 @@
+{
+  "format": "platform-licence/1",
+  "licence": {
+    "customer": "Demo Customer Ltd",
+    "deployment": "ON_PREM",
+    "entitySlots": [
+      {
+        "allowances": [
+          {
+            "amount": 1000,
+            "product": "PRODUCT_A",
+            "type": "PAGES_PER_MONTH"
+          },
+          {
+            "amount": 1000,
+            "product": "PRODUCT_B",
+            "type": "PAGES_PER_MONTH"
+          }
+        ],
+        "slotId": "ENT-DEMO-0001"
+      },
+      {
+        "allowances": [
+          {
+            "amount": 1000,
+            "product": "PRODUCT_A",
+            "type": "PAGES_PER_MONTH"
+          },
+          {
+            "amount": 1000,
+            "product": "PRODUCT_B",
+            "type": "PAGES_PER_MONTH"
+          }
+        ],
+        "slotId": "ENT-DEMO-0002"
+      }
+    ],
+    "issuedAt": "2026-11-21T00:00:00Z",
+    "keyId": "dev-demo-1",
+    "kind": "NON_PRODUCTION",
+    "licenceId": "LIC-DEMO-0001",
+    "products": [
+      "PRODUCT_A",
+      "PRODUCT_B"
+    ],
+    "startsOn": "2026-01-01",
+    "tenantId": "TEN-DEMO-0001",
+    "type": "PERPETUAL",
+    "updatesUntil": "2036-12-31",
+    "version": 1
+  },
+  "signature": {
+    "algorithm": "Ed25519",
+    "payloadSha256": "d451badb0c6ebf06bb90b1e0b1655b24d178f681f529a300ab6ef30d87d2aa5f",
+    "value": "ghWSp7BBuw6eJ5WI5pX4Oi+95ovKlwz0yt0NrJKbcNfp+bjheGPDa20LT0imEe6HP1LaZ2njZPtyve58xKBICg=="
+  }
+}

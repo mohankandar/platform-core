@@ -116,8 +116,13 @@ public final class PostgresEntityStore implements EntityStore {
                     unchanged = new ArrayList<>();
             try (PreparedStatement insert = c.prepareStatement("insert into idn_entity (slot_id, entity_uuid, "
                     + "tenant_id, status) values (?, ?, ?, 'NOT_ACTIVATED')");
-                 PreparedStatement status = c.prepareStatement(
-                         "update idn_entity set status = ?, updated_at = now() where slot_id = ?")) {
+                 // Back in the licence: the status it had when it left (a SUSPENDED slot stays SUSPENDED).
+                 PreparedStatement restore = c.prepareStatement("update idn_entity set status = coalesce("
+                         + "status_before_removal, case when activated_at is null then 'NOT_ACTIVATED' else 'ACTIVE' "
+                         + "end), status_before_removal = null, updated_at = now() where slot_id = ?");
+                 PreparedStatement remove = c.prepareStatement("update idn_entity set status = 'NOT_IN_LICENCE', "
+                         + "status_before_removal = case when status in ('ACTIVE', 'SUSPENDED') then status end, "
+                         + "updated_at = now() where slot_id = ?")) {
                 for (String slot : licensed) {
                     EntityRecord r = stored.get(slot);
                     if (r == null) {
@@ -127,10 +132,8 @@ public final class PostgresEntityStore implements EntityStore {
                         insert.executeUpdate();
                         created.add(slot);
                     } else if (r.status() == EntityStatus.NOT_IN_LICENCE) {
-                        status.setString(1, r.activatedAt() != null ? EntityStatus.ACTIVE.name()
-                                : EntityStatus.NOT_ACTIVATED.name());
-                        status.setString(2, slot);
-                        status.executeUpdate();
+                        restore.setString(1, slot);
+                        restore.executeUpdate();
                         back.add(slot);
                     } else {
                         unchanged.add(slot);
@@ -141,9 +144,8 @@ public final class PostgresEntityStore implements EntityStore {
                     if (r.status() == EntityStatus.NOT_IN_LICENCE) {
                         unchanged.add(r.slotId());
                     } else {
-                        status.setString(1, EntityStatus.NOT_IN_LICENCE.name());
-                        status.setString(2, r.slotId());
-                        status.executeUpdate();
+                        remove.setString(1, r.slotId());
+                        remove.executeUpdate();
                         gone.add(r.slotId());
                     }
                 }
@@ -234,6 +236,37 @@ public final class PostgresEntityStore implements EntityStore {
                 ps.executeUpdate();
             }
             return new ActivationOutcome(RENAMED, slotId, read(c, slotId).orElseThrow());
+        });
+    }
+
+    @Override
+    public ActivationOutcome suspend(String slotId) {
+        return setActivatedStatus(slotId, EntityStatus.ACTIVE, EntityStatus.SUSPENDED, SUSPENDED, ALREADY_SUSPENDED);
+    }
+
+    @Override
+    public ActivationOutcome resume(String slotId) {
+        return setActivatedStatus(slotId, EntityStatus.SUSPENDED, EntityStatus.ACTIVE, RESUMED, NOT_SUSPENDED);
+    }
+
+    /** Moves an activated slot from {@code from} to {@code to}; {@code already} when it is at {@code to}. */
+    private ActivationOutcome setActivatedStatus(String slotId, EntityStatus from, EntityStatus to,
+                                                 ActivationOutcome.Result done, ActivationOutcome.Result already) {
+        return db.inTransaction("change entity status", c -> {
+            Optional<EntityRecord> before = lockSlot(c, slotId);
+            if (before.isEmpty()) return new ActivationOutcome(SLOT_UNKNOWN, slotId, null);
+            EntityRecord r = before.get();
+            if (r.status() == EntityStatus.NOT_IN_LICENCE) return new ActivationOutcome(NOT_IN_LICENCE, slotId, r);
+            if (r.status() == EntityStatus.NOT_ACTIVATED) return new ActivationOutcome(NOT_ACTIVATED, slotId, r);
+            if (r.status() == to) return new ActivationOutcome(already, slotId, r);
+            try (PreparedStatement ps = c.prepareStatement(
+                    "update idn_entity set status = ?, updated_at = now() where slot_id = ? and status = ?")) {
+                ps.setString(1, to.name());
+                ps.setString(2, slotId);
+                ps.setString(3, from.name());
+                ps.executeUpdate();
+            }
+            return new ActivationOutcome(done, slotId, read(c, slotId).orElseThrow());
         });
     }
 

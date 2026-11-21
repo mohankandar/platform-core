@@ -1,0 +1,6 @@
+{
+  "format": "platform-product-roles/1",
+  "productCode": "PRODUCT_B",
+  "roles": ["READER", "EDITOR"],
+  "platformRoles": ["PLATFORM_ADMIN"]
+}

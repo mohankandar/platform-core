@@ -53,6 +53,8 @@ public final class InMemoryIdentityStore implements EntityStore, LoginConnection
 
     private final Map<String, String> customers = new TreeMap<>();
     private final Map<String, EntityRecord> entities = new TreeMap<>();
+    /** status_before_removal: the status of a NOT_IN_LICENCE slot when it left the licence (activated ones only). */
+    private final Map<String, EntityStatus> statusBeforeRemoval = new TreeMap<>();
     private final Map<UUID, LoginConnection> connections = new LinkedHashMap<>();
     private final Map<UUID, List<ConnectionChange>> history = new LinkedHashMap<>();
     private final Map<GrantKey, Set<Grant>> grants = new LinkedHashMap<>();
@@ -106,7 +108,9 @@ public final class InMemoryIdentityStore implements EntityStore, LoginConnection
                         EntityStatus.NOT_ACTIVATED, null, null, null));
                 created.add(slot);
             } else if (r.status() == EntityStatus.NOT_IN_LICENCE) {
-                entities.put(slot, with(r, r.activatedAt() != null ? EntityStatus.ACTIVE : EntityStatus.NOT_ACTIVATED));
+                EntityStatus before = statusBeforeRemoval.remove(slot);
+                entities.put(slot, with(r, before != null ? before
+                        : r.activatedAt() != null ? EntityStatus.ACTIVE : EntityStatus.NOT_ACTIVATED));
                 back.add(slot);
             } else {
                 unchanged.add(slot);
@@ -117,6 +121,7 @@ public final class InMemoryIdentityStore implements EntityStore, LoginConnection
             if (r.status() == EntityStatus.NOT_IN_LICENCE) {
                 unchanged.add(r.slotId());
             } else {
+                if (r.status().activated()) statusBeforeRemoval.put(r.slotId(), r.status());
                 entities.put(r.slotId(), with(r, EntityStatus.NOT_IN_LICENCE));
                 gone.add(r.slotId());
             }
@@ -175,7 +180,29 @@ public final class InMemoryIdentityStore implements EntityStore, LoginConnection
         return new ActivationOutcome(RENAMED, slotId, now);
     }
 
-    /** Test helper: sets an activated slot's status (for example SUSPENDED); the apps' own suspend flow is theirs. */
+    @Override
+    public synchronized ActivationOutcome suspend(String slotId) {
+        return setActivatedStatus(slotId, EntityStatus.SUSPENDED, SUSPENDED, ALREADY_SUSPENDED);
+    }
+
+    @Override
+    public synchronized ActivationOutcome resume(String slotId) {
+        return setActivatedStatus(slotId, EntityStatus.ACTIVE, RESUMED, NOT_SUSPENDED);
+    }
+
+    private ActivationOutcome setActivatedStatus(String slotId, EntityStatus to, ActivationOutcome.Result done,
+                                                 ActivationOutcome.Result already) {
+        EntityRecord r = entities.get(slotId);
+        if (r == null) return new ActivationOutcome(SLOT_UNKNOWN, slotId, null);
+        if (r.status() == EntityStatus.NOT_IN_LICENCE) return new ActivationOutcome(NOT_IN_LICENCE, slotId, r);
+        if (r.status() == EntityStatus.NOT_ACTIVATED) return new ActivationOutcome(NOT_ACTIVATED, slotId, r);
+        if (r.status() == to) return new ActivationOutcome(already, slotId, r);
+        EntityRecord now = with(r, to);
+        entities.put(slotId, now);
+        return new ActivationOutcome(done, slotId, now);
+    }
+
+    /** Test helper: sets an activated slot's status directly (the apps use {@code SlotActivation.suspend}). */
     public synchronized void setStatus(String slotId, EntityStatus status) {
         EntityRecord r = Objects.requireNonNull(entities.get(slotId), "slot not stored");
         if (status.activated() && r.activatedAt() == null || status == EntityStatus.NOT_ACTIVATED && r.activatedAt() != null) {

@@ -118,7 +118,8 @@ See `docs/work/P010-report.md`, section "Decisions I had to make".
 
 - **Q1. Product code not in the licence:** keep it as stopped intake. Start-up is not refused.
 - **Q2. Tenant ID:** `platform.licensing.tenant-id` becomes required in the `platform-setup` task (which writes it),
-  not now.
+  not now. *Done in P014:* required, with the startup message "platform.licensing.tenant-id is missing"; setup writes
+  it into `platform-tenant.properties`.
 - **Q3. Reset validity:** 7 days by default, at most 30. Confirmed.
 - **Q4. Resets stay out of the issued records** (run log only).
 - **Q5. Wiping both usage tables accepted:** it looks like a new, empty ledger; the next usage export shows a chain

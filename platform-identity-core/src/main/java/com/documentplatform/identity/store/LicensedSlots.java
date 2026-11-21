@@ -10,12 +10,28 @@ import java.util.Set;
 @FunctionalInterface
 public interface LicensedSlots {
 
-    record Current(String tenantId, Set<String> slotIds) {
+    /** Whether the licence in force allows activating and resuming entities now: the same rule as intake. */
+    enum Standing {
+        /** Valid, expiring, or expired within the grace period. */
+        IN_FORCE,
+        /** Before the licence's start date. */
+        NOT_STARTED,
+        /** Expired, and the grace period is over. */
+        GRACE_OVER
+    }
+
+    record Current(String tenantId, Set<String> slotIds, Standing standing) {
         public Current {
             slotIds = Set.copyOf(slotIds);
+            java.util.Objects.requireNonNull(standing, "standing");
+        }
+
+        /** A licence in force (valid, expiring or in grace). */
+        public Current(String tenantId, Set<String> slotIds) {
+            this(tenantId, slotIds, Standing.IN_FORCE);
         }
     }
 
-    /** The licence in force, or empty when no valid licence is in force. */
+    /** The licence in force whatever its standing, or empty when no valid licence is stored. */
     Optional<Current> current();
 }

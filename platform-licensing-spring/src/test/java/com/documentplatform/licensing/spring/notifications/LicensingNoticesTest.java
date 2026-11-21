@@ -241,6 +241,31 @@ class LicensingNoticesTest {
     }
 
     @Test
+    void aLicenceWithoutThisProductAlertsTheItAdminAndRecovers() {
+        App app = new App(Instant.parse("2026-11-21T12:00:00Z"));
+        Licence otherProduct = new Licence("LIC-TEST-0001", 1, "Test Customer Ltd", TENANT, List.of("PRODUCT_B"),
+                List.of(new EntitySlot(SLOT_ON, List.of(new Allowance("PRODUCT_B", AllowanceType.PAGES_PER_MONTH, 10)))),
+                LicenceType.SUBSCRIPTION, LicenceKind.PRODUCTION, LocalDate.parse("2026-01-01"),
+                LocalDate.parse("2027-12-31"), null, Deployment.ON_PREM, app.licences.keyId(),
+                Instant.parse("2026-01-01T00:00:00Z"));
+        app.store(otherProduct);
+        app.check();
+        assertEquals(List.of(MessageKind.CONDITION_ALERT), app.kinds(), "critical: alert at once");
+        OutgoingMessage alert = app.email.sent().get(0);
+        assertEquals(Set.of(IT), alert.recipients(), "technical: the IT Admin only");
+        assertTrue(alert.message().subject().contains("Licence does not cover this product"), alert.message().subject());
+        assertTrue(alert.message().text().contains(TestLicences.PRODUCT), "the product code is the identifier");
+        app.restart();
+        app.runFor(Duration.ofHours(3));
+        assertEquals(1, app.email.sent().size(), "no duplicate alert");
+
+        app.store(licence("LIC-TEST-0003", 2, LicenceType.SUBSCRIPTION, LocalDate.parse("2026-01-01"),
+                LocalDate.parse("2027-12-31"), null, app.licences.keyId()));
+        app.check();
+        assertEquals(List.of(MessageKind.CONDITION_ALERT, MessageKind.RECOVERED), app.kinds());
+    }
+
+    @Test
     void aClockBehindAlertsTheItAdminOnceAndRecovers() {
         App app = new App(Instant.parse("2026-11-21T12:00:00Z"));
         app.store(subscription(app, "2027-12-31"));

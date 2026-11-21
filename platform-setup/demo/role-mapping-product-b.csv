@@ -1,0 +1,6 @@
+# Format: platform-role-mapping/1
+# Product: PRODUCT_B
+# Demo values only.
+entity_id,entity_name,group,role
+ENT-DEMO-0001,,Demo Finance Readers,READER
+ENT-DEMO-0002,,Demo Legal Readers,READER

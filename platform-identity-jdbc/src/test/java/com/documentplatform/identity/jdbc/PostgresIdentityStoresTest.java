@@ -15,6 +15,7 @@ import com.documentplatform.identity.mapping.MappingPlan;
 import com.documentplatform.identity.mapping.MappingRow;
 import com.documentplatform.identity.mapping.RoleMappingFile;
 import com.documentplatform.identity.mapping.SlotTargets;
+import com.documentplatform.identity.store.ActivationOutcome;
 import com.documentplatform.identity.store.ChangeSource;
 import com.documentplatform.identity.store.ConnectionChange;
 import com.documentplatform.identity.store.EntityRecord;
@@ -140,6 +141,31 @@ class PostgresIdentityStoresTest {
         assertEquals(List.of(S1, S2), back.backInLicence());
         assertEquals(EntityStatus.ACTIVE, store.entity(S1).orElseThrow().status(), "it had been activated");
         assertEquals(EntityStatus.NOT_ACTIVATED, store.entity(S2).orElseThrow().status(), "it had not");
+    }
+
+    @Test
+    void aSuspendedSlotDroppedFromTheLicenceComesBackSuspendedNeverActive() {
+        Pg db = Pg.migrated();
+        PostgresEntityStore store = new PostgresEntityStore(db.appUser(DML));
+        store.saveCustomer(TENANT, "Test Customer");
+        store.syncSlots(TENANT, List.of(S1, S2, S3));
+        store.activate(S1, "Alpha", "admin-1", T);
+        store.activate(S2, "Beta", "admin-1", T);
+        assertEquals(ActivationOutcome.Result.SUSPENDED, store.suspend(S2).result());
+
+        store.syncSlots(TENANT, List.of(S3));
+        assertEquals(EntityStatus.NOT_IN_LICENCE, store.entity(S2).orElseThrow().status());
+        assertEquals(List.of("ACTIVE", "SUSPENDED"), db.strings("select status_before_removal from idn_entity "
+                + "where slot_id in ('" + S1 + "', '" + S2 + "') order by slot_id"));
+        assertEquals(ActivationOutcome.Result.NOT_IN_LICENCE, store.resume(S2).result(), "not while out of the licence");
+
+        store.syncSlots(TENANT, List.of(S1, S2, S3));
+        assertEquals(EntityStatus.ACTIVE, store.entity(S1).orElseThrow().status());
+        assertEquals(EntityStatus.SUSPENDED, store.entity(S2).orElseThrow().status(), "it was suspended when it left");
+        assertEquals(EntityStatus.NOT_ACTIVATED, store.entity(S3).orElseThrow().status());
+        assertEquals(0, db.count("select count(*) from idn_entity where status_before_removal is not null"),
+                "cleared once back");
+        assertEquals(Set.of(S1, S2), store.activated(TENANT).keySet(), "licensing counts the suspended one again");
     }
 
     @Test
