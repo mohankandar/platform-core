@@ -25,17 +25,56 @@ User-facing text says "customer" and "entity", never "tenant". Today's app table
 10. LexaVault's own `tenant_license_*` licensing is replaced by platform-licensing in its switch-over (no customer has one yet).
 11. `platform.licensing.tenant-id` becomes required; setup writes it.
 
-## 2a. Hosted installs (later)
+## 2a. Where the database lives (owner, 2026-11-21)
 
-Owner, 2026-11-21: on-premises installs keep **one customer per database** (setup refuses a database that holds
-another customer, `SETUP_OTHER_CUSTOMER_INSTALLED`). Hosting, later, uses **a shared database with row-level
-security** instead. The design of that is not written yet; this section records only the decision.
+- **The data model is always the same:** customer → entities → each entity's intake, redaction, documents and audit. Every record carries its entity (and so its customer), whatever the deployment. The same code runs everywhere.
+- **On-premises:** the customer's own database, one customer per database (setup refuses a second customer, `SETUP_OTHER_CUSTOMER_INSTALLED`).
+- **Hosted, standard:** our shared database, customers kept apart by customer/entity ID, like Salesforce. Safeguards: Postgres row-level security as a database-level lock, and encryption keys per customer.
+- **Hosted, dedicated database:** a paid premium option for customers who insist (e.g. banks).
+- **Not built now** (first release is on-premises). When hosting is scheduled: setup gains a hosted mode that allows many customers; licensing stores one licence per customer in the same database; row-level security is added (its own design task first); apps confirm every query filters by customer.
 
 ## 3. Build order
 
 P013 identity storage (platform-core) → P014 setup command, direct mode (platform-core) → LexaVault switch-over → Vero switch-over (adds grants and the entity chooser) → hub proof of concept → setup hub mode.
 
 Full proposal, table columns, input files and command steps: `docs/work/P012-report.md` sections 5.1–5.6, as amended above.
+
+## 4. Decisions from P013
+
+### Owner answers to the P013 questions (2026-11-21)
+
+1. **Suspend and resume:** platform-core provides the API now (`SlotActivation.suspend` / `resume`, audited by the
+   caller); the screen comes with the app.
+2. **Activation and the licence state:** allowed while the licence is valid, expiring or in grace; refused after grace
+   (the same rule as intake) with its own code, `LICENCE_EXPIRED` (and `LICENCE_NOT_STARTED` before the start date,
+   also as intake). Resume follows the same rule; suspend is always allowed.
+3. **Hub mode, organization claim in the lookup key:** later, with hub mode.
+4. **A SUSPENDED slot dropped from the licence comes back SUSPENDED, never ACTIVE:** column
+   `idn_entity.status_before_removal` (added to `V1__identity.sql`, not yet released) remembers the status while the
+   slot is `NOT_IN_LICENCE`, and it is restored.
+
+### P013 decisions (from `docs/work/P013-report.md`)
+
+1. The login connection is per customer **and product**: one ACTIVE per (customer, product).
+2. The binding resolver returns a binding only when exactly one connection matches and its customer has exactly one
+   ACTIVE entity; otherwise the person chooses through `EntityMembershipResolver` (fails closed). A database error
+   throws; the app never falls back to a configured entity.
+3. Store interfaces and `SlotActivation` live in identity-core (`com.documentplatform.identity.store`), so the testkit
+   needs no JDBC and both versions share one set of rules.
+4. Activation checks the licence in force (`LicensedSlots`; `LicenceSlots` adapts `LicenceService`). Refusals:
+   `NO_LICENCE`, `NOT_IN_LICENCE`, `SLOT_UNKNOWN`, `ALREADY_ACTIVATED`, `NAME_INVALID`, `NAME_TAKEN`. Names are
+   trimmed, 1–200 characters, no control or zero-width characters, unique per customer ignoring case; messages name
+   the slot ID, never the typed name.
+5. A slot that comes back into the licence returns to the status it had (amended by owner answer 4: SUSPENDED stays
+   SUSPENDED).
+6. `activated()` (for licensing) includes SUSPENDED slots.
+7. Mapping files with slot IDs: the slot need not be activated and no active login system is needed (setup loads
+   grants before activation). `entity_name` may be empty for slot rows only; if given it must match.
+8. The entity UUID uses the same hash as `StableIdentityId`; it equals the actor ID for issuer `"platform-entity"`,
+   which is not an issuer address, so the two cannot meet.
+9. platform-identity-jdbc depends on platform-licensing (plain Java), for `LicenceSlots` only.
+10. Grants can be removed (`GroupGrantStore.remove`); customers and entities have no delete.
+11. The Flyway run is tested by running the SQL files as the schema owner; no Flyway dependency.
 
 ## 5. Decisions from P014
 
