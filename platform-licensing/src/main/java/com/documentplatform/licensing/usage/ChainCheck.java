@@ -16,7 +16,9 @@ public record ChainCheck(boolean intact, long recordsChecked, Problem problem, l
         /** A record does not point to the hash of the one before it. */
         USAGE_CHAIN_LINK_BROKEN,
         /** Sequence numbers are not 1, 2, 3, ... */
-        USAGE_CHAIN_SEQUENCE_GAP
+        USAGE_CHAIN_SEQUENCE_GAP,
+        /** The newest record does not match the stored chain head: the newest records (or the head) were removed or changed. */
+        USAGE_CHAIN_HEAD_MISMATCH
     }
 
     static ChainCheck intact(long checked) {

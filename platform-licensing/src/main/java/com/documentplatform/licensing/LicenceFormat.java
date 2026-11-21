@@ -4,7 +4,6 @@ import com.documentplatform.licensing.json.Fields;
 import com.documentplatform.licensing.json.Json;
 import com.documentplatform.licensing.json.JsonException;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -34,8 +33,6 @@ public final class LicenceFormat {
 
     public static final String FORMAT = "platform-licence/1";
 
-    static final Set<String> ENVELOPE = Set.of("format", "licence", "signature");
-    static final Set<String> SIGNATURE = Set.of("algorithm", "payloadSha256", "value");
     static final Set<String> PAYLOAD = Set.of("licenceId", "version", "customer", "tenantId", "products",
             "entitySlots", "type", "kind", "startsOn", "expiresOn", "updatesUntil", "deployment", "keyId", "issuedAt");
     static final Set<String> SLOT = Set.of("slotId", "allowances");
@@ -78,7 +75,7 @@ public final class LicenceFormat {
 
     /** The exact bytes that are signed. */
     public static byte[] signedMessage(Object payload) {
-        return (FORMAT + "\n" + Json.canonical(payload)).getBytes(StandardCharsets.UTF_8);
+        return SignedDocument.signedMessage(FORMAT, payload);
     }
 
     /**
@@ -148,11 +145,11 @@ public final class LicenceFormat {
         try {
             Instant i = Instant.parse(text);
             if (!i.toString().equals(text)) {
-                throw new IllegalArgumentException("issuedAt must be a UTC time written as Instant.toString()");
+                throw new IllegalArgumentException("a time must be UTC, written as Instant.toString()");
             }
             return i;
         } catch (DateTimeParseException e) {
-            throw new IllegalArgumentException("issuedAt must be a UTC time such as 2026-11-21T10:00:00Z");
+            throw new IllegalArgumentException("a time must be UTC, such as 2026-11-21T10:00:00Z");
         }
     }
 }

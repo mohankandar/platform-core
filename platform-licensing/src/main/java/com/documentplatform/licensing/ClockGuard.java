@@ -7,13 +7,14 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Detects a clock moved backwards. Remembers the latest time seen; a clock more than {@code tolerance} behind it is
- * refused with {@link LicenceRefusal#LICENCE_CLOCK_ROLLBACK}. A clock behind by up to the tolerance (small corrections,
- * a slightly different clock on another node) is accepted, and the remembered time is not moved back.
+ * Reads the effective time for licence purposes: the later of the server clock and the latest time seen. Remembers
+ * the latest time seen (it only moves forward). A server clock behind is reported through {@link ClockReading}, never
+ * refused. If a wrong future clock ever poisoned the latest time seen, our side issues a signed
+ * {@link LastSeenReset}, applied with {@link #apply}.
  */
 public final class ClockGuard {
 
-    /** Default tolerance: one hour. */
+    /** Default tolerance before a server clock behind is flagged: one hour. */
     public static final Duration DEFAULT_TOLERANCE = Duration.ofHours(1);
 
     private final Clock clock;
@@ -33,32 +34,46 @@ public final class ClockGuard {
         this(clock, DEFAULT_TOLERANCE, store);
     }
 
-    /**
-     * @return the current time, once it has passed the check
-     * @throws LicenceException {@code LICENCE_CLOCK_ROLLBACK}
-     */
-    public Instant check() {
+    public Duration tolerance() {
+        return tolerance;
+    }
+
+    /** Reads the clock and moves the latest time seen forward to the server clock when it is later. */
+    public ClockReading read() {
         Instant now = clock.instant();
         Optional<Instant> last = store.lastSeen();
-        if (last.isPresent() && now.isBefore(last.get().minus(tolerance))) {
-            Duration behind = Duration.between(now, last.get());
-            throw new LicenceException(LicenceRefusal.LICENCE_CLOCK_ROLLBACK, "It reads " + now + ", "
-                    + describe(behind) + " behind the latest time seen (" + last.get() + "); the tolerance is "
-                    + describe(tolerance) + ". Correct the system clock; the licence is accepted again once it is.");
-        }
         if (last.isEmpty() || now.isAfter(last.get())) {
             store.advanceTo(now);
         }
-        return now;
+        Instant effective = last.isPresent() && last.get().isAfter(now) ? last.get() : now;
+        return new ClockReading(now, last.orElse(null), effective, tolerance);
     }
 
-    private static String describe(Duration d) {
-        if (d.toDays() >= 1) {
-            return d.toDays() + " day(s) " + d.toHoursPart() + " hour(s)";
+    /** The server clock itself, without reading or writing the store. */
+    public Instant serverTime() {
+        return clock.instant();
+    }
+
+    /**
+     * Applies a verified reset: sets the latest time seen back to {@code reset.resetTo()}, once.
+     *
+     * @param reset already verified with {@link LastSeenReset#verify}
+     */
+    public LastSeenReset.Outcome apply(LastSeenReset reset) {
+        Instant now = clock.instant();
+        if (now.isAfter(reset.notAfter())) {
+            throw new ResetException(ResetRefusal.RESET_EXPIRED, "It was valid until " + reset.notAfter()
+                    + "; the server clock reads " + now + ". Ask for a new reset.");
         }
-        if (d.toHours() >= 1) {
-            return d.toHours() + " hour(s) " + d.toMinutesPart() + " minute(s)";
+        if (store.resetApplied(reset.resetId())) {
+            return LastSeenReset.Outcome.ALREADY_APPLIED;
         }
-        return d.toMinutes() + " minute(s) " + d.toSecondsPart() + " second(s)";
+        Optional<Instant> last = store.lastSeen();
+        if (last.isEmpty() || !last.get().isAfter(reset.resetTo())) {
+            store.resetTo(last.orElse(reset.resetTo()), reset.resetId()); // records the ID; the time is unchanged
+            return LastSeenReset.Outcome.NOT_NEEDED;
+        }
+        store.resetTo(reset.resetTo(), reset.resetId());
+        return LastSeenReset.Outcome.APPLIED;
     }
 }

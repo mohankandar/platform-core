@@ -69,8 +69,9 @@ public final class UsageExport {
         if (to.isBefore(from)) {
             throw new IllegalArgumentException("periodTo is before periodFrom");
         }
-        List<UsageRecord> all = ledger.records();
-        ChainCheck ledgerCheck = UsageChain.verify(all);
+        UsageLedger.Snapshot snapshot = ledger.snapshot();
+        List<UsageRecord> all = snapshot.records();
+        ChainCheck ledgerCheck = UsageChain.verify(all, snapshot.head());
 
         Map<String, Object> ledgerChain = new LinkedHashMap<>();
         ledgerChain.put("intact", ledgerCheck.intact());

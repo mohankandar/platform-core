@@ -62,6 +62,18 @@ class UsageLedgerTest {
     }
 
     @Test
+    void deletingTheNewestRecordIsDetectedByTheHead() {
+        add(SLOT, AllowanceType.PAGES_PER_MONTH, NOV, 10, true);
+        add(SLOT, AllowanceType.PAGES_PER_MONTH, NOV, 20, true);
+        add(SLOT, AllowanceType.PAGES_PER_MONTH, NOV, 30, true);
+        ledger.deleteForTest(3);
+        ChainCheck c = ledger.verifyChain();
+        assertEquals(ChainCheck.Problem.USAGE_CHAIN_HEAD_MISMATCH, c.problem());
+        assertEquals(3, c.brokenAtSequence());
+        assertTrue(UsageChain.verify(ledger.records()).intact(), "the links alone cannot see it");
+    }
+
+    @Test
     void aDeletedRecordBreaksTheChain() {
         add(SLOT, AllowanceType.PAGES_PER_MONTH, NOV, 10, true);
         add(SLOT, AllowanceType.PAGES_PER_MONTH, NOV, 20, true);

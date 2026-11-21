@@ -5,6 +5,7 @@ import com.documentplatform.licensing.AllowanceType;
 import com.documentplatform.licensing.Deployment;
 import com.documentplatform.licensing.Ed25519;
 import com.documentplatform.licensing.EntitySlot;
+import com.documentplatform.licensing.LastSeenReset;
 import com.documentplatform.licensing.Licence;
 import com.documentplatform.licensing.LicenceFormat;
 import com.documentplatform.licensing.LicenceKind;
@@ -63,7 +64,12 @@ public final class IssueLicenceCommand {
     static final int MAX_INSTALL_DAYS = 60;
 
     private static final Set<String> SINGLE = Set.of("--customer", "--products", "--type", "--kind", "--starts",
-            "--expires", "--updates-until", "--deployment", "--tenant-id", "--key-id", "--records", "--out", "--run-log");
+            "--expires", "--updates-until", "--deployment", "--tenant-id", "--key-id", "--records", "--out", "--run-log",
+            "--reset-last-seen", "--valid-days");
+    private static final Set<String> RESET_OPTIONS = Set.of("--reset-last-seen", "--valid-days", "--tenant-id",
+            "--key-id", "--records", "--out", "--run-log");
+    static final int DEFAULT_RESET_DAYS = 7;
+    static final int MAX_RESET_DAYS = 30;
     private static final String SLOT = "--slot";
 
     private final SigningKeyResolver keys;
@@ -92,6 +98,16 @@ public final class IssueLicenceCommand {
         try {
             Parsed parsed = parse(args);
             options = parsed.single();
+            if (options.containsKey("--reset-last-seen")) {
+                LastSeenReset reset = issueReset(parsed);
+                String summary = "Issued last-seen reset " + reset.resetId() + " for tenant " + reset.tenantId()
+                        + ": sets the latest time seen to " + reset.resetTo() + ", valid until " + reset.notAfter()
+                        + ", key " + reset.keyId() + " -> " + options.get("--out");
+                out.println(summary);
+                runLog(options, "RESET_ISSUED", null, null, reset);
+                LOG.log(System.Logger.Level.INFO, summary);
+                return 0;
+            }
             Issued issued = issue(parsed);
             String summary = "Issued " + issued.licence().licenceId() + " v" + issued.licence().version()
                     + " for tenant " + issued.licence().tenantId() + " (" + issued.licence().kind() + ", "
@@ -99,17 +115,17 @@ public final class IssueLicenceCommand {
                     .map(EntitySlot::slotId).toList() + ", key " + issued.licence().keyId() + ", payload sha256 "
                     + issued.payloadSha256().substring(0, 12) + "... -> " + issued.licenceFile();
             out.println(summary);
-            runLog(options, "ISSUED", null, issued.licence());
+            runLog(options, "ISSUED", null, issued.licence(), null);
             LOG.log(System.Logger.Level.INFO, summary);
             return 0;
         } catch (IssueException e) {
             err.println(e.getMessage());
-            runLog(options != null ? options : lenient(args), "REFUSED", e.code(), null);
+            runLog(options != null ? options : lenient(args), "REFUSED", e.code(), null, null);
             LOG.log(System.Logger.Level.WARNING, "Licence not issued: {0}", e.code());
             return e.code() == IssueError.ISSUE_BAD_OPTION || e.code() == IssueError.ISSUE_MISSING_OPTION ? 2 : 1;
         } catch (RuntimeException e) {
             err.println("Licence not issued: unexpected " + e.getClass().getSimpleName() + ".");
-            runLog(options != null ? options : lenient(args), "FAILED", null, null);
+            runLog(options != null ? options : lenient(args), "FAILED", null, null, null);
             LOG.log(System.Logger.Level.ERROR, "Licence not issued: unexpected {0}", e.getClass().getSimpleName());
             return 1;
         }
@@ -150,6 +166,76 @@ public final class IssueLicenceCommand {
             }
         }
         return new Parsed(single, slots);
+    }
+
+    /**
+     * Issues a signed last-seen reset for a tenant in the issued records: {@code --reset-last-seen <UTC time>}
+     * (the time to set the latest time seen back to, normally now), {@code --tenant-id}, optional
+     * {@code --valid-days} (default 7, at most 30), {@code --key-id}, {@code --records}, {@code --out}.
+     */
+    LastSeenReset issueReset(Parsed p) {
+        Map<String, String> o = p.single();
+        for (String name : o.keySet()) {
+            if (!RESET_OPTIONS.contains(name)) {
+                throw new IssueException(IssueError.ISSUE_BAD_OPTION, name + " is not used with --reset-last-seen;"
+                        + " a reset takes " + new java.util.TreeSet<>(RESET_OPTIONS) + ".");
+            }
+        }
+        if (!p.slots().isEmpty()) {
+            throw new IssueException(IssueError.ISSUE_BAD_OPTION, "--slot is not used with --reset-last-seen.");
+        }
+        Instant resetTo;
+        try {
+            resetTo = Instant.parse(required(o, "--reset-last-seen"));
+        } catch (DateTimeParseException e) {
+            throw new IssueException(IssueError.ISSUE_BAD_OPTION,
+                    "--reset-last-seen must be a UTC time such as 2026-11-21T10:00:00Z.");
+        }
+        int days = DEFAULT_RESET_DAYS;
+        if (o.containsKey("--valid-days")) {
+            try {
+                days = Integer.parseInt(o.get("--valid-days"));
+            } catch (NumberFormatException e) {
+                days = -1;
+            }
+            if (days < 1 || days > MAX_RESET_DAYS) {
+                throw new IssueException(IssueError.ISSUE_BAD_OPTION, "--valid-days must be 1 to " + MAX_RESET_DAYS + ".");
+            }
+        }
+        String tenantId = required(o, "--tenant-id");
+        String keyId = required(o, "--key-id");
+        Path out = Path.of(required(o, "--out"));
+        if (Files.exists(out)) {
+            throw new IssueException(IssueError.ISSUE_OUTPUT_EXISTS, out.toString());
+        }
+        IssuedRecords records = IssuedRecords.load(Path.of(required(o, "--records")));
+        if (records.forTenant(tenantId).isEmpty()) {
+            throw new IssueException(IssueError.ISSUE_UNKNOWN_TENANT, "Tenant " + shown(tenantId)
+                    + " was never issued a licence.");
+        }
+        Instant now = clock.instant();
+        LastSeenReset reset;
+        try {
+            reset = new LastSeenReset(ids.next("RST", records.allIds()), tenantId, resetTo,
+                    now.plus(java.time.Duration.ofDays(days)), now, keyId);
+        } catch (IllegalArgumentException e) {
+            throw new IssueException(IssueError.ISSUE_BAD_OPTION, e.getMessage() + ".");
+        }
+        PrivateKey key = privateKey(keyId);
+        String file;
+        try {
+            file = reset.sign(key);
+        } catch (IllegalArgumentException e) {
+            throw new IssueException(IssueError.ISSUE_KEY_INVALID, "Key ID " + keyId + ".");
+        }
+        try {
+            Files.writeString(out, file, StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        } catch (FileAlreadyExistsException e) {
+            throw new IssueException(IssueError.ISSUE_OUTPUT_EXISTS, out.toString());
+        } catch (IOException e) {
+            throw new IssueException(IssueError.ISSUE_OUTPUT_UNWRITABLE, out + ": " + e.getClass().getSimpleName());
+        }
+        return reset;
     }
 
     /** Issues one licence. Holds a lock beside the records file for the whole run, so two runs never share an ID. */
@@ -306,21 +392,23 @@ public final class IssueLicenceCommand {
         return new Issued(licence, out, payloadSha);
     }
 
-    private String sign(Licence licence) {
+    private PrivateKey privateKey(String keyId) {
         Optional<PrivateKey> key;
         try {
-            key = keys.resolve(licence.keyId());
+            key = keys.resolve(keyId);
         } catch (IllegalArgumentException e) {
-            throw new IssueException(IssueError.ISSUE_KEY_INVALID, "Key ID " + licence.keyId() + ".");
+            throw new IssueException(IssueError.ISSUE_KEY_INVALID, "Key ID " + keyId + ".");
         } catch (RuntimeException e) {
-            throw new IssueException(IssueError.ISSUE_KEY_UNAVAILABLE, "Key ID " + licence.keyId() + " ("
+            throw new IssueException(IssueError.ISSUE_KEY_UNAVAILABLE, "Key ID " + keyId + " ("
                     + e.getClass().getSimpleName() + ").");
         }
-        if (key.isEmpty()) {
-            throw new IssueException(IssueError.ISSUE_KEY_NOT_FOUND, "Key ID " + licence.keyId() + ".");
-        }
+        return key.orElseThrow(() -> new IssueException(IssueError.ISSUE_KEY_NOT_FOUND, "Key ID " + keyId + "."));
+    }
+
+    private String sign(Licence licence) {
+        PrivateKey key = privateKey(licence.keyId());
         try {
-            return LicenceSigner.sign(licence, key.get());
+            return LicenceSigner.sign(licence, key);
         } catch (IllegalArgumentException e) {
             throw new IssueException(IssueError.ISSUE_KEY_INVALID, "Key ID " + licence.keyId() + ".");
         }
@@ -405,7 +493,8 @@ public final class IssueLicenceCommand {
         return s.length() > 40 ? s.substring(0, 40) + "..." : s;
     }
 
-    private void runLog(Map<String, String> options, String outcome, IssueError code, Licence licence) {
+    private void runLog(Map<String, String> options, String outcome, IssueError code, Licence licence,
+                        LastSeenReset reset) {
         if (options == null || options.get("--records") == null) {
             return; // nothing to locate the log by; stderr and the logger have the refusal
         }
@@ -423,6 +512,12 @@ public final class IssueLicenceCommand {
             m.put("version", licence.version());
             m.put("tenantId", licence.tenantId());
             m.put("kind", licence.kind().name());
+        }
+        if (reset != null) {
+            m.put("resetId", reset.resetId());
+            m.put("tenantId", reset.tenantId());
+            m.put("resetTo", reset.resetTo().toString());
+            m.put("notAfter", reset.notAfter().toString());
         }
         Optional.ofNullable(options.get("--key-id")).filter(k -> k.matches("[a-z0-9._-]{1,64}"))
                 .ifPresent(k -> m.put("keyId", k));

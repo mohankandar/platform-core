@@ -74,9 +74,12 @@ IDs are 16 random Crockford base32 characters (80 bits) after the prefix, in gro
 | signature does not verify with the named key | `LICENCE_FORGED` |
 | signed payload breaks the model (for example perpetual with an expiry) | `LICENCE_MALFORMED` |
 | `tenantId` ≠ the installation's tenant (when known) | `LICENCE_WRONG_CUSTOMER` |
-| clock more than the tolerance (default 1 hour) behind the latest time seen | `LICENCE_CLOCK_ROLLBACK` |
+| storing only: older version than one stored / same version, different licence | `LICENCE_OLDER_VERSION` / `LICENCE_VERSION_CONFLICT` |
 
 Every message is `CODE: meaning. exact cause.` with IDs and dates only — never signatures, keys or other content.
+
+A server clock behind is **not** a refusal (owner decision O1): dates use the later of the server clock and the
+latest time seen, and a clock behind by more than the tolerance is reported as a flag with the exact difference.
 
 ### Sample (throwaway test key, generated for this document; not a real key)
 
@@ -148,6 +151,9 @@ old keys stay until no licence signed with them is in use.
 
 ## 5. Usage ledger record (hash chain)
 
+The chain head (newest `sequence` and `hash`) is stored apart from the records and moved in the same transaction as
+every append; a ledger whose newest record is not the head gives `USAGE_CHAIN_HEAD_MISMATCH` (newest records removed).
+
 Each record: `sequence` (1, 2, …), `slotId`, `product`, `type`, `period` (month), `amount`, `unit` (from the type),
 `billable`, `recordedAt`, `previousHash` (64 zeros for the first), `hash`.
 
@@ -180,3 +186,37 @@ Verifier codes: `EXPORT_MALFORMED`, `EXPORT_UNSUPPORTED_FORMAT`, `EXPORT_HEADER_
 (with the record index; also a record removed or inserted before the end), `EXPORT_RECORD_OUTSIDE_PERIOD`,
 `EXPORT_FOOTER_MISMATCH` (records removed at the end, footer edited), and across files `EXPORT_START_MISMATCH`
 (file missing or replaced), `EXPORT_SEQUENCE_GAP`, `EXPORT_PERIOD_GAP`, `EXPORT_TENANT_MISMATCH`.
+
+## 7. Last-seen reset — `platform-last-seen-reset/1`
+
+Issued by us when a wrong future server clock poisoned an installation's latest time seen. Same envelope and signing
+rules as the licence (section 2), with the body named `reset`:
+
+```
+{ "format": "platform-last-seen-reset/1",
+  "reset": { "resetId": "RST-…", "tenantId": "TEN-…", "resetTo": "<time>", "notAfter": "<time>",
+             "issuedAt": "<time>", "keyId": "…" },
+  "signature": { "algorithm": "Ed25519", "payloadSha256": "<hex>", "value": "<Base64>" } }
+```
+
+Signed message: `"platform-last-seen-reset/1"` + LF + `canonical(reset)`. Applied with the licence command
+(`apply-reset --file …`): the latest time seen is set to `resetTo`, and `resetId` is recorded so the reset works once.
+It is refused when the server clock is past `notAfter`. Codes: `RESET_MISSING`, `RESET_MALFORMED`,
+`RESET_UNSUPPORTED_FORMAT`, `RESET_UNKNOWN_KEY_ID`, `RESET_TAMPERED`, `RESET_FORGED`, `RESET_WRONG_CUSTOMER`,
+`RESET_EXPIRED`. Outcomes: `APPLIED`, `ALREADY_APPLIED`, `NOT_NEEDED` (the latest time seen was not ahead).
+
+## 8. Tables (`db/platform/licensing`, version 1)
+
+Run by the app's schema step as a separate Flyway run with history table `lic_schema_history`; startup only checks.
+
+| Table | Holds |
+|---|---|
+| `lic_schema_version` | the version of the files run (1) |
+| `lic_licence` | `CURRENT` and `WAITING` licence files exactly as received, with copies of ID, version, tenant, start date (never trusted) |
+| `lic_last_seen` | one row: the latest time seen |
+| `lic_clock_reset` | IDs of applied last-seen resets |
+| `lic_usage` | the usage ledger (section 5) |
+| `lic_chain_head` | one row: newest sequence and hash |
+
+No secrets, key material, prices or document data in any table. The runtime user needs SELECT, INSERT, UPDATE and
+DELETE on the `lic_` tables and SELECT on `lic_schema_version`.

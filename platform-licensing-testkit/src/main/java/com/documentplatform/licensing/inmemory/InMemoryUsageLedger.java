@@ -1,5 +1,6 @@
 package com.documentplatform.licensing.inmemory;
 
+import com.documentplatform.licensing.usage.ChainHead;
 import com.documentplatform.licensing.usage.UsageChain;
 import com.documentplatform.licensing.usage.UsageEntry;
 import com.documentplatform.licensing.usage.UsageLedger;
@@ -7,17 +8,19 @@ import com.documentplatform.licensing.usage.UsageRecord;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
-/** A usage ledger in memory, for tests. Builds records with {@link UsageChain#link} like every ledger. */
+/** A usage ledger in memory, for tests. Builds records from the head with {@link UsageChain#link} like every ledger. */
 public final class InMemoryUsageLedger implements UsageLedger {
 
     private final List<UsageRecord> records = new ArrayList<>();
+    private ChainHead head;
 
     @Override
     public synchronized UsageRecord append(UsageEntry entry) {
-        UsageRecord last = records.isEmpty() ? null : records.get(records.size() - 1);
-        UsageRecord record = UsageChain.link(last, entry);
+        UsageRecord record = UsageChain.link(head, entry);
         records.add(record);
+        head = ChainHead.of(record);
         return record;
     }
 
@@ -26,12 +29,22 @@ public final class InMemoryUsageLedger implements UsageLedger {
         return List.copyOf(records);
     }
 
+    @Override
+    public synchronized Optional<ChainHead> head() {
+        return Optional.ofNullable(head);
+    }
+
+    @Override
+    public synchronized Snapshot snapshot() {
+        return new Snapshot(List.copyOf(records), Optional.ofNullable(head));
+    }
+
     /** Replaces a stored record as it is (no re-hashing): simulates an edit made directly in the store. */
     public synchronized void overwriteForTest(long sequence, UsageRecord replacement) {
         records.set(index(sequence), replacement);
     }
 
-    /** Removes a stored record: simulates a row deleted directly in the store. */
+    /** Removes a stored record (the head stays): simulates a row deleted directly in the store. */
     public synchronized void deleteForTest(long sequence) {
         records.remove(index(sequence));
     }
@@ -46,7 +59,7 @@ public final class InMemoryUsageLedger implements UsageLedger {
     }
 
     /** All records, copied, for tests that build their own broken lists. */
-    public synchronized List<UsageRecord> snapshot() {
+    public synchronized List<UsageRecord> snapshotList() {
         return new ArrayList<>(records);
     }
 }

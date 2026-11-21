@@ -7,14 +7,27 @@
         <version>0.1.0-SNAPSHOT</version>
     </parent>
     <artifactId>platform-licensing</artifactId>
-    <description>Licensing capability: the signed licence (Ed25519, JDK crypto), licence states with grace, clock-rollback
-        check, usage levels, hash-chained usage ledger and usage file export, and the licence-issuing command.
-        Plain Java, no Spring, no runtime dependencies.</description>
+    <description>Licensing capability: the signed licence (Ed25519, JDK crypto), licence states with grace, the
+        effective-time clock rule and signed last-seen reset, usage levels, hash-chained usage ledger with chain head, usage
+        file export, Postgres stores (plain JDBC) and SQL (db/platform/licensing), the licence-issuing command (ours) and the
+        licence command (customer side). Plain Java, no Spring, no runtime dependencies.</description>
     <dependencies>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-postgresql</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>${postgresql.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

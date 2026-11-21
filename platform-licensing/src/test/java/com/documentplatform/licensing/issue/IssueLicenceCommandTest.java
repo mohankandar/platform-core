@@ -323,4 +323,40 @@ class IssueLicenceCommandTest {
         assertNotEquals(a, b);
         assertEquals(2, taken.size());
     }
+
+    @Test
+    void issuesASignedLastSeenResetForAKnownTenant() throws Exception {
+        Path licence = nextOut();
+        assertEquals(0, run(base(licence, "PRODUCTION")));
+        String tenant = read(licence).tenantId();
+        Path reset = dir.resolve("reset.json");
+        assertEquals(0, run("--reset-last-seen", "2026-11-21T10:00:00Z", "--tenant-id", tenant, "--valid-days", "3",
+                "--key-id", KEY_ID, "--records", records.toString(), "--out", reset.toString()), err());
+        com.documentplatform.licensing.LastSeenReset r = com.documentplatform.licensing.LastSeenReset.verify(
+                Files.readString(reset), TrustedKeys.of(Map.of(KEY_ID, KEY.getPublic())), tenant);
+        assertEquals(Instant.parse("2026-11-21T10:00:00Z"), r.resetTo());
+        assertEquals(Instant.parse("2026-11-24T10:00:00Z"), r.notAfter());
+        assertTrue(r.resetId().startsWith("RST-"));
+        assertTrue(out().contains("Issued last-seen reset " + r.resetId()), out());
+        String runLog = Files.readString(dir.resolve("issued.jsonl.runs.log"));
+        assertTrue(runLog.contains("\"outcome\":\"RESET_ISSUED\""), runLog);
+        assertTrue(runLog.contains(r.resetId()), runLog);
+        assertFalse(runLog.contains(PRIVATE_B64.substring(20, 40)));
+    }
+
+    @Test
+    void resetRefusals() throws Exception {
+        assertEquals(0, run(base(nextOut(), "PRODUCTION")));
+        String[] common = {"--key-id", KEY_ID, "--records", records.toString()};
+        assertEquals(1, run(with(List.of("--reset-last-seen", "2026-11-21T10:00:00Z", "--tenant-id", "TEN-NOPE",
+                "--out", nextOut().toString()), common)));
+        assertTrue(err().startsWith("ISSUE_UNKNOWN_TENANT: "), err());
+        assertEquals(2, run(with(List.of("--reset-last-seen", "yesterday", "--tenant-id", "TEN-NOPE",
+                "--out", nextOut().toString()), common)));
+        assertEquals(2, run(with(List.of("--reset-last-seen", "2026-11-21T10:00:00Z", "--tenant-id", "TEN-NOPE",
+                "--valid-days", "31", "--out", nextOut().toString()), common)));
+        assertEquals(2, run(with(List.of("--reset-last-seen", "2026-11-21T10:00:00Z", "--tenant-id", "TEN-NOPE",
+                "--customer", "X", "--out", nextOut().toString()), common)));
+        assertTrue(err().contains("--customer is not used with --reset-last-seen"), err());
+    }
 }

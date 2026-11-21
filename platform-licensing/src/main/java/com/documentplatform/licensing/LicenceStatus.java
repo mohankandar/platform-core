@@ -21,8 +21,15 @@ import java.util.OptionalLong;
  *       From expiresOn + 31 intake stops.</li>
  * </ul>
  * A perpetual licence is {@link LicenceState#VALID} from its start date on, for ever.
+ *
+ * <p>{@code today} is the UTC date of the clock's <b>effective</b> time (the later of the server clock and the latest
+ * time seen), so a clock turned back never extends a licence.
+ *
+ * @param clock   the clock reading the state was worked out from
+ * @param waiting a renewal stored early, in force from its start date; null when there is none
  */
-public record LicenceStatus(Licence licence, LocalDate today, LicenceState state) {
+public record LicenceStatus(Licence licence, LocalDate today, LicenceState state, ClockReading clock,
+                            Licence waiting) {
 
     /** Days of grace after the expiry date. */
     public static final int GRACE_DAYS = 30;
@@ -33,12 +40,27 @@ public record LicenceStatus(Licence licence, LocalDate today, LicenceState state
         Objects.requireNonNull(licence, "licence");
         Objects.requireNonNull(today, "today");
         Objects.requireNonNull(state, "state");
+        Objects.requireNonNull(clock, "clock");
     }
 
-    /** The status of {@code licence} at {@code now}. */
+    /** The status of {@code licence} at {@code now} (a clock with nothing seen before). */
     public static LicenceStatus at(Licence licence, Instant now) {
-        LocalDate today = LocalDate.ofInstant(now, ZoneOffset.UTC);
-        return new LicenceStatus(licence, today, stateOn(licence, today));
+        return at(licence, ClockReading.exact(now), null);
+    }
+
+    /** The status of {@code licence} at the effective time of {@code clock}. */
+    public static LicenceStatus at(Licence licence, ClockReading clock, Licence waiting) {
+        LocalDate today = LocalDate.ofInstant(clock.effective(), ZoneOffset.UTC);
+        return new LicenceStatus(licence, today, stateOn(licence, today), clock, waiting);
+    }
+
+    /** The alert flag: the server clock is behind the latest time seen by more than the tolerance. */
+    public boolean clockBehind() {
+        return clock.clockBehind();
+    }
+
+    public java.util.Optional<Licence> renewalWaiting() {
+        return java.util.Optional.ofNullable(waiting);
     }
 
     static LicenceState stateOn(Licence licence, LocalDate today) {
@@ -107,6 +129,15 @@ public record LicenceStatus(Licence licence, LocalDate today, LicenceState state
 
     /** A sentence for the app to show (admin banner, log line). Contains dates and IDs only. */
     public String message() {
+        String base = stateMessage();
+        if (waiting != null) {
+            base += " The renewed licence " + waiting.licenceId() + " v" + waiting.version()
+                    + " is stored and takes over on " + waiting.startsOn() + ".";
+        }
+        return base;
+    }
+
+    private String stateMessage() {
         Licence l = licence;
         return switch (state) {
             case NOT_STARTED -> "The licence " + l.licenceId() + " starts on " + l.startsOn()
