@@ -14,7 +14,7 @@ Built on `feature/case-fields` (from `main`), pushed to origin. **Not merged**, 
   - platform-notifications-spring: 2 (in `ApprovalWiringTest`, owner answers Q2 and Q3 through the real tick)
 - **No existing test was changed.** The approval test fixture gained one event type ("Print request expired").
 - **Commits:** the first commit on the branch is the two design files `docs/design/case-fields.md` and
-  `docs/design/integration-standards.md`, exactly as they were in the working tree. Then the feature, then this task
+  `docs/design/integration-standards.md`, exactly as they were in the working tree. Then one commit with the feature, this task
   and report.
 
 ## What was built
