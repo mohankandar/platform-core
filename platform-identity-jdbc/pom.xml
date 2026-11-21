@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.documentplatform.platform</groupId>
+        <artifactId>platform-core</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>platform-identity-jdbc</artifactId>
+    <description>Identity storage: the idn_ tables (customers, entity slots, login connections and their history, group
+        grants per product) and their SQL (db/platform/identity, run only by the app's schema step), the startup check,
+        Postgres stores (plain JDBC) implementing the admission interfaces of platform-identity-core, the entity slots for
+        platform-licensing, and the slot activation store. Plain Java, no Spring.</description>
+    <dependencies>
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-identity-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- Only for LicenceSlots (the licence in force for slot activation). Plain Java, no runtime dependencies. -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-licensing</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-licensing-testkit</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- Test only: proves PostgresEntityStore::activated fits licensing's ActivatedSlots. -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-licensing-spring</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-postgresql</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>${postgresql.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

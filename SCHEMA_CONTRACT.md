@@ -1,5 +1,10 @@
 # Schema contract for entity admission (Enterprise Identity 0.3.0)
 
+> **Since P013** platform-core ships these tables itself: module `platform-identity-jdbc` (`idn_` tables, Flyway
+> location `db/platform/identity`) implements all four interfaces, with one login connection per customer shared by
+> its entities (`docs/design/setup.md`). This page stays as the contract for a product that still keeps its own
+> tables until its switch-over.
+
 The library owns no tables. A product that uses `com.documentplatform.identity.admission` keeps its own tables and
 migrations and implements four interfaces over them. This page lists what those tables must hold. Names are the
 product's choice; LexaVault's names are given as an example.

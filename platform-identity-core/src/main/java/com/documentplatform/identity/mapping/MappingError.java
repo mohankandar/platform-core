@@ -26,7 +26,13 @@ public record MappingError(int line, Code code, String message) {
         PLATFORM_ROLE,
         GROUP_TOO_LONG,
         DUPLICATE_ROW,
-        NO_ROWS
+        NO_ROWS,
+        /** The file names an entity by UUID where only slot IDs ({@code ENT-…}) are accepted. */
+        SLOT_ID_REQUIRED,
+        /** The slot is known, but the licence in force does not list it. */
+        SLOT_NOT_IN_LICENCE,
+        /** A {@code # Product:} comment names another product than the one the file is read for. */
+        WRONG_PRODUCT
     }
 
     /** The message as an installer sees it: {@code line 6: unknown role "DOCUMENT_PROCESOR"}. */

@@ -18,6 +18,8 @@
         <module>platform-licensing</module>
         <module>platform-licensing-testkit</module>
         <module>platform-licensing-spring</module>
+        <module>platform-identity-jdbc</module>
+        <module>platform-identity-testkit</module>
     </modules>
     <properties>
         <maven.compiler.release>21</maven.compiler.release>
