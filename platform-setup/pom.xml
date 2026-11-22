@@ -10,7 +10,8 @@
     <description>The setup command (SetupCommand), direct sign-in mode: reads the signed licence, the sign-in file
         (platform-signin/1), the role mapping file and the product's product-roles.json, checks everything first, prints a
         plan, then stores the licence, the customer, the entity slots, the login connection and the group grants in one
-        transaction per product database, writes the tenant-id config fragment and a run log. Plain Java, no Spring. The
+        transaction per product database, creates the customer's keys in the key service (left alone when they exist),
+        writes the tenant-id config fragment and a run log. Plain Java, no Spring. The
         product's distribution supplies the PostgreSQL JDBC driver.</description>
     <dependencies>
         <dependency>
@@ -23,10 +24,22 @@
             <artifactId>platform-licensing</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- The customer's keys in the key service (Vault Transit), created by setup apply. -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-crypto</artifactId>
+            <version>${project.version}</version>
+        </dependency>
 
         <dependency>
             <groupId>com.documentplatform.platform</groupId>
             <artifactId>platform-licensing-testkit</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-crypto-testkit</artifactId>
             <version>${project.version}</version>
             <scope>test</scope>
         </dependency>

@@ -98,6 +98,20 @@ final class VaultJson {
                 @SuppressWarnings("unchecked")
                 Map<String, ?> nested = (Map<String, ?>) m;
                 write(b, nested);
+            } else if (v instanceof List<?> list) {
+                b.append('[');
+                for (int i = 0; i < list.size(); i++) {
+                    if (i > 0) {
+                        b.append(',');
+                    }
+                    if (!(list.get(i) instanceof Map<?, ?> item)) {
+                        throw new IllegalArgumentException("unsupported list item type");
+                    }
+                    @SuppressWarnings("unchecked")
+                    Map<String, ?> nested = (Map<String, ?>) item;
+                    write(b, nested);
+                }
+                b.append(']');
             } else {
                 throw new IllegalArgumentException("unsupported value type");
             }

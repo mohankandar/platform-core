@@ -1,5 +1,6 @@
 package com.documentplatform.setup;
 
+import com.documentplatform.crypto.CustomerId;
 import com.documentplatform.identity.jdbc.IdentitySchema;
 import com.documentplatform.identity.jdbc.IdentitySchemaException;
 import com.documentplatform.identity.jdbc.IdentityStoreException;
@@ -23,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -35,10 +37,13 @@ import java.util.TreeSet;
  * setup plan  --licence licence.json --signin signin.json --product PRODUCT_A --keys trusted-keys.json
  *             --product-roles product-roles.json [--config-out platform-tenant.properties]
  *             [--run-log platform-setup-runs.log] [--remove-unlisted-grants] [--replace-connection]
+ *             [--no-customer-keys]
  * setup apply (the same options)
  *
  * Database: PLATFORM_SETUP_DB_URL (jdbc:postgresql://host/db), PLATFORM_SETUP_DB_USER and PLATFORM_SETUP_DB_PASSWORD
  * from the environment only; the app's everyday (DML-only) database user is enough.
+ * Key service: PLATFORM_SETUP_VAULT_ADDR and one login (see SetupKeys) from the environment only, with the
+ * platform-crypto-setup policy, given to this run only.
  * </pre>
  *
  * <ol>
@@ -54,6 +59,9 @@ import java.util.TreeSet;
  *       the app since the last setup is a conflict, replaced only with {@code --replace-connection}), the grants (added;
  *       grants not in the file removed only with {@code --remove-unlisted-grants}). Then the config fragment with
  *       {@code platform.licensing.tenant-id}.</li>
+ *   <li><b>Customer keys</b> ({@link SetupKeys}): the customer's wrapping key and fingerprint key in the key service.
+ *       {@code plan} shows whether they exist; {@code apply} creates the missing ones just before the database part is
+ *       committed; existing keys are left alone, so a rerun is safe. {@code --no-customer-keys} skips the step.</li>
  *   <li><b>Run log:</b> one line per run with IDs, counts and codes only.</li>
  * </ol>
  *
@@ -83,17 +91,28 @@ public final class SetupCommand {
             "--product-roles", "--config-out", "--run-log");
     private static final List<String> REQUIRED = List.of("--licence", "--signin", "--product", "--keys",
             "--product-roles");
-    private static final Set<String> FLAGS = Set.of("--remove-unlisted-grants", "--replace-connection");
+    private static final Set<String> FLAGS = Set.of("--remove-unlisted-grants", "--replace-connection",
+            "--no-customer-keys");
 
     private final Map<String, String> env;
     private final Clock clock;
+    private final SetupKeys.Connector keyConnector;
 
     /**
-     * @param env the environment (the database settings are read from it, nothing else)
+     * @param env the environment (the database and key service settings are read from it, nothing else)
      */
     public SetupCommand(Map<String, String> env, Clock clock) {
+        this(env, clock, SetupKeys::vault);
+    }
+
+    /**
+     * @param env          the environment (the database and key service settings are read from it, nothing else)
+     * @param keyConnector how to reach the key service (the default: Vault, settings from {@code env})
+     */
+    public SetupCommand(Map<String, String> env, Clock clock, SetupKeys.Connector keyConnector) {
         this.env = Map.copyOf(Objects.requireNonNull(env, "env"));
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.keyConnector = Objects.requireNonNull(keyConnector, "keyConnector");
     }
 
     public static void main(String[] args) {
@@ -109,6 +128,7 @@ public final class SetupCommand {
         String licence = "-";
         String result = "REFUSED";
         String code = "";
+        String keys = "-";
         Plan plan;
         int exit;
     }
@@ -145,7 +165,7 @@ public final class SetupCommand {
             out.println("Setup " + o.action + " for product " + in.product() + ", customer " + o.tenant + ", licence "
                     + in.licence().licenceId() + " v" + in.licence().version() + " (" + in.licence().kind()
                     + "), sign-in mode " + in.signin().mode() + ".");
-            o.exit = database(in, o, out);
+            o.exit = database(in, o, out, flags.contains("--no-customer-keys"));
         } catch (SetupException e) {
             o.code = e.code().name();
             o.result = e.code().exitCode() == EXIT_REFUSED ? "REFUSED" : "FAILED";
@@ -161,7 +181,7 @@ public final class SetupCommand {
     }
 
     /** Checks the tables, then plans (and applies) in one transaction. */
-    private int database(SetupInputs in, Outcome o, PrintStream out) {
+    private int database(SetupInputs in, Outcome o, PrintStream out, boolean noKeys) {
         DataSource ds = dataSource();
         try {
             LicensingSchema.verify(ds);
@@ -186,14 +206,30 @@ public final class SetupCommand {
                 o.plan = plan;
                 out.println("Plan:");
                 plan.items().forEach(i -> out.println(i.line()));
-                if (o.action.equals("plan")) {
-                    c.rollback();
-                    o.result = "PLANNED";
-                    out.println("Plan only: nothing was changed. Run 'setup apply' with the same files to do it.");
-                    return plan.needsFlag() ? EXIT_NEEDS_FLAG : EXIT_DONE;
+                SetupKeys.Connection keyService = noKeys ? null : keyConnector.connect(env);
+                try {
+                    CustomerId customer = CustomerId.fromTenantId(in.licence().tenantId());
+                    SetupKeys.State keys = keyService == null ? SetupKeys.State.SKIPPED
+                            : SetupKeys.check(keyService.keys(), customer);
+                    out.println(keysLine(keys, in.licence().tenantId(), customer, keyService));
+                    o.keys = keys == SetupKeys.State.CREATE ? "missing" : keys.name().toLowerCase(Locale.ROOT);
+                    if (o.action.equals("plan")) {
+                        c.rollback();
+                        o.result = "PLANNED";
+                        out.println("Plan only: nothing was changed. Run 'setup apply' with the same files to do it.");
+                        return plan.needsFlag() ? EXIT_NEEDS_FLAG : EXIT_DONE;
+                    }
+                    if (keys == SetupKeys.State.CREATE) {
+                        SetupKeys.create(keyService.keys(), customer);
+                        o.keys = "created";
+                    }
+                    run.apply(plan);
+                    c.commit();
+                } finally {
+                    if (keyService != null) {
+                        keyService.close().run();
+                    }
                 }
-                run.apply(plan);
-                c.commit();
             } catch (SetupException e) {
                 c.rollback();
                 throw e;
@@ -238,6 +274,17 @@ public final class SetupCommand {
         return EXIT_DONE;
     }
 
+    /** The keys step's line: the customer, its key-service UUID and what happens; never a key or a login. */
+    private static String keysLine(SetupKeys.State state, String tenant, CustomerId customer,
+                                   SetupKeys.Connection keyService) {
+        String what = "customer keys " + tenant + " (" + customer + ")";
+        return "Customer keys:" + System.lineSeparator() + switch (state) {
+            case CREATE -> String.format("  %-11s %s in key service %s", "create", what, keyService.keys().id());
+            case PRESENT -> String.format("  %-11s %s in key service %s", "unchanged", what, keyService.keys().id());
+            case SKIPPED -> String.format("  %-11s %s (--no-customer-keys)", "skipped", what);
+        };
+    }
+
     private DataSource dataSource() {
         String url = env.get(DB_URL);
         String user = env.get(DB_USER);
@@ -267,6 +314,7 @@ public final class SetupCommand {
             o.plan.counts().forEach((a, count) -> line.append(' ').append(a.name().toLowerCase()).append('=').append(count));
         }
         if (!o.code.isEmpty()) line.append(" code=").append(o.code);
+        if (!o.keys.equals("-")) line.append(" keys=").append(o.keys);
         line.append(System.lineSeparator());
         try {
             Files.writeString(file, line, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
@@ -297,7 +345,7 @@ public final class SetupCommand {
     private static String usage() {
         return "Usage: setup plan|apply --licence FILE --signin FILE --product CODE --keys trusted-keys.json "
                 + "--product-roles product-roles.json [--config-out FILE] [--run-log FILE] [--remove-unlisted-grants] "
-                + "[--replace-connection]; database settings " + DB_URL + ", " + DB_USER + ", " + DB_PASSWORD
+                + "[--replace-connection] [--no-customer-keys]; database settings " + DB_URL + ", " + DB_USER + ", " + DB_PASSWORD
                 + " from the environment.";
     }
 

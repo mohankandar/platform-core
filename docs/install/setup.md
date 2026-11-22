@@ -24,6 +24,21 @@ This version sets up **direct sign-in**: your people sign in with your own login
 - Database settings, in the environment only (never as options):
   `PLATFORM_SETUP_DB_URL` (`jdbc:postgresql://dbhost/appdb`), `PLATFORM_SETUP_DB_USER`, `PLATFORM_SETUP_DB_PASSWORD`.
   The app's everyday database user is enough.
+- Key service settings, in the environment only, for this run only: setup creates your customer's own keys in Vault
+  (a wrapping key and a fingerprint key, which protect sensitive case field values). Its login needs the
+  `platform-crypto-setup` policy (`docs/design/crypto.md` section 7); the app itself never gets that policy.
+
+  | Variable | |
+  |---|---|
+  | `PLATFORM_SETUP_VAULT_ADDR` | Vault's address, for example `https://vault.internal:8200` |
+  | `PLATFORM_SETUP_VAULT_NAMESPACE` | optional (Vault Enterprise / HCP) |
+  | `PLATFORM_SETUP_VAULT_TOKEN` | one login: a token with the set-up policy, |
+  | `PLATFORM_SETUP_VAULT_TOKEN_FILE` | or a file holding one, |
+  | `PLATFORM_SETUP_VAULT_ROLE_ID` + `PLATFORM_SETUP_VAULT_SECRET_ID` | or an AppRole login (`PLATFORM_SETUP_VAULT_APPROLE_MOUNT`, default `approle`) |
+  | `PLATFORM_SETUP_VAULT_TRANSIT_MOUNT` | default `transit` |
+  | `PLATFORM_SETUP_VAULT_KEY_PREFIX` | default `customer-`; the same as the app's `platform.crypto.vault.key-prefix` |
+
+  An installation that keeps no sensitive values can run setup with `--no-customer-keys` instead.
 
 ## 2. The sign-in file
 
@@ -69,7 +84,7 @@ setup apply (the same options)
 ```
 
 Optional: `--config-out FILE` (default `platform-tenant.properties`), `--run-log FILE` (default
-`platform-setup-runs.log`), `--remove-unlisted-grants`, `--replace-connection`.
+`platform-setup-runs.log`), `--remove-unlisted-grants`, `--replace-connection`, `--no-customer-keys`.
 
 The plan lists every item as `create`, `unchanged`, `update`, `conflict`, `remove` or `not removed`:
 
@@ -80,7 +95,15 @@ The plan lists every item as `create`, `unchanged`, `update`, `conflict`, `remov
   create      login connection PRODUCT_A: provider okta, issuer https://…, browser client ID …, API audience api://…
   create      grant ENT-… PRODUCT_A: group "Finance Readers" -> READER
   create      config platform-tenant.properties (platform.licensing.tenant-id=TEN-…)
+Customer keys:
+  create      customer keys TEN-… (<customer UUID>) in key service vault-transit
 ```
+
+**Customer keys.** `plan` only reads whether your customer's keys exist. `apply` creates the missing ones just before
+the database part is written; keys that exist are never changed or replaced (a rerun, or the run for the second
+product, shows `unchanged`). The key names are `customer-<32 hex>` and `customer-<32 hex>-fp`, where the hex is the
+customer UUID shown, derived from your tenant ID. A key service problem refuses the run before anything is written
+(`SETUP_KEY_SERVICE_FAILED`, with the `CRYPTO_…` code naming the cause).
 
 `apply` then writes, in one database transaction: the licence, your customer, your entities (an entity that a newer
 licence drops is kept as `NOT_IN_LICENCE`, never deleted), the login connection, and the grants. Then it writes
@@ -105,12 +128,13 @@ licence code, for example `LICENCE_UNKNOWN_KEY_ID`), `SETUP_SIGNIN_INVALID`, `SE
 `SETUP_WRONG_TENANT`, `SETUP_PRODUCT_NOT_IN_LICENCE`, `SETUP_PRODUCT_NOT_IN_SIGNIN`, `SETUP_PRODUCT_ROLES_INVALID`,
 `SETUP_MAPPING_INVALID` (with every bad line), `SETUP_DB_SETTINGS_MISSING`, `SETUP_DB_UNREACHABLE`,
 `SETUP_TABLES_NOT_READY`, `SETUP_OTHER_CUSTOMER_INSTALLED`, `SETUP_LICENCE_OLDER`, `SETUP_LICENCE_VERSION_CONFLICT`,
-`SETUP_CONFIG_OTHER_TENANT`. Failures: `SETUP_FAILED`, `SETUP_CONFIG_NOT_WRITTEN`.
+`SETUP_CONFIG_OTHER_TENANT`, `SETUP_KEY_SERVICE_SETTINGS_MISSING`, `SETUP_KEY_SERVICE_FAILED`. Failures: `SETUP_FAILED`, `SETUP_CONFIG_NOT_WRITTEN`.
 
 Two setup runs on the same database at once never mix: the second waits for the first.
 
 The run log gets one line per run with the time, product, customer and licence IDs, the counts per action and the
-code. It never holds group names, secrets or the database password.
+code, and what happened to the customer keys (`keys=created`, `present`, `missing` after a plan, `skipped`). It
+never holds group names, secrets, the database password or the key service login.
 
 ## 6. Demo files
 

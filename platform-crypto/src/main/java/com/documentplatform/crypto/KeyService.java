@@ -55,6 +55,19 @@ public interface KeyService {
     /** HMAC-SHA256 of {@code input} with the given version of the customer's fingerprint key (32 bytes). */
     byte[] fingerprint(CustomerId customer, int version, byte[] input);
 
+    /**
+     * HMAC-SHA256 of each input with the given version of the customer's fingerprint key, in the order given, in as
+     * few calls as the key service allows (Vault Transit: one call with a batch). The default makes one call per
+     * input.
+     */
+    default java.util.List<byte[]> fingerprints(CustomerId customer, int version, java.util.List<byte[]> inputs) {
+        java.util.List<byte[]> out = new java.util.ArrayList<>(inputs.size());
+        for (byte[] input : inputs) {
+            out.add(fingerprint(customer, version, input));
+        }
+        return out;
+    }
+
     /** Whether the key service answers and can serve calls. Never throws. */
     Health health();
 

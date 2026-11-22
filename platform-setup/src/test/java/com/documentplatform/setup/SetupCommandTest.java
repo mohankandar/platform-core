@@ -1,5 +1,9 @@
 package com.documentplatform.setup;
 
+import com.documentplatform.crypto.CryptoError;
+import com.documentplatform.crypto.CryptoException;
+import com.documentplatform.crypto.CustomerId;
+import com.documentplatform.crypto.testkit.InMemoryKeyService;
 import com.documentplatform.identity.EntityUuid;
 import com.documentplatform.identity.jdbc.PostgresLoginConnectionStore;
 import com.documentplatform.identity.store.ChangeSource;
@@ -56,6 +60,10 @@ class SetupCommandTest {
     @TempDir
     Path dir;
 
+    /** The key service setup reaches (in memory); a test can point setup elsewhere through {@link #connector}. */
+    final InMemoryKeyService keys = new InMemoryKeyService();
+    SetupKeys.Connector connector = env -> new SetupKeys.Connection(keys, () -> { });
+
     record Result(int exit, String out, String err) {
         String all() {
             return out + err;
@@ -101,7 +109,7 @@ class SetupCommandTest {
         }
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         ByteArrayOutputStream err = new ByteArrayOutputStream();
-        int exit = new SetupCommand(env, Clock.fixed(NOW, ZoneOffset.UTC)).run(args,
+        int exit = new SetupCommand(env, Clock.fixed(NOW, ZoneOffset.UTC), connector).run(args,
                 new PrintStream(out, true, StandardCharsets.UTF_8), new PrintStream(err, true, StandardCharsets.UTF_8));
         return new Result(exit, out.toString(StandardCharsets.UTF_8), err.toString(StandardCharsets.UTF_8));
     }
@@ -523,5 +531,93 @@ class SetupCommandTest {
         assertNotNull(UUID.fromString(db.strings("select entity_uuid::text from idn_entity limit 1").get(0)));
         assertEquals(URI.create("https://login.demo.example/oauth2/default").toString(),
                 db.strings("select distinct issuer_uri from idn_group_grant").get(0));
+    }
+
+    // ---- the customer's keys ----
+
+    @Test
+    void applyCreatesTheCustomersKeysAndARerunLeavesThem() throws Exception {
+        demo();
+        Pg db = Pg.migrated();
+        CustomerId customer = CustomerId.fromTenantId(TENANT);
+
+        Result plan = run(db, "plan", A);
+        assertEquals(0, plan.exit(), plan.all());
+        assertTrue(plan.out().contains("  create      customer keys " + TENANT + " (" + customer + ") in key service "
+                + InMemoryKeyService.ID), plan.out());
+        assertEquals(CryptoError.CRYPTO_KEY_MISSING, assertThrows(CryptoException.class,
+                () -> keys.wrappingKey(customer)).code(), "plan creates no keys");
+
+        Result apply = run(db, "apply", A);
+        assertEquals(0, apply.exit(), apply.all());
+        assertEquals(new com.documentplatform.crypto.KeyService.KeyVersions(1, 1), keys.wrappingKey(customer));
+        assertEquals(new com.documentplatform.crypto.KeyService.KeyVersions(1, 1), keys.fingerprintKey(customer));
+        assertTrue(Files.readAllLines(dir.resolve("setup-runs.log")).get(1).endsWith(" keys=created"));
+
+        // A rotated key stays as it is: a rerun (this product or the next) never makes new keys.
+        keys.rotate(customer);
+        Result again = run(db, "apply", A);
+        assertEquals(0, again.exit(), again.all());
+        assertTrue(again.out().contains("  unchanged   customer keys " + TENANT), again.out());
+        assertEquals(2, keys.wrappingKey(customer).latest());
+        Result b = run(Pg.migrated(), "apply", "PRODUCT_B");
+        assertEquals(0, b.exit(), b.all());
+        assertEquals(2, keys.wrappingKey(customer).latest());
+        assertTrue(Files.readAllLines(dir.resolve("setup-runs.log")).get(3).endsWith(" keys=present"));
+    }
+
+    @Test
+    void aKeyServiceProblemRefusesTheRunBeforeTheDatabaseChanges() throws Exception {
+        demo();
+        Pg db = Pg.migrated();
+        keys.down(true);
+        Result down = run(db, "apply", A);
+        assertEquals(SetupCommand.EXIT_REFUSED, down.exit(), down.all());
+        assertTrue(down.err().contains("SETUP_KEY_SERVICE_FAILED") && down.err().contains("CRYPTO_KEY_SERVICE_UNREACHABLE"),
+                down.err());
+        assertEquals(0, rows(db), "nothing written to the database");
+
+        keys.down(false).denied(true);
+        Result denied = run(db, "apply", A);
+        assertTrue(denied.err().contains("CRYPTO_PERMISSION_DENIED"), denied.err());
+        assertEquals(0, rows(db));
+
+        // --no-customer-keys: the step is skipped, everything else is done.
+        Result skipped = run(db, "apply", A, "--no-customer-keys");
+        assertEquals(0, skipped.exit(), skipped.all());
+        assertTrue(skipped.out().contains("  skipped     customer keys " + TENANT), skipped.out());
+        assertTrue(rows(db) > 0);
+    }
+
+    @Test
+    void theVaultSettingsComeFromTheEnvironmentAndAreNeverPrinted() throws Exception {
+        demo();
+        Pg db = Pg.migrated();
+        connector = SetupKeys::vault;
+        Result missing = run(db, "apply", A);
+        assertEquals(SetupCommand.EXIT_REFUSED, missing.exit(), missing.all());
+        assertTrue(missing.err().contains("SETUP_KEY_SERVICE_SETTINGS_MISSING") && missing.err().contains(
+                SetupKeys.VAULT_ADDR), missing.err());
+
+        Map<String, String> env = new java.util.HashMap<>(db.appEnv(PASSWORD));
+        env.put(SetupKeys.VAULT_ADDR, "http://127.0.0.1:9");
+        Result noLogin = run(env, "apply", A);
+        assertTrue(noLogin.err().contains("No key service login"), noLogin.err());
+
+        String token = "hvs.SETUP-TOKEN-NEVER-PRINTED-8c1f";
+        env.put(SetupKeys.VAULT_TOKEN, token);
+        env.put(SetupKeys.VAULT_ROLE_ID, "role-id-x");
+        Result two = run(env, "apply", A);
+        assertTrue(two.err().contains("More than one key service login"), two.err());
+
+        env.remove(SetupKeys.VAULT_ROLE_ID);
+        Result unreachable = run(env, "apply", A);
+        assertEquals(SetupCommand.EXIT_REFUSED, unreachable.exit(), unreachable.all());
+        assertTrue(unreachable.err().contains("CRYPTO_KEY_SERVICE_UNREACHABLE"), unreachable.err());
+        assertEquals(0, rows(db));
+        for (Result r : List.of(missing, noLogin, two, unreachable)) {
+            assertFalse(r.all().contains(token) || r.all().contains("role-id-x"), r.all());
+        }
+        assertFalse(read("setup-runs.log").contains(token));
     }
 }

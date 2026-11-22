@@ -176,7 +176,47 @@ public final class VaultKeyService implements KeyService {
         body.put("algorithm", "sha2-256");
         VaultClient.Reply r = vault.call("POST", "/v1/" + mount + "/hmac/" + name, VaultJson.write(body));
         check(r, name, "a fingerprint with key " + name + " version " + version);
-        Matcher m = HMAC.matcher(VaultJson.string(data(r, name), "hmac").orElse(""));
+        return mac(VaultJson.string(data(r, name), "hmac").orElse(""), name, version);
+    }
+
+    /** One {@code hmac} call with a {@code batch_input} of all inputs. */
+    @Override
+    public java.util.List<byte[]> fingerprints(CustomerId customer, int version, java.util.List<byte[]> inputs) {
+        Objects.requireNonNull(inputs, "inputs");
+        if (inputs.isEmpty()) {
+            return java.util.List.of();
+        }
+        String name = fingerprintKeyName(customer);
+        java.util.List<Map<String, Object>> batch = new java.util.ArrayList<>();
+        for (byte[] input : inputs) {
+            batch.add(Map.of("input", Base64.getEncoder().encodeToString(Objects.requireNonNull(input, "input"))));
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("batch_input", batch);
+        body.put("key_version", version);
+        body.put("algorithm", "sha2-256");
+        VaultClient.Reply r = vault.call("POST", "/v1/" + mount + "/hmac/" + name, VaultJson.write(body));
+        check(r, name, inputs.size() + " fingerprints with key " + name + " version " + version);
+        Object results = data(r, name).get("batch_results");
+        if (!(results instanceof java.util.List<?> list) || list.size() != inputs.size()) {
+            throw new CryptoException(CryptoError.CRYPTO_KEY_SERVICE_ERROR, "the hmac reply for key " + name
+                    + " does not hold one result per input");
+        }
+        java.util.List<byte[]> out = new java.util.ArrayList<>(list.size());
+        for (Object item : list) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> m = item instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
+            if (VaultJson.string(m, "error").filter(e -> !e.isBlank()).isPresent()) {
+                throw new CryptoException(CryptoError.CRYPTO_KEY_SERVICE_ERROR, "the key service refused a "
+                        + "fingerprint in a batch with key " + name + " version " + version);
+            }
+            out.add(mac(VaultJson.string(m, "hmac").orElse(""), name, version));
+        }
+        return out;
+    }
+
+    private static byte[] mac(String hmac, String name, int version) {
+        Matcher m = HMAC.matcher(hmac);
         if (!m.matches() || Integer.parseInt(m.group(1)) != version) {
             throw new CryptoException(CryptoError.CRYPTO_KEY_SERVICE_ERROR, "the hmac reply for key " + name
                     + " is not a fingerprint by version " + version);

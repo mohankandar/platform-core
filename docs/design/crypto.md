@@ -12,25 +12,32 @@ product-neutral. Vero removes `sdv-crypto` at its switch-over (section 8). LexaV
 | Key service plug-in point | `KeyService` | Per-customer keys that never leave the key service: wrap / unwrap / rewrap data keys, rotate, versions, HMAC fingerprints, health. |
 | Vault | `vault.VaultClient`, `vault.VaultAuth`, `vault.VaultKeyService` | HashiCorp Vault: Transit (keys) and KV version 2 (secrets); login by token, token file or AppRole. |
 | Values | `envelope.ValueCipher` | AES-256-GCM of one small value (≤ 64 KiB), self-contained text `pcv1.…` for one column. |
+| Record envelopes | `envelope.RecordCipher` | All sensitive values of one record under **one** data key (P019): envelope `pck1.…` once per record, items `pci1.…` per value; opening a record is one key service call. |
 | Streams | `envelope.StreamCipher`, `envelope.EnvelopeInfo` | AES-256-GCM in 64 KiB chunks for documents of any size (format `platform-stream` version 1); the app stores `EnvelopeInfo`. |
 | Fingerprints | `fingerprint.Fingerprinter` | HMAC-SHA256 of a normalised value with the customer's fingerprint key, for exact-match search of sensitive values. |
 | Failures | `CryptoError`, `CryptoException` | One stable code per kind of failure (section 6). |
 | Tests | `testkit.InMemoryKeyService` | The same behaviour and codes in memory; can be switched "down" or "denied". |
+| Spring | `platform-crypto-spring`: `spring.CryptoAutoConfiguration` | `platform.crypto.*` properties, Vault login, the key service and ciphers as beans, health indicator (P019, section 10). |
 
 AWS KMS and Azure Key Vault: only the interface for now (section 5).
 
 ## 2. Keys per customer
 
-- A **customer** is its tenant ID (`CustomerId`, the UUID of the licence and the identity tables). Every customer
-  has its own keys, **also in a hosted installation** where several customers share one Vault.
+- A **customer** is identified by its tenant ID (`TEN-…`, as in the licence and the identity tables). `CustomerId`
+  is a UUID derived from it, the same way everywhere: `CustomerId.fromTenantId(tenantId)`, a name-based UUID
+  (SHA-256 of `platform-customer|<tenant ID>`, version 5 and variant bits set, like the entity UUID of an entity
+  slot). So the setup command and the app always arrive at the same key names without storing a mapping. The prefix
+  `platform-customer|` never changes. Every customer has its own keys, **also in a hosted installation** where several
+  customers share one Vault.
 - Each customer has two keys in the key service, never exportable, never in plaintext backups:
   - the **wrapping key** `customer-<32 hex>`: wraps data keys;
   - the **fingerprint key** `customer-<32 hex>-fp`: computes fingerprints.
   The prefix (`customer-`) is a setting, so one Vault can serve several installations with different prefixes.
-- **Data keys:** a new random 256-bit key for every value and every stream, from the key service
+- **Data keys:** a new random 256-bit key for every value, every record envelope and every stream, from the key service
   (`datakey/plaintext`); only its wrapped form is stored. The plaintext data key lives in memory for the one
   operation and is wiped after it.
-- **Who creates keys:** the set-up step (`KeyService.createKeys`, idempotent) with the set-up policy. The app's runtime
+- **Who creates keys:** the setup command (`setup apply`, `platform-setup`'s `SetupKeys`, calling
+  `KeyService.createKeys`) with a login that has the set-up policy and is given to that run only. The app's runtime
   policy cannot create, rotate, export or delete keys. A customer without keys gives `CRYPTO_KEY_MISSING`.
 
 ## 3. Versions and rotation
@@ -58,6 +65,22 @@ Associated data: `platform-crypto/value/1|customer=<uuid>|keys=<key service id>|
 is the caller's, for example `case:<case id>:field:<field key>`: a value moved to another record or field does not
 open. One key service call per `seal` and per `open`.
 
+**Record envelope** (`RecordCipher`, P019): all sensitive values of one record under one data key.
+
+```
+envelope (once per record):  "pck1." + Base64url( version 1 (1) | customer UUID (16) | key service id (1 + n) | wrapped data key (2 + n) )
+item (once per value):       "pci1." + Base64url( version 1 (1) | nonce (12, random per item) | ciphertext + tag (16) )
+```
+
+Associated data per item:
+`platform-crypto/record/1|customer=<uuid>|keys=<key service id>|record=<record context>|item=<item context>`, so an
+item cannot be moved to another customer, record or item. platform-fields uses `fld/<SHA-256 of entity, product,
+record type and record ID>` as the record context and `<field key>/<position>` as the item context. `newKey` (new
+record) and `openKey` (read, or add items under the same key) are **one key service call each**, whatever the number
+of items; the `RecordKey` holds the plaintext key only for that operation and `close()` wipes it. No plaintext key is
+cached. `rewrap` changes only the envelope. Random 96-bit nonces under one key are safe far beyond the at most
+50 values per field of one record.
+
 **Stream** (`StreamCipher`), moved from Vero's streaming envelope with the same framing:
 
 ```
@@ -74,7 +97,8 @@ ciphertext) is stored by the app next to the object.
 
 **Fingerprint:** `f<version>.<Base64url of 32 bytes>`, HMAC-SHA256 over
 `"platform-crypto/fp/1" NUL context NUL canonical(value)`; canonical = NFC, trimmed, white space runs as one space,
-lower case. Give it the field's normalised value (platform-fields) and the field key as context.
+lower case. Give it the field's normalised value (platform-fields) and the field key as context. `fingerprintAll` /
+`ofAll` fingerprint many values in one key service call (Vault Transit `batch_input`; `KeyService.fingerprints`).
 
 ## 5. The key service plug-in point
 
@@ -158,7 +182,7 @@ What moved, and what changed on the way:
 | key name `sdv-tenant-<hex>` | `customer-<hex>` (prefix is a setting) |
 | provider id `VAULT_TRANSIT`, version text `v7` | key service id `vault-transit`, key version as a number |
 | `KeyServiceHealthProbe` (in sdv-application) | `KeyService.health()` |
-| `VaultCryptoConfiguration`, `DisabledCryptoConfiguration` (Spring, `sdv.crypto.*`) | not moved: wiring stays in the app (or a later `platform-crypto-spring`) |
+| `VaultCryptoConfiguration`, `DisabledCryptoConfiguration` (Spring, `sdv.crypto.*`) | replaced by `platform-crypto-spring` (`platform.crypto.*`, P019) |
 | Jackson | none (own small JSON reader) |
 | — | new: `ValueCipher`, `Fingerprinter`, KV secrets, rewrap, rotation, retired versions |
 
@@ -180,7 +204,38 @@ What Vero changes:
    `VaultAuth.token` / `tokenFile` (add AppRole role ID + secret ID as the recommended option) + `VaultKeyService`.
    `SDV_KEY_PROVIDER=disabled` and SDV-KEY-001 stay Vero's own.
 5. Health: the key service health indicator uses `KeyService.health()`; Vero keeps `NOT_CONFIGURED` for "disabled".
-6. Set-up: call `KeyService.createKeys(customer)` for the customer with set-up credentials (Vero's install step, or
-   `platform-setup`: see the P018 report's questions) and give the runtime the `platform-crypto-app` policy.
+6. Set-up: the setup command creates the customer's keys (`setup apply`, owner answer P018-1); Vero's install runs it
+   with the set-up login and gives the runtime the `platform-crypto-app` policy.
 7. Stored data: none exists anywhere (nothing in production or test), so no re-encryption is needed. Any local
    development data encrypted as `SDV-ENC-001` does not open any more: ingest it again.
+
+## 9. Owner answers to P018 (2026-11-22, task P019)
+
+1. **Keys are created by the setup command.** `setup apply` (`platform-setup`, `SetupKeys`) calls
+   `KeyService.createKeys` for the customer, with a Vault login given to that run only (settings
+   `PLATFORM_SETUP_VAULT_*` from the environment, `platform-crypto-setup` policy). `setup plan` only reads whether the
+   keys exist. Existing keys are left alone, so a rerun (or the run for the second product database) is safe. The
+   running app's policy has no create or rotate rights. `--no-customer-keys` skips the step for an installation
+   without sensitive values. Install guide: `docs/install/setup.md`.
+2. **Case envelope:** all sensitive values of one record are sealed under one data key (`RecordCipher`, section 4),
+   so opening a record is one key service call. No plaintext key is cached in memory.
+3. **`platform-crypto-spring`:** built (section 10).
+4. licensing's `VaultTransitSigner` stays as it is.
+
+## 10. platform-crypto-spring
+
+Spring Boot wiring, the same layout as the other `-spring` modules. Install guide: `docs/install/crypto.md`.
+
+- `CryptoProperties` (`platform.crypto.*`): `enabled`, `tenant-id` (default `platform.licensing.tenant-id`),
+  `vault.address`, `vault.namespace`, `vault.login` (`APPROLE` default, `TOKEN_FILE`, `TOKEN`), `vault.role-id`,
+  `vault.secret-id` / `vault.secret-id-file`, `vault.token-file`, `vault.token`, `vault.approle-mount`,
+  `vault.transit-mount`, `vault.key-prefix`, `vault.timeout`.
+- `CryptoConfig.from` checks them at startup and stops the app with every problem listed (`CryptoConfigException`,
+  `CryptoFailureAnalyzer`); no message holds a token or secret ID.
+- Beans: `VaultClient` (closed on shutdown, which revokes an AppRole token), `KeyService` (`VaultKeyService`),
+  `ValueCipher`, `RecordCipher`, `StreamCipher`, `Fingerprinter`, and `CustomerId` when a tenant ID is configured.
+  Every bean backs off when the app defines its own; an app-defined `KeyService` (for example the in-memory one in
+  tests) means no Vault beans at all.
+- Vault is not called at startup: an outage never stops the app.
+- `KeyServiceHealthIndicator` (`/actuator/health/keyService`, when Actuator is present): `UP` / `DOWN`, the key
+  service kind, and on `DOWN` the `CRYPTO_*` code and a short reason. No secrets.

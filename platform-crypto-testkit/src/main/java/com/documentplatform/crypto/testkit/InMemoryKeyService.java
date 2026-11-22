@@ -183,9 +183,24 @@ public final class InMemoryKeyService implements KeyService {
         return add(keys(wrapping, customer, "wrapping"));
     }
 
+    /** One call for the whole batch, as Vault Transit's {@code batch_input}. */
+    @Override
+    public List<byte[]> fingerprints(CustomerId customer, int version, List<byte[]> inputs) {
+        gate();
+        List<byte[]> out = new ArrayList<>(inputs.size());
+        for (byte[] input : inputs) {
+            out.add(mac(customer, version, input));
+        }
+        return out;
+    }
+
     @Override
     public byte[] fingerprint(CustomerId customer, int version, byte[] input) {
         gate();
+        return mac(customer, version, input);
+    }
+
+    private byte[] mac(CustomerId customer, int version, byte[] input) {
         Keys k = keys(fingerprinting, customer, "fingerprint");
         byte[] key;
         synchronized (k) {

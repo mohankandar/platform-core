@@ -61,6 +61,84 @@ public final class Fingerprinter {
     /** The fingerprint with one given version of the customer's fingerprint key. */
     public Fingerprint of(CustomerId customer, int version, String context, String value) {
         Objects.requireNonNull(customer, "customer");
+        byte[] input = input(context, value);
+        try {
+            byte[] mac = keys.fingerprint(customer, version, input);
+            return new Fingerprint(version, Base64.getUrlEncoder().withoutPadding().encodeToString(mac));
+        } finally {
+            Arrays.fill(input, (byte) 0);
+        }
+    }
+
+    /**
+     * One value to fingerprint together with others. {@code toString()} shows the context only.
+     *
+     * @param context for example the field key
+     * @param value   the value (normalised by the caller; canonicalised here)
+     */
+    public record Input(String context, String value) {
+        public Input {
+            Objects.requireNonNull(value, "value");
+            if (context == null || !CONTEXT.matcher(context).matches()) {
+                throw new IllegalArgumentException("A context is 1 to 200 of A-Z a-z 0-9 _ . : / @ -");
+            }
+        }
+
+        @Override
+        public String toString() {
+            return "Input[" + context + "]";
+        }
+    }
+
+    /**
+     * The fingerprints of several values with the latest version of the fingerprint key, in order: two key service
+     * calls however many values (the key's versions, then one batch). Empty input calls nothing.
+     */
+    public List<Fingerprint> fingerprintAll(CustomerId customer, List<Input> inputs) {
+        if (inputs.isEmpty()) {
+            return List.of();
+        }
+        return ofAll(customer, keys.fingerprintKey(customer).latest(), inputs);
+    }
+
+    /** The fingerprints of several values with one given key version, in order: one key service call. */
+    public List<Fingerprint> ofAll(CustomerId customer, int version, List<Input> inputs) {
+        Objects.requireNonNull(customer, "customer");
+        if (inputs.isEmpty()) {
+            return List.of();
+        }
+        List<byte[]> raw = new ArrayList<>(inputs.size());
+        try {
+            for (Input i : inputs) {
+                raw.add(input(i.context(), i.value()));
+            }
+            List<byte[]> macs = keys.fingerprints(customer, version, raw);
+            if (macs.size() != inputs.size()) {
+                throw new com.documentplatform.crypto.CryptoException(
+                        com.documentplatform.crypto.CryptoError.CRYPTO_KEY_SERVICE_ERROR,
+                        "the key service gave " + macs.size() + " fingerprints for " + inputs.size() + " values");
+            }
+            List<Fingerprint> out = new ArrayList<>(macs.size());
+            for (byte[] mac : macs) {
+                out.add(new Fingerprint(version, Base64.getUrlEncoder().withoutPadding().encodeToString(mac)));
+            }
+            return List.copyOf(out);
+        } finally {
+            raw.forEach(b -> Arrays.fill(b, (byte) 0));
+        }
+    }
+
+    /** The usable versions of the customer's fingerprint key, the latest first (one key service call). */
+    public List<Integer> usableVersions(CustomerId customer) {
+        KeyService.KeyVersions v = keys.fingerprintKey(customer);
+        List<Integer> out = new ArrayList<>();
+        for (int version = v.latest(); version >= v.lowestUsable(); version--) {
+            out.add(version);
+        }
+        return List.copyOf(out);
+    }
+
+    private static byte[] input(String context, String value) {
         Objects.requireNonNull(value, "value");
         if (context == null || !CONTEXT.matcher(context).matches()) {
             throw new IllegalArgumentException("A context is 1 to 200 of A-Z a-z 0-9 _ . : / @ -");
@@ -71,13 +149,8 @@ public final class Fingerprinter {
         System.arraycopy(DOMAIN, 0, input, 0, DOMAIN.length);
         System.arraycopy(c, 0, input, DOMAIN.length + 1, c.length);
         System.arraycopy(v, 0, input, DOMAIN.length + 2 + c.length, v.length);
-        try {
-            byte[] mac = keys.fingerprint(customer, version, input);
-            return new Fingerprint(version, Base64.getUrlEncoder().withoutPadding().encodeToString(mac));
-        } finally {
-            Arrays.fill(input, (byte) 0);
-            Arrays.fill(v, (byte) 0);
-        }
+        Arrays.fill(v, (byte) 0);
+        return input;
     }
 
     /** NFC, trimmed, white space runs as one space, lower case (locale-neutral). */

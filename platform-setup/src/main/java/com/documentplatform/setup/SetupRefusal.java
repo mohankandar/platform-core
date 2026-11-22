@@ -37,6 +37,15 @@ public enum SetupRefusal {
             + "stored; ask us for the correct licence file."),
     SETUP_CONFIG_OTHER_TENANT(SetupCommand.EXIT_REFUSED, "The config fragment names another customer; check --config-out "
             + "points to this installation's file."),
+    /** No (or more than one) key service login, or no key service address. */
+    SETUP_KEY_SERVICE_SETTINGS_MISSING(SetupCommand.EXIT_REFUSED, "Set " + SetupKeys.VAULT_ADDR + " and one login ("
+            + SetupKeys.VAULT_TOKEN + ", " + SetupKeys.VAULT_TOKEN_FILE + ", or " + SetupKeys.VAULT_ROLE_ID + " with "
+            + SetupKeys.VAULT_SECRET_ID + ") with the platform-crypto-setup policy, in the environment of this run "
+            + "only; or run with --no-keys if this installation keeps no sensitive values."),
+    /** The key service could not be reached, refused the login, or refused to read or create the keys. */
+    SETUP_KEY_SERVICE_FAILED(SetupCommand.EXIT_REFUSED, "Check the key service address, the login and that its policy "
+            + "is platform-crypto-setup (the CRYPTO_ code names the cause), then run setup again. Nothing was "
+            + "changed in the database."),
     /** The database part failed and was rolled back; nothing was changed. */
     SETUP_FAILED(SetupCommand.EXIT_FAILED, "Nothing was changed in the database. Fix the cause and run setup again; "
             + "it does the whole run."),
