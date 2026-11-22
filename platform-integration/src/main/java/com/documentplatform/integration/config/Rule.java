@@ -75,6 +75,19 @@ public record Rule(String status, String code, String pointer, String equals, Ou
         return new Rule(status, code, null, null, outcome, null, null, null);
     }
 
+    /**
+     * Ready-made rule for the configuration screen: "503 with Retry-After means busy" (wait, send fewer at once, no
+     * attempt used). Without it a 503 is an outage (the generic default). For a call step's or the integration's rules.
+     */
+    public static Rule busyWhen503WithRetryAfter() {
+        return of("503", null, Outcome.BUSY).whenRetryAfter();
+    }
+
+    /** The same ready-made rule for the health check's rules: the destination is busy, not down. */
+    public static Rule healthBusyWhen503WithRetryAfter() {
+        return busyWhen503WithRetryAfter().withPlatformCode(IntegrationCode.INT_DESTINATION_BUSY);
+    }
+
     /** Also requires the answer's field at {@code pointer} to equal {@code value}. */
     public Rule whenField(String pointer, String value) {
         return new Rule(status, code, pointer, value, outcome, platformCode, attemptUsed, retryAfter);

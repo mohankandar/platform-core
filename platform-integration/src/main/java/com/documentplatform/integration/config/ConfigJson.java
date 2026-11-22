@@ -108,6 +108,13 @@ public final class ConfigJson {
         if (c.profile() != null) m.put("profile", c.profile());
         if (!c.allowedSensitiveFields().isEmpty()) m.put("allowedSensitiveFields", new ArrayList<>(c.allowedSensitiveFields()));
         if (!c.settings().isEmpty()) m.put("settings", new LinkedHashMap<>(c.settings()));
+        if (c.folder() != null) {
+            Map<String, Object> f = new LinkedHashMap<>();
+            f.put("folder", c.folder().folder());
+            f.put("folderName", c.folder().folderNameTemplate());
+            if (c.folder().fileNameTemplate() != null) f.put("fileName", c.folder().fileNameTemplate());
+            m.put("folder", f);
+        }
         return m;
     }
 
@@ -188,7 +195,7 @@ public final class ConfigJson {
                     bool(m, "sendCorrelationId"), (String) m.get("profile"),
                     m.containsKey("allowedSensitiveFields") ? new java.util.TreeSet<>(stringList(list(m,
                             "allowedSensitiveFields"))) : Set.of(),
-                    m.containsKey("settings") ? strings(map(m, "settings")) : Map.of());
+                    m.containsKey("settings") ? strings(map(m, "settings")) : Map.of(), folder(optMap(m, "folder")));
         } catch (Unreadable u) {
             throw u;
         } catch (RuntimeException bad) {
@@ -209,6 +216,11 @@ public final class ConfigJson {
                     SignIn.OAuth2ClientCredentials.ClientAuth.valueOf(str(m, "clientAuth")));
             default -> throw new Unreadable("signIn.type");
         };
+    }
+
+    private static FolderTarget folder(Map<String, Object> f) {
+        if (f == null) return null;
+        return new FolderTarget(str(f, "folder"), str(f, "folderName"), (String) f.get("fileName"));
     }
 
     private static List<Rule> readRuleList(List<Object> raw) {

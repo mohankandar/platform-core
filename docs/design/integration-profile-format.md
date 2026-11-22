@@ -33,7 +33,9 @@ The machine-readable definition is the JSON Schema
 Templates are the same fixed building blocks as in any configuration, with no expressions or scripts:
 
 - `{package.*}`, `{doc.*}`, `{doc.attr.*}`, `{value.*}`, `{step.<step>.<value>}`, `{correlationId}`;
-- in JSON only, the one list construct `{#each doc}…{/each}`.
+- in JSON only, the one list construct `{#each doc}…{/each}`;
+- in JSON only, "omit when missing": `{name?}` as the whole value of an object member leaves the member out when it
+  has no value (P025; refused anywhere else with `INT_CONFIG_OMIT_PLACE`, reported here as `INT_PROFILE_TEMPLATE`).
 
 ## What a profile never holds
 

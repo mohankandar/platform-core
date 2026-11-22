@@ -119,6 +119,11 @@ public final class IntegrationConfigs {
         return store.list(entity, product);
     }
 
+    /** Every integration that is switched on (all entities and products). */
+    public List<StoredIntegration> enabled() {
+        return store.enabled();
+    }
+
     private ConfigCheck.Report check(IntegrationConfig config, String by) {
         Objects.requireNonNull(config, "config");
         if (by == null || !BY.matcher(by).matches()) {

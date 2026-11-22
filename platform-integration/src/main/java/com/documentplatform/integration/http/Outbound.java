@@ -3,8 +3,11 @@ package com.documentplatform.integration.http;
 import com.documentplatform.integration.IntegrationCode;
 import com.documentplatform.integration.safety.AddressGuard;
 import com.documentplatform.integration.safety.Installation;
+import com.documentplatform.integration.safety.JvmProxySignIn;
 import com.documentplatform.integration.safety.ProxySettings;
 import com.documentplatform.integration.safety.TrustBundle;
+import com.documentplatform.notifications.secret.Secret;
+import com.documentplatform.notifications.secret.SecretResolver;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLException;
@@ -23,7 +26,9 @@ import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -33,9 +38,16 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Every outbound HTTP call of the integrations (destination calls and token requests) goes through here, under the
  * installation's rules: https only (plain http only where internal addresses are allowed), the address guard before
- * each call, the outbound proxy, the private certificate authority added to the system's, redirects never followed,
- * timeouts, and the answer read only up to a limit. Failures are codes; no address, header or body ever reaches an
- * exception text.
+ * each call, the outbound proxy (with its Basic sign-in when set), the private certificate authority added to the
+ * system's, redirects never followed, timeouts, and the answer read only up to a limit. Failures are codes; no
+ * address, header or body ever reaches an exception text.
+ *
+ * <p>Proxy sign-in: the proxy's user and password (read from the secret store at every call, by reference) go as
+ * {@code Proxy-Authorization: Basic …} on the CONNECT of an https call and on plain-http requests through the proxy;
+ * they never reach the destination. The library never sets JVM properties: when the JVM disables Basic for tunnels
+ * (its default), an https call through a proxy with sign-in fails before connecting with
+ * {@link IntegrationCode#INT_PROXY_SIGN_IN_DISABLED_BY_JVM}. A proxy answering 407 gives
+ * {@link IntegrationCode#INT_PROXY_SIGN_IN_REFUSED}.
  */
 public final class Outbound implements AutoCloseable {
 
@@ -72,7 +84,7 @@ public final class Outbound implements AutoCloseable {
         private final IntegrationCode code;
 
         public Failure(IntegrationCode code) {
-            super(code.name(), null, false, false);
+            super(code.hasMessage() ? code.name() + ": " + code.message() : code.name(), null, false, false);
             this.code = code;
         }
 
@@ -86,16 +98,38 @@ public final class Outbound implements AutoCloseable {
 
     private final Installation installation;
     private final AddressGuard guard;
+    private final SecretResolver secrets;
+    private final JvmProxySignIn jvm;
     private final SSLContext ssl;
     private final Map<ClientKey, HttpClient> clients = new ConcurrentHashMap<>();
 
+    /** For an installation whose proxy (if any) needs no sign-in. */
     public Outbound(Installation installation) {
-        this(installation, new AddressGuard(installation.allowInternalAddresses()));
+        this(installation, new AddressGuard(installation.allowInternalAddresses()), null);
+    }
+
+    /** @param secrets reads the proxy password; required when the installation's proxy has sign-in */
+    public Outbound(Installation installation, SecretResolver secrets) {
+        this(installation, new AddressGuard(installation.allowInternalAddresses()), secrets);
     }
 
     public Outbound(Installation installation, AddressGuard guard) {
+        this(installation, guard, null);
+    }
+
+    public Outbound(Installation installation, AddressGuard guard, SecretResolver secrets) {
+        this(installation, guard, secrets, JvmProxySignIn.current());
+    }
+
+    /** @param jvm what this JVM allows for proxy sign-in (tests give a fixed answer) */
+    public Outbound(Installation installation, AddressGuard guard, SecretResolver secrets, JvmProxySignIn jvm) {
         this.installation = Objects.requireNonNull(installation, "installation");
         this.guard = Objects.requireNonNull(guard, "guard");
+        this.jvm = Objects.requireNonNull(jvm, "jvm");
+        if (installation.proxy() != null && installation.proxy().signIn() && secrets == null) {
+            throw new IllegalArgumentException("The proxy has sign-in: a SecretResolver is needed to read its password");
+        }
+        this.secrets = secrets;
         this.ssl = TrustBundle.context(installation.privateCaCertificates());
     }
 
@@ -124,6 +158,7 @@ public final class Outbound implements AutoCloseable {
         if (blocked.isPresent()) {
             throw new Failure(blocked.get());
         }
+        String proxyAuthorization = proxied && proxy.signIn() ? proxyAuthorization(proxy, scheme) : null;
 
         HttpRequest request;
         try {
@@ -132,6 +167,9 @@ public final class Outbound implements AutoCloseable {
             for (Map.Entry<String, String> h : call.headers()) {
                 b.header(h.getKey(), h.getValue());
             }
+            // To the proxy only: on CONNECT for https, on the request itself for plain http (the JDK keeps it off
+            // the tunnelled request).
+            if (proxyAuthorization != null) b.header("Proxy-Authorization", proxyAuthorization);
             request = b.build();
         } catch (IllegalArgumentException restrictedOrBad) {
             throw new Failure(IntegrationCode.INT_VALUE_NOT_ALLOWED);
@@ -155,6 +193,11 @@ public final class Outbound implements AutoCloseable {
         }
 
         try (InputStream in = response.body()) {
+            if (proxied && response.statusCode() == 407) {
+                // The proxy itself asks for (other) sign-in: on a plain-http request, or on the CONNECT of an https
+                // one (the JDK client hands the proxy's 407 back as the answer when it has no authenticator).
+                throw new Failure(IntegrationCode.INT_PROXY_SIGN_IN_REFUSED);
+            }
             byte[] body = in.readNBytes(maxResponseBytes + 1);
             boolean tooLarge = body.length > maxResponseBytes;
             return new Answer(response.statusCode(), response.headers(), tooLarge ? new byte[0] : body, tooLarge);
@@ -165,6 +208,23 @@ public final class Outbound implements AutoCloseable {
         }
     }
 
+    /** {@code Basic base64(user:password)}, the password read now; or a failure code. */
+    private String proxyAuthorization(ProxySettings proxy, String scheme) throws Failure {
+        boolean tunnel = scheme.equals("https");
+        if (tunnel ? jvm.basicDisabledForTunnels() : jvm.basicDisabledForProxying()) {
+            throw new Failure(IntegrationCode.INT_PROXY_SIGN_IN_DISABLED_BY_JVM);
+        }
+        Optional<Secret> password;
+        try {
+            password = secrets.resolve(proxy.password());
+        } catch (RuntimeException unavailable) {
+            throw new Failure(IntegrationCode.INT_SECRET_UNAVAILABLE);
+        }
+        if (password.isEmpty()) throw new Failure(IntegrationCode.INT_SECRET_NOT_FOUND);
+        return "Basic " + Base64.getEncoder().encodeToString((proxy.user() + ":" + password.get().reveal())
+                .getBytes(StandardCharsets.UTF_8));
+    }
+
     private static IntegrationCode classify(IOException e, boolean proxied) {
         for (Throwable t = e; t != null; t = t.getCause()) {
             if (t instanceof SSLException) return IntegrationCode.INT_TLS_FAILED;
@@ -172,9 +232,12 @@ public final class Outbound implements AutoCloseable {
             if (t instanceof HttpConnectTimeoutException) return IntegrationCode.INT_CONNECT_TIMEOUT;
             if (t instanceof HttpTimeoutException) return IntegrationCode.INT_TIMEOUT;
         }
-        // The JDK client reports a proxy's refusal of CONNECT as an IOException "Unable to tunnel through proxy".
+        // The JDK client reports a proxy's refusal of CONNECT as an IOException "Unable to tunnel through proxy.
+        // Proxy returns "HTTP/1.1 407 …"" (sign-in asked for or refused) or with another status.
         String m = e.getMessage();
-        if (proxied && m != null && m.toLowerCase().contains("tunnel")) return IntegrationCode.INT_PROXY_REFUSED;
+        if (proxied && m != null && m.toLowerCase().contains("tunnel")) {
+            return m.contains(" 407") ? IntegrationCode.INT_PROXY_SIGN_IN_REFUSED : IntegrationCode.INT_PROXY_REFUSED;
+        }
         for (Throwable t = e; t != null; t = t.getCause()) {
             if (t instanceof ConnectException) return IntegrationCode.INT_CANT_CONNECT;
         }

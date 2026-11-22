@@ -22,9 +22,14 @@ When the owner says "do the next task":
    from GitHub Packages; `scripts/build-release.*` builds a tag into a separate repository when needed).
 5. Merge through a pull request, never locally into main:
    1. push the branch (`git push -u origin <branch>`);
-   2. open a PR (`gh pr create`);
-   3. wait for the checks (`gh pr checks --watch`);
-   4. merge only when green (`gh pr merge --rebase --delete-branch`).
+   2. open a PR (`gh pr create`) and note its number `<n>`;
+   3. wait for the checks and merge **only if that command's exit status is 0**, as one script line that stops on a
+      failed check:
+      - bash: `gh pr checks <n> --watch --fail-fast && gh pr merge <n> --rebase --delete-branch`
+      - PowerShell 5.1: `gh pr checks <n> --watch --fail-fast; if ($LASTEXITCODE -eq 0) { gh pr merge <n> --rebase --delete-branch }`
+   4. If a required check failed (non-zero exit status), **stop and report it: never merge, never tag.** Do not
+      re-run a failed check to get it green without finding why it failed; a re-run is noted in the report with the
+      failed run's ID.
    If `gh` is missing or not signed in, stop with the PR open (or the branch pushed) and say so in the report.
 6. Write `PNNN-report.md` using the layout below, and bring it to main the same way (a PR). **Questions for the
    owner go in the report** (short, numbered, each with a recommendation). Every report states **"No other product's
@@ -64,7 +69,9 @@ Releases are tags `platform-core-vX.Y.Z` on main. Tags are never moved or reused
    - breaking changes;
    - the database schema versions;
    - the line "No other product's name or behaviour in code".
-2. When CI is green, merge the PR. Tag the merge commit and push the tag:
+2. Merge the PR with the script line of step 5 above (it merges only when every check passed). Then wait for main's
+   own CI run on the merge commit (`gh run watch <run-id> --exit-status`); only when it exits 0, tag the merge commit
+   and push the tag:
    `git tag -a platform-core-vX.Y.Z -m "platform-core X.Y.Z" <commit> && git push origin platform-core-vX.Y.Z`.
    The release workflow (`.github/workflows/release.yml`) then:
    - checks that the POM version is the tag's, without `-SNAPSHOT`;

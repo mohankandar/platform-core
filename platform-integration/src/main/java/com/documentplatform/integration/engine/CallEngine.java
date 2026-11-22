@@ -296,6 +296,14 @@ public final class CallEngine implements AutoCloseable {
             }
 
             @Override
+            public boolean has(String name) {
+                if (name.startsWith(Template.FIELD_PREFIX)) {
+                    return d.fields().field(name.substring(Template.FIELD_PREFIX.length())).isPresent();
+                }
+                return lookup(name, doc, docVals).isPresent();
+            }
+
+            @Override
             public List<Template.Values> documents() {
                 List<Template.Values> out = new ArrayList<>();
                 for (Delivery.Document dd : d.documents()) {
@@ -514,7 +522,8 @@ public final class CallEngine implements AutoCloseable {
 
     static Outcome failureOutcome(IntegrationCode code) {
         return switch (code) {
-            case INT_ADDRESS_NOT_SECURE, INT_VALUE_NOT_ALLOWED -> Outcome.NOT_CONFIGURED;
+            case INT_ADDRESS_NOT_SECURE, INT_VALUE_NOT_ALLOWED, INT_SECRET_NOT_FOUND, INT_PROXY_SIGN_IN_DISABLED_BY_JVM
+                    -> Outcome.NOT_CONFIGURED;
             default -> Outcome.CANT_CONNECT;
         };
     }

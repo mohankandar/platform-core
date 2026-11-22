@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "platform-export-manifest-1.schema.json",
+  "title": "platform-export-manifest/1",
+  "description": "The manifest of a folder export, written last as manifest.json in the package folder: the common envelope written by platform-core, plus the app's own section under \"app\", which platform-core never reads. A package folder without a manifest is never final. Described in docs/design/integration-module.md, section \"Folder export and its manifest\".",
+  "type": "object",
+  "required": ["format", "packageId", "correlationId", "createdAt", "product", "entitySlotId", "integration", "documents", "app"],
+  "additionalProperties": false,
+  "properties": {
+    "format": {"const": "platform-export-manifest/1"},
+    "packageId": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,200}$"},
+    "correlationId": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$"},
+    "createdAt": {"type": "string", "format": "date-time"},
+    "product": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,31}$"},
+    "entitySlotId": {"type": "string", "pattern": "^ENT-[A-Z0-9-]{1,60}$"},
+    "integration": {
+      "type": "object",
+      "required": ["id", "configVersion"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "format": "uuid"},
+        "configVersion": {"type": "integer", "minimum": 1}
+      }
+    },
+    "documents": {
+      "type": "array",
+      "maxItems": 100000,
+      "items": {
+        "type": "object",
+        "required": ["fileName", "sourceDocumentId", "contentType", "size", "sha256"],
+        "additionalProperties": false,
+        "properties": {
+          "fileName": {"type": "string", "minLength": 1, "maxLength": 200},
+          "sourceDocumentId": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,200}$"},
+          "contentType": {"type": "string", "minLength": 3, "maxLength": 255},
+          "size": {"type": "integer", "minimum": 0},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "fields": {
+      "description": "The case field values in the platform-field-values/1 wire format (platform-fields), sensitive fields only where the integration's configuration allows their key.",
+      "type": "object",
+      "required": ["format", "fields"],
+      "additionalProperties": false,
+      "properties": {
+        "format": {"const": "platform-field-values/1"},
+        "fields": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "required": ["key", "type"],
+            "additionalProperties": false,
+            "properties": {
+              "key": {"type": "string", "minLength": 1, "maxLength": 100},
+              "type": {"type": "string"},
+              "currency": {"type": "string"},
+              "value": {},
+              "values": {"type": "array"}
+            }
+          }
+        }
+      }
+    },
+    "app": {
+      "description": "The app's own section: whatever the app puts there (one JSON object). platform-core never reads it.",
+      "type": "object"
+    }
+  }
+}

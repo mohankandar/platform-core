@@ -35,13 +35,23 @@ import java.util.regex.Pattern;
  * The one list construct, JSON only: {@code [{#each doc}{"id":"{doc.sourceDocumentId}"}{/each}]} writes the part
  * between the markers once per document, separated by commas. It cannot be nested.
  *
+ * <p>"Omit when missing", JSON only: a placeholder written {@code {name?}} that is the whole value of an object member
+ * ({@code "loan":"{field:loan_number?}"} or {@code "amount":{field:loan_amount?}}) leaves out the whole member, with
+ * its comma, when it has no value; otherwise the member is written as usual. Still no expressions or conditions.
+ * Anywhere else (inside a longer string, in a list, in a path or header) it is refused with
+ * {@code INT_CONFIG_OMIT_PLACE}.
+ *
  * <p>Refused when the configuration is saved: an unknown placeholder; any placeholder for a secret, sign-in or a
  * document's content; any placeholder in the query string of a path.
  */
 public final class Template {
 
     /** Where the rendered text goes. */
-    public enum Place { PATH, HEADER, JSON }
+    /**
+     * Where the rendered text goes. {@code NAME}: one file or folder name (folder export); literal text without
+     * separators or characters Windows refuses, each value percent-encoded as in a path segment.
+     */
+    public enum Place { PATH, HEADER, JSON, NAME }
 
     /** The values a template is filled with. */
     public interface Values {
@@ -56,6 +66,15 @@ public final class Template {
         /** The values of each document, for {@code {#each doc}}. */
         default List<Values> documents() {
             return List.of();
+        }
+
+        /**
+         * Whether the placeholder has a value at all, for "omit when missing" members. A value that is there but
+         * cannot be placed (a field that is not a number where one is needed) still counts: it is refused, not left
+         * out.
+         */
+        default boolean has(String name) {
+            return text(name).isPresent() || json(name).isPresent();
         }
     }
 
@@ -92,22 +111,41 @@ public final class Template {
             "credentials", "token", "password", "key", "auth", "content", "body", "bytes", "file");
     private static final Set<String> FORBIDDEN_DOC = Set.of("doc.content", "doc.bytes", "doc.body", "doc.text",
             "doc.data", "doc.file");
-    private static final Pattern PLACEHOLDER = Pattern.compile("\\{([A-Za-z][A-Za-z0-9_.:-]{0,120})}");
+    private static final Pattern PLACEHOLDER = Pattern.compile("\\{([A-Za-z][A-Za-z0-9_.:-]{0,120})(\\?)?}");
     private static final Pattern NAME = Pattern.compile("[A-Za-z][A-Za-z0-9_-]{0,63}");
     private static final Pattern FIELD_KEY = Pattern.compile("[A-Za-z][A-Za-z0-9_.-]{0,99}");
     private static final Pattern NUMBER = Pattern.compile("-?\\d{1,18}");
+    /** Before an "omit when missing" placeholder: {@code {} or {@code ,}, then {@code "key":} and, in a string, {@code "}. */
+    private static final Pattern MEMBER_START = Pattern.compile("(?s)(.*[{,]\\s*)(\"(?:[^\"\\\\]|\\\\.)*\"\\s*:\\s*\"?)");
+    /** After it: in a string {@code "}, then {@code ,} or {@code }} (outside a string just the {@code ,} or {@code }}). */
+    private static final Pattern MEMBER_END_STRING = Pattern.compile("(?s)(\")(\\s*[,}].*)");
+    private static final Pattern MEMBER_END_BARE = Pattern.compile("(?s)()(\\s*[,}].*)");
 
-    private sealed interface Part permits Literal, Hole, Each {
+    private sealed interface Part permits Literal, Hole, Each, OptionalMember {
     }
 
     private record Literal(String text) implements Part {
     }
 
-    /** @param inString for JSON: whether the placeholder is inside a string literal */
-    private record Hole(String name, boolean inString) implements Part {
+    /**
+     * @param inString for JSON: whether the placeholder is inside a string literal
+     * @param optional marked "omit when missing" ({@code {name?}})
+     */
+    private record Hole(String name, boolean inString, boolean optional) implements Part {
+        Hole(String name, boolean inString) {
+            this(name, inString, false);
+        }
     }
 
     private record Each(List<Part> inner) implements Part {
+    }
+
+    /**
+     * A whole JSON object member whose value is one "omit when missing" placeholder: {@code prefix} is
+     * {@code "key":} (plus {@code "} in a string), {@code suffix} the closing {@code "} or nothing. Left out, with
+     * one neighbouring comma, when the placeholder has no value.
+     */
+    private record OptionalMember(String prefix, Hole hole, String suffix) implements Part {
     }
 
     private final String text;
@@ -141,7 +179,21 @@ public final class Template {
                     }
                 }
             }
-            case JSON -> parts = jsonParts(parts, false);
+            case JSON -> parts = optionalMembers(jsonParts(parts, false));
+            case NAME -> {
+                if (parts.isEmpty()) throw new Problem(IntegrationCode.INT_CONFIG_FOLDER_INVALID, null);
+                for (Part p : parts) {
+                    if (p instanceof Literal l && (l.text().contains("{") || l.text().contains("}")
+                            || l.text().chars().anyMatch(c -> c < 0x20 || c == 0x7f || "/\\:*?\"<>|".indexOf(c) >= 0))) {
+                        throw new Problem(IntegrationCode.INT_CONFIG_FOLDER_INVALID, null);
+                    }
+                }
+            }
+        }
+        if (place != Place.JSON) {
+            for (Part p : parts) {
+                if (p instanceof Hole h && h.optional()) throw new Problem(IntegrationCode.INT_CONFIG_OMIT_PLACE, h.name());
+            }
         }
         return new Template(text, place, List.copyOf(parts));
     }
@@ -154,7 +206,7 @@ public final class Template {
             if (m.start() > at) parts.add(new Literal(text.substring(at, m.start())));
             String name = m.group(1);
             checkName(name);
-            parts.add(new Hole(name, false));
+            parts.add(new Hole(name, false, m.group(2) != null));
             at = m.end();
         }
         if (at < text.length()) parts.add(new Literal(text.substring(at)));
@@ -251,7 +303,7 @@ public final class Template {
                 if (!inString && !NUMERIC.contains(h.name()) && !h.name().startsWith(FIELD_PREFIX)) {
                     throw new Problem(IntegrationCode.INT_CONFIG_PLACEHOLDER_PLACE, h.name());
                 }
-                out.add(new Hole(h.name(), inString));
+                out.add(new Hole(h.name(), inString, h.optional()));
             } else {
                 Each e = (Each) p;
                 if (inString || nested) throw new Problem(IntegrationCode.INT_CONFIG_TEMPLATE_INVALID, null);
@@ -259,6 +311,44 @@ public final class Template {
             }
         }
         if (inString) throw new Problem(IntegrationCode.INT_CONFIG_TEMPLATE_INVALID, null);
+        return out;
+    }
+
+    /**
+     * Turns each "omit when missing" placeholder into an {@link OptionalMember}: it must be the whole value of an
+     * object member ({@code ,"key":"{x?}"} or {@code {"key":{field:k?}}}), else {@code INT_CONFIG_OMIT_PLACE}.
+     */
+    private static List<Part> optionalMembers(List<Part> parts) throws Problem {
+        List<Part> in = new ArrayList<>(parts);
+        List<Part> out = new ArrayList<>();
+        for (int i = 0; i < in.size(); i++) {
+            Part p = in.get(i);
+            if (p instanceof Each e) {
+                out.add(new Each(optionalMembers(e.inner())));
+                continue;
+            }
+            if (!(p instanceof Hole h) || !h.optional()) {
+                out.add(p);
+                continue;
+            }
+            Part before = out.isEmpty() ? null : out.get(out.size() - 1);
+            Part after = i + 1 < in.size() ? in.get(i + 1) : null;
+            if (!(before instanceof Literal b) || !(after instanceof Literal a)) {
+                throw new Problem(IntegrationCode.INT_CONFIG_OMIT_PLACE, h.name());
+            }
+            Matcher start = MEMBER_START.matcher(b.text());
+            Matcher end = (h.inString() ? MEMBER_END_STRING : MEMBER_END_BARE).matcher(a.text());
+            if (!start.matches() || !end.matches()) {
+                throw new Problem(IntegrationCode.INT_CONFIG_OMIT_PLACE, h.name());
+            }
+            String prefix = start.group(2);
+            // In a string the prefix ends with the value's opening quote; outside one it ends with the colon.
+            boolean opensString = prefix.replaceAll("\\s", "").endsWith(":\"");
+            if (opensString != h.inString()) throw new Problem(IntegrationCode.INT_CONFIG_OMIT_PLACE, h.name());
+            out.set(out.size() - 1, new Literal(start.group(1)));
+            out.add(new OptionalMember(prefix, h, end.group(1)));
+            in.set(i + 1, new Literal(end.group(2)));
+        }
         return out;
     }
 
@@ -292,7 +382,22 @@ public final class Template {
     private static void collect(List<Part> parts, Set<String> into, boolean inEach) {
         for (Part p : parts) {
             if (p instanceof Hole h) into.add(h.name());
+            else if (p instanceof OptionalMember o) into.add(o.hole().name());
             else if (p instanceof Each e && inEach) collect(e.inner(), into, true);
+        }
+    }
+
+    /** The placeholders marked "omit when missing" ({@code {name?}}), inside an each-block too. */
+    public Set<String> optionalPlaceholders() {
+        Set<String> names = new LinkedHashSet<>();
+        collectOptional(parts, names);
+        return names;
+    }
+
+    private static void collectOptional(List<Part> parts, Set<String> into) {
+        for (Part p : parts) {
+            if (p instanceof OptionalMember o) into.add(o.hole().name());
+            else if (p instanceof Each e) collectOptional(e.inner(), into);
         }
     }
 
@@ -308,14 +413,21 @@ public final class Template {
      */
     public String fill(Values values) throws Problem {
         StringBuilder b = new StringBuilder();
-        render(parts, values, b);
+        render(parts, values, b, new boolean[1]);
         return b.toString();
     }
 
-    private void render(List<Part> list, Values values, StringBuilder b) throws Problem {
+    /** @param dropComma set when a left-out member was the first of its object: the next comma goes too */
+    private void render(List<Part> list, Values values, StringBuilder b, boolean[] dropComma) throws Problem {
         for (Part p : list) {
             if (p instanceof Literal l) {
-                b.append(l.text());
+                String t = l.text();
+                if (dropComma[0]) {
+                    String rest = t.stripLeading();
+                    if (rest.startsWith(",")) t = rest.substring(1);
+                    if (!t.isBlank() || rest.startsWith(",")) dropComma[0] = false;
+                }
+                b.append(t);
                 continue;
             }
             if (p instanceof Each e) {
@@ -323,7 +435,24 @@ public final class Template {
                 for (Values doc : values.documents()) {
                     if (!first) b.append(',');
                     first = false;
-                    render(e.inner(), doc, b);
+                    render(e.inner(), doc, b, dropComma);
+                }
+                continue;
+            }
+            if (p instanceof OptionalMember o) {
+                if (values.has(o.hole().name())) {
+                    b.append(o.prefix());
+                    render(List.of(o.hole()), values, b, dropComma);
+                    b.append(o.suffix());
+                    continue;
+                }
+                // Left out: with the comma before it, or (first member) the one after it.
+                int end = b.length();
+                while (end > 0 && Character.isWhitespace(b.charAt(end - 1))) end--;
+                if (end > 0 && b.charAt(end - 1) == ',') {
+                    b.setLength(end - 1);
+                } else {
+                    dropComma[0] = true;
                 }
                 continue;
             }
@@ -335,7 +464,7 @@ public final class Template {
             }
             String v = values.text(h.name()).orElseThrow(() -> new Problem(IntegrationCode.INT_VALUE_MISSING, h.name()));
             switch (place) {
-                case PATH -> {
+                case PATH, NAME -> {
                     if (v.isEmpty()) throw new Problem(IntegrationCode.INT_VALUE_NOT_ALLOWED, h.name());
                     b.append(encodeSegment(v));
                 }

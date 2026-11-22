@@ -77,4 +77,14 @@ public final class InMemoryIntegrationStore implements IntegrationStore {
         }
         return out;
     }
+
+    @Override
+    public synchronized List<StoredIntegration> enabled() {
+        List<StoredIntegration> out = new ArrayList<>();
+        for (Entry e : entries.values()) {
+            StoredIntegration s = e.versions().get(e.versions().size() - 1);
+            if (s.config().enabled()) out.add(s);
+        }
+        return out;
+    }
 }

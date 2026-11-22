@@ -66,12 +66,21 @@ public final class MockIssuer implements AutoCloseable {
     private volatile boolean withoutJwksUri;
     private volatile boolean down;
 
-    private MockIssuer(Clock clock) throws IOException {
+    private MockIssuer(Clock clock, javax.net.ssl.SSLContext tls) throws IOException {
         this.clock = clock;
         this.key = rsa();
         this.otherKey = rsa();
-        this.server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
-        this.issuer = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + PATH);
+        InetSocketAddress at = new InetSocketAddress(InetAddress.getLoopbackAddress(), 0);
+        if (tls == null) {
+            this.server = HttpServer.create(at, 0);
+            this.issuer = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + PATH);
+        } else {
+            com.sun.net.httpserver.HttpsServer https = com.sun.net.httpserver.HttpsServer.create(at, 0);
+            https.setHttpsConfigurator(new com.sun.net.httpserver.HttpsConfigurator(tls));
+            this.server = https;
+            // By name: the test server certificate is issued to localhost.
+            this.issuer = URI.create("https://localhost:" + server.getAddress().getPort() + PATH);
+        }
         this.discoveryIssuer = issuer.toString();
         server.createContext("/", this::handle);
         server.start();
@@ -85,7 +94,21 @@ public final class MockIssuer implements AutoCloseable {
     /** @param clock the time of the tokens' {@code iat} and {@code exp} */
     public static MockIssuer start(Clock clock) {
         try {
-            return new MockIssuer(Objects.requireNonNull(clock, "clock"));
+            return new MockIssuer(Objects.requireNonNull(clock, "clock"), null);
+        } catch (IOException e) {
+            throw new IllegalStateException("mock issuer could not start", e);
+        }
+    }
+
+    /**
+     * An https issuer on a free port of {@code 127.0.0.1}, named {@code https://localhost:<port>/oauth2/test}: give it the
+     * server context of a certificate issued to {@code localhost} (for example the integration testkit's
+     * {@code TestCertificates.server(dir, ca, "issuer", "dns:localhost").context()}) and trust its CA on the calling
+     * side (the installation's private CA). A real (not local test) issuer for the test sign-in.
+     */
+    public static MockIssuer startHttps(javax.net.ssl.SSLContext serverContext) {
+        try {
+            return new MockIssuer(Clock.systemUTC(), Objects.requireNonNull(serverContext, "serverContext"));
         } catch (IOException e) {
             throw new IllegalStateException("mock issuer could not start", e);
         }

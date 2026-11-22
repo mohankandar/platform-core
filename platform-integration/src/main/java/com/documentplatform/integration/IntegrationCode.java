@@ -52,6 +52,34 @@ public enum IntegrationCode {
     INT_ADDRESS_BLOCKED,
     /** The outbound proxy refused the connection. */
     INT_PROXY_REFUSED,
+    /** The outbound proxy asked for sign-in (407): the proxy user or password is wrong, or none is set. */
+    INT_PROXY_SIGN_IN_REFUSED("The outbound proxy refused the sign-in (407). Check the proxy user and the password in "
+            + "the secret store (platform.integration.proxy.user, platform.integration.proxy.password-secret)."),
+    /**
+     * The proxy needs Basic sign-in, but this JVM does not send Basic on CONNECT tunnels (the JDK's default). Nothing
+     * was sent. The library never changes JVM settings: the app must be started with the option below.
+     */
+    INT_PROXY_SIGN_IN_DISABLED_BY_JVM("The outbound proxy needs Basic sign-in, which this Java runtime does not send "
+            + "for https (CONNECT) by default. Start the app with the option "
+            + "-Djdk.http.auth.tunneling.disabledSchemes= (see the integration install guide)."),
+
+    // ---- Folder export ----
+    /** The target folder does not exist (or is not a folder). */
+    INT_FOLDER_NOT_FOUND("The export folder does not exist or is not a folder. Create it, or correct the folder in the "
+            + "integration's configuration."),
+    /** The service account may not create folders or files in the target folder. */
+    INT_FOLDER_NO_PERMISSION("The app's service account may not write to the export folder. Give it the right to "
+            + "create, write, rename and delete folders and files there."),
+    /** The disk or the account's quota is full. */
+    INT_FOLDER_FULL("The export folder's disk or quota is full."),
+    /** The network share cannot be reached. */
+    INT_FOLDER_UNREACHABLE("The export folder's network share cannot be reached (server down, share removed, network "
+            + "or sign-in problem)."),
+    /** A package folder of that name already exists with another manifest. */
+    INT_FOLDER_EXISTS_DIFFERENT("A package folder of this name already exists in the export folder with other "
+            + "content. Nothing was changed; remove or rename the old folder, or check the folder name template."),
+    /** Writing failed for another reason; only the package's .partial folder was touched. */
+    INT_FOLDER_WRITE_FAILED("Writing to the export folder failed. Only the package's .partial folder was touched."),
 
     // ---- Sign-in bundle ----
     INT_SECRET_NOT_FOUND,
@@ -134,6 +162,18 @@ public enum IntegrationCode {
     INT_CONFIG_SETTING_INVALID,
     /** A multipart or integrity part of a step is not valid. */
     INT_CONFIG_BODY_INVALID,
+    /**
+     * An "omit when missing" placeholder ({@code {name?}}) stands anywhere but as the whole value of an object member
+     * in a JSON body.
+     */
+    INT_CONFIG_OMIT_PLACE,
+    /**
+     * Folder export: the target folder is not an absolute local or share path, or a folder or file name template is
+     * not one path segment of allowed characters and placeholders.
+     */
+    INT_CONFIG_FOLDER_INVALID,
+    /** Folder export on the hosted service: never allowed (a folder is the customer's own system). */
+    INT_CONFIG_FOLDER_HOSTED,
     INT_CONFIG_RULE_INVALID,
     INT_CONFIG_STEPS_INVALID,
     INT_CONFIG_VERSION_CONFLICT,
@@ -168,5 +208,28 @@ public enum IntegrationCode {
     /** Installation data in a profile: an address, something that looks like a secret, or a case field key. */
     INT_PROFILE_INSTALLATION_DATA,
     INT_CONFIG_NOT_FOUND,
-    INT_CONFIG_EXISTS
+    INT_CONFIG_EXISTS;
+
+    private final String message;
+
+    IntegrationCode() {
+        this(null);
+    }
+
+    IntegrationCode(String message) {
+        this.message = message;
+    }
+
+    /**
+     * What to tell the customer's IT, for the codes they act on (proxy sign-in, folder export); else the code's name.
+     * Never holds a value, address or secret.
+     */
+    public String message() {
+        return message == null ? name() : message;
+    }
+
+    /** Whether {@link #message()} is more than the name. */
+    public boolean hasMessage() {
+        return message != null;
+    }
 }

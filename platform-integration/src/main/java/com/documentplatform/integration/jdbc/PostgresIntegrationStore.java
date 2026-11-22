@@ -198,6 +198,21 @@ public final class PostgresIntegrationStore implements IntegrationStore {
         }
     }
 
+    @Override
+    public List<StoredIntegration> enabled() {
+        String sql = "select v.config, v.version, v.changed_by, v.changed_at from int_integration i"
+                + " join int_integration_version v on v.integration_id = i.id and v.version = i.version"
+                + " where i.enabled order by i.created_at, i.id";
+        try (Connection c = dataSource.getConnection(); PreparedStatement ps = c.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            List<StoredIntegration> out = new ArrayList<>();
+            while (rs.next()) out.add(stored(rs));
+            return out;
+        } catch (SQLException e) {
+            throw failed(e);
+        }
+    }
+
     private static StoredIntegration stored(ResultSet rs) throws SQLException {
         return new StoredIntegration(ConfigJson.read(rs.getString(1)), rs.getInt(2), rs.getString(3),
                 rs.getTimestamp(4).toInstant());
