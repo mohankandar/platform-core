@@ -1,8 +1,10 @@
 # Case fields — install guide for IT
 
 The app keeps its case field definitions (the business's own fields such as contract number, borrower name, property
-address) in a few tables of its own database, prefixed `fld_`. This page says how they are created and what the app's
-database user needs. Field **values** are not stored here (they come with value storage, encrypted when sensitive).
+address) and the field **values** of its records in tables of its own database, prefixed `fld_`. This page says how
+they are created and what the app's database user needs. Sensitive values (names, addresses, and whatever the Business
+Admin marks sensitive) are never stored readably: only encrypted, with keys held by the key service (Vault), see
+`docs/install/crypto.md`.
 
 ## 1. Database
 
@@ -11,17 +13,33 @@ The tables are created only by the app's schema step, never at app startup.
 - **Schema step:** a separate Flyway run with location `classpath:db/platform/fields` and history table
   `fld_schema_history`, run as the schema owner, in the same database schema the app uses. One file today:
   `V1__fields.sql`.
-- **Tables:** `fld_schema_version`, `fld_field_definition`, `fld_field_definition_history`, `fld_field_extension`.
+- **Tables:** `fld_schema_version`, `fld_field_definition`, `fld_field_definition_history`, `fld_field_extension`,
+  `fld_record` (one row per record of the app that has field values), `fld_value` (one row per value).
 - **Runtime user:** data rights only:
 
   ```sql
-  grant select, insert, update, delete on fld_field_definition, fld_field_definition_history, fld_field_extension
-      to app_runtime;
+  grant select, insert, update, delete on fld_field_definition, fld_field_definition_history, fld_field_extension,
+      fld_record, fld_value to app_runtime;
   grant select on fld_schema_version to app_runtime;
   ```
 
   Even with DELETE granted, the database refuses to delete a field definition or a history entry, to change a
-  field's key, or to change a history entry: removing a field means switching it off.
+  field's key, or to change a history entry: removing a field means switching it off. It also refuses a sensitive
+  value with any readable column filled in.
+
+### Partial search (pg_trgm)
+
+"Contains" search on fields that are not sensitive (for example part of a loan number) uses a trigram index, which
+needs the PostgreSQL extension `pg_trgm` (shipped with PostgreSQL, in the contrib package).
+
+- The schema step creates the extension and the index (`fld_value_partial`) when the schema owner may do so (on
+  PostgreSQL 13 and later `pg_trgm` is a trusted extension: an owner with CREATE on the database can install it).
+- If it cannot, the schema step goes on without it. The app then runs partial search as prefix search ("starts
+  with"), marks every such result (`PARTIAL_AS_PREFIX`) and reports `FLD_PARTIAL_SEARCH_UNAVAILABLE` in its search
+  status. Nothing else changes.
+- To add it later: the DBA makes the extension available (`create extension pg_trgm;`, or allows the owner to), then
+  runs `db/platform/fields-optional/partial-search.sql` (inside the platform-fields jar) as the owner of the `fld_`
+  tables. It is not a Flyway file and is safe to run again.
 
 ## 2. Startup check
 
@@ -43,3 +61,9 @@ and a message saying what to do:
 The Business Admin can export an entity's field list from one product (`platform-fields/1` file, JSON, definitions
 only: no values, no app-only settings) and import it into the other. Import matches fields by key, creates the new
 ones, and never changes an existing field; a field whose type differs is reported as a conflict.
+
+## 4. Backups
+
+A database backup holds sensitive values only encrypted (`pci1.` texts) and as keyed fingerprints (`f1.` texts). Neither
+can be read or matched without the customer's keys in the key service, which are never exported. Restoring a backup
+needs the same key service (or its own backup) to read sensitive values again.

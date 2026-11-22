@@ -28,7 +28,7 @@ class FieldSchemaTest {
 
         Pg migrated = Pg.migrated();
         assertEquals(List.of("fld_field_definition", "fld_field_definition_history", "fld_field_extension",
-                "fld_schema_version"), migrated.tables());
+                "fld_record", "fld_schema_version", "fld_value"), migrated.tables());
         assertEquals(1, migrated.count("select max(version) from fld_schema_version"));
         assertEquals(0, migrated.count("select count(*) from fld_field_definition"), "no data from the schema run");
         assertEquals("db/platform/fields", FieldSchema.LOCATION);

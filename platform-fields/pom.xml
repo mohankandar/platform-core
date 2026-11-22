@@ -7,13 +7,25 @@
         <version>0.1.0-SNAPSHOT</version>
     </parent>
     <artifactId>platform-fields</artifactId>
-    <description>Case field definitions (plain Java, no Spring, no runtime dependencies): the field model per entity and
+    <description>Case fields (plain Java, no Spring; depends only on platform-crypto): the field model per entity and
         product (types, rules, flags), checking and normalising values with stable codes, the rules for changing a
         definition (key and type locked once values exist, removing = switching off), the field list file
         (platform-fields/1) with import by key, the field value delivery (platform-field-values/1) and its verifier,
-        and Postgres storage of definitions (fld_ tables, SQL in db/platform/fields, run only by the app's schema
-        step).</description>
+        value storage per app record (sensitive values only encrypted, under one record envelope, searchable by exact
+        match through a keyed fingerprint; one record per primary value set), search (exact, prefix, partial), and
+        Postgres storage (fld_ tables, SQL in db/platform/fields, run only by the app's schema step).</description>
     <dependencies>
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-crypto</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-crypto-testkit</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>

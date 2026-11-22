@@ -89,3 +89,68 @@ accepts and how it normalises. The owner's answers to the P017 questions are in 
 5. **ADDRESS has an optional `street2`** (apartment, suite): `FieldValue.Address.street2`, in the delivery format
    as the member `"street2"` (left out when there is none). Tidied like the other parts; blank means none; counts
    towards the 512 characters of an address. The first street line stays required.
+
+## Value storage (P019)
+
+Built in P019 in `platform-fields` (package `com.documentplatform.fields.values`, Postgres store in `jdbc`), on
+`platform-crypto`. Install guide: `docs/install/fields.md`.
+
+### What "primary" means in the apps today (read in P019, nothing changed in either app)
+
+- **LexaVault** has a real business record (`business_records`); packages point to it (`business_record_id`), many
+  packages per record. Exactly one active primary field per tenant (index 008). The primary value is unique per tenant
+  and definition (trigger 019, serialised with an advisory lock in 020); secondary values may repeat across records.
+  When the same contract number arrives again, the package joins the existing record: secondary values it lacks are
+  added, a different secondary value is refused (`IDENTIFIER_CONFLICT`). The loser of two concurrent writers of a new
+  value gets a database error, not the record. "Entity" there is the tenant.
+- **Vero** has no record table: a record is the group of submissions (per tenant and sending system) whose
+  business-identifier values are all equal (`RecordKey`, every identifier field together; a submission without them
+  is a record of its own). Values are stored per submission, nothing is unique, and a part or a superset of the
+  identifier set is another record.
+- Neither encrypts these values, and neither has multi-value fields.
+
+### What is built
+
+- **Records.** Values belong to an app record: `RecordRef` = entity + product (`FieldScope`) + the app's record type +
+  the app's record ID. Many documents, packages or submissions may point to one record.
+- **The primary rule** (serves both apps): a record's *identity* is the values of its primary fields together.
+  **One record per identity in each entity, product and record type**, enforced by a unique index on
+  `fld_record (entity_uuid, product_code, record_type, identity)`, so it holds with any number of concurrent writers.
+  With one primary field this is LexaVault's rule; with several it is Vero's identifier set (a part of the set is
+  another identity). A record without primary values is a record of its own. The identity is SHA-256 over the
+  primary fields' values in key order, each as compared by search (non-sensitive) or by its fingerprint (sensitive),
+  so no sensitive value is readable in it. Comparison ignores capitals and extra spaces, like fingerprints.
+- **`FieldValues.claim(candidate, values)`** is how the app finds or makes the record for incoming values: a record
+  with the same identity → that record (whatever ID the candidate has); fields it lacks get the given values, equal
+  values stay, a different value is refused (`VALUES_CONFLICT`, keys only, nothing written: LexaVault's
+  `IDENTIFIER_CONFLICT`). Otherwise a new record under the candidate's ID. Concurrent claims of a new value all get
+  the same record (`insert … on conflict do nothing`, then read the winner). `update(ref, values)` replaces given
+  fields; a primary value another record has is refused (`VALUES_PRIMARY_TAKEN`). `findByPrimary` looks a record up.
+- **Values** are checked by `FieldSet` / `FieldValidator` (all types, multi-value, required). Not sensitive: stored as
+  display value, normalised value and search form (normalised, lower case, single spaces; an address: its parts).
+  **Sensitive (rule 6):** never readable in any table, log or backup. All sensitive values of a record are sealed
+  under one record envelope (`RecordCipher`, owner answer P018-2): `fld_record.envelope` (`pck1.`) and one
+  `fld_value.sealed_value` (`pci1.`) per value, bound to the record and the field and position. A sensitive value of a
+  searchable or primary field also gets a fingerprint (`Fingerprinter`, context `fld:<entity>:<product>:<field key>`,
+  capitals and extra spaces ignored). Check constraints refuse a sensitive row with any readable column.
+- **Search** (`FieldValues.search`): EXACT (term checked and normalised like a value), PREFIX, PARTIAL, per the
+  field's `SearchMode`; a wider mode than the field offers is refused (`VALUES_SEARCH_MODE_NOT_ALLOWED`). Sensitive
+  fields: exact only, through the fingerprint over every usable fingerprint key version; prefix or partial is refused
+  (`VALUES_SENSITIVE_EXACT_ONLY`). PARTIAL uses a `pg_trgm` trigram index created by the schema step when possible;
+  without it partial runs as prefix and the result says so (`SearchResult.Note.PARTIAL_AS_PREFIX`;
+  `searchStatus()` gives `FLD_PARTIAL_SEARCH_UNAVAILABLE` and names `db/platform/fields-optional/partial-search.sql`).
+- **Reading:** `read` never decrypts (sensitive values hidden, count only); `readSensitive` is the explicit call the
+  app makes only for roles allowed to see sensitive values: one key service call per record. Values never appear in a
+  `toString()`, a log (nothing is logged) or an exception message.
+- **Key service calls:** new record with sensitive values: the data key, plus, when any value needs a fingerprint,
+  the fingerprint key's versions and one batch (3 in all, however many values). Opening a record: 1. Key rotation:
+  older wrapping key versions keep opening; `FieldValues.rewrap(ref)` moves a record's envelope to the latest
+  version before an old one is switched off; a rotated fingerprint key keeps search and the primary rule working
+  (lookups try one identity per usable version).
+- **Customers:** `FieldValues` serves one customer (`CustomerId.fromTenantId`); a record of another customer is
+  refused (`VALUES_WRONG_CUSTOMER`), search filters by customer, and the envelope itself refuses another customer's
+  key (`CRYPTO_WRONG_CUSTOMER`).
+- **Storage:** `fld_record`, `fld_value` in `V1__fields.sql` (never released, so edited); startup only verifies
+  (`FieldSchema.verify`); the runtime user needs DML only. `PostgresValueStore`; the store is also the app's
+  `FieldValuesCheck`, so a field's type locks once a record holds a value. Testkit: `InMemoryValueStore` with the
+  same rules (partial search can be switched off).

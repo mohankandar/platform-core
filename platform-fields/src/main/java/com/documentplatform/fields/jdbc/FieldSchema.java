@@ -37,7 +37,16 @@ public final class FieldSchema {
 
     /** The tables the code reads and writes at runtime. */
     public static final List<String> TABLES = List.of("fld_field_definition", "fld_field_definition_history",
-            "fld_field_extension");
+            "fld_field_extension", "fld_record", "fld_value");
+
+    /**
+     * The optional file the DBA runs (as the owner of the fld_ tables) to add partial search later, when pg_trgm was
+     * not available at the schema step. Not a Flyway file.
+     */
+    public static final String PARTIAL_SEARCH_SCRIPT = "db/platform/fields-optional/partial-search.sql";
+
+    /** The trigram index partial search uses; without it partial search works as prefix search. */
+    public static final String PARTIAL_SEARCH_INDEX = "fld_value_partial";
 
     /** Holds the version of the files that were run. */
     public static final String VERSION_TABLE = "fld_schema_version";
@@ -57,6 +66,8 @@ public final class FieldSchema {
         m.put("fld_field_definition", List.of("SELECT", "INSERT", "UPDATE"));
         m.put("fld_field_definition_history", List.of("SELECT", "INSERT"));
         m.put("fld_field_extension", List.of("SELECT", "INSERT", "UPDATE", "DELETE"));
+        m.put("fld_record", List.of("SELECT", "INSERT", "UPDATE"));
+        m.put("fld_value", List.of("SELECT", "INSERT", "DELETE"));
         return m;
     }
 
