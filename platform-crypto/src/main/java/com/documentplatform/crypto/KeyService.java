@@ -68,6 +68,21 @@ public interface KeyService {
         return out;
     }
 
+    /**
+     * Destroys the customer's wrapping key and fingerprint key, with every version: <b>irreversible</b>. Afterwards
+     * nothing of that customer opens any more, anywhere, backups of the app's database included, and no fingerprint can
+     * be computed ({@link CryptoError#CRYPTO_KEY_MISSING}). This is the customer-exit step behind the offboarding
+     * certificate; only the {@code crypto destroy-customer-keys} command calls it, with the set-up login. The app's
+     * runtime policy cannot ({@link CryptoError#CRYPTO_PERMISSION_DENIED}, nothing destroyed).
+     *
+     * <p>A key that is already gone is reported {@link KeyDestruction.State#ABSENT}, so a rerun after a partial
+     * failure finishes the job. The default refuses: a key service that cannot destroy keys says so.
+     */
+    default KeyDestruction destroyCustomerKeys(CustomerId customer) {
+        throw new CryptoException(CryptoError.CRYPTO_KEY_SERVICE_ERROR, "key service " + id()
+                + " cannot destroy keys");
+    }
+
     /** Whether the key service answers and can serve calls. Never throws. */
     Health health();
 

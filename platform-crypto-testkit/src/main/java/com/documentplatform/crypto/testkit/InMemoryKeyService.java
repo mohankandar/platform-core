@@ -3,6 +3,7 @@ package com.documentplatform.crypto.testkit;
 import com.documentplatform.crypto.CryptoError;
 import com.documentplatform.crypto.CryptoException;
 import com.documentplatform.crypto.CustomerId;
+import com.documentplatform.crypto.KeyDestruction;
 import com.documentplatform.crypto.KeyService;
 
 import javax.crypto.AEADBadTagException;
@@ -38,6 +39,7 @@ public final class InMemoryKeyService implements KeyService {
     private final SecureRandom random = new SecureRandom();
     private final Map<CustomerId, Keys> wrapping = new ConcurrentHashMap<>();
     private final Map<CustomerId, Keys> fingerprinting = new ConcurrentHashMap<>();
+    private final java.util.Set<CustomerId> destroyed = ConcurrentHashMap.newKeySet();
     private volatile boolean down;
     private volatile boolean denied;
     private volatile boolean onDemand;
@@ -99,6 +101,7 @@ public final class InMemoryKeyService implements KeyService {
     @Override
     public void createKeys(CustomerId customer) {
         gate();
+        destroyed.remove(customer);
         create(customer);
     }
 
@@ -219,6 +222,36 @@ public final class InMemoryKeyService implements KeyService {
         }
     }
 
+    /**
+     * Removes the customer's two keys with all their versions: afterwards unwrap, rewrap, new data keys and
+     * fingerprints give {@link CryptoError#CRYPTO_KEY_MISSING} ("destroyed"), as with Vault. {@link #denied(boolean)}
+     * stands for the runtime policy, which cannot destroy (nothing is destroyed then).
+     */
+    @Override
+    public KeyDestruction destroyCustomerKeys(CustomerId customer) {
+        gate();
+        java.util.Objects.requireNonNull(customer, "customer");
+        List<KeyDestruction.Key> keys = new ArrayList<>();
+        keys.add(destroy(wrapping, customer, KeyDestruction.Role.WRAPPING, "customer-" + customer.hex()));
+        keys.add(destroy(fingerprinting, customer, KeyDestruction.Role.FINGERPRINT, "customer-" + customer.hex()
+                + "-fp"));
+        destroyed.add(customer);
+        return new KeyDestruction(customer, ID, keys, java.time.Instant.now());
+    }
+
+    private static KeyDestruction.Key destroy(Map<CustomerId, Keys> map, CustomerId customer, KeyDestruction.Role role,
+                                              String name) {
+        Keys k = map.remove(customer);
+        if (k == null) {
+            return KeyDestruction.Key.absent(role, name);
+        }
+        synchronized (k) {
+            int latest = k.versions.size();
+            k.versions.forEach(key -> Arrays.fill(key, (byte) 0));
+            return KeyDestruction.Key.destroyed(role, name, latest);
+        }
+    }
+
     @Override
     public Health health() {
         if (down) {
@@ -269,6 +302,10 @@ public final class InMemoryKeyService implements KeyService {
 
     private Keys keys(Map<CustomerId, Keys> map, CustomerId customer, String kind) {
         java.util.Objects.requireNonNull(customer, "customer");
+        if (destroyed.contains(customer)) {
+            throw new CryptoException(CryptoError.CRYPTO_KEY_MISSING, "customer " + customer + " has no " + kind
+                    + " key: it was destroyed");
+        }
         if (onDemand) {
             create(customer);
         }

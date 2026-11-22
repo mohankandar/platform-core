@@ -19,4 +19,9 @@ public final class CryptoException extends RuntimeException {
     public CryptoError code() {
         return code;
     }
+
+    /** The message without the code in front. */
+    public String reason() {
+        return getMessage().substring(code.name().length() + 2);
+    }
 }

@@ -3,9 +3,13 @@ package com.documentplatform.crypto.vault;
 import com.documentplatform.crypto.CryptoError;
 import com.documentplatform.crypto.CryptoException;
 import com.documentplatform.crypto.CustomerId;
+import com.documentplatform.crypto.KeyDestruction;
 import com.documentplatform.crypto.KeyService;
 
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -227,6 +231,43 @@ public final class VaultKeyService implements KeyService {
                     + " is not HMAC-SHA256");
         }
         return mac;
+    }
+
+    /**
+     * For each of the customer's two keys: reads its versions, allows its deletion
+     * ({@code keys/<name>/config deletion_allowed=true}), deletes it ({@code DELETE keys/<name>}), then checks it is
+     * gone. Needs {@code update} and {@code delete} on {@code transit/keys/customer-*} (the set-up policy); the runtime
+     * policy has only {@code read}, so the first write is refused and nothing is destroyed.
+     */
+    @Override
+    public KeyDestruction destroyCustomerKeys(CustomerId customer) {
+        List<KeyDestruction.Key> keys = new ArrayList<>();
+        keys.add(destroy(KeyDestruction.Role.WRAPPING, wrappingKeyName(customer)));
+        keys.add(destroy(KeyDestruction.Role.FINGERPRINT, fingerprintKeyName(customer)));
+        return new KeyDestruction(customer, ID, keys, Instant.now());
+    }
+
+    private KeyDestruction.Key destroy(KeyDestruction.Role role, String name) {
+        KeyVersions v;
+        try {
+            v = versions(name);
+        } catch (CryptoException e) {
+            if (e.code() == CryptoError.CRYPTO_KEY_MISSING) {
+                return KeyDestruction.Key.absent(role, name);
+            }
+            throw e;
+        }
+        VaultClient.Reply r = vault.call("POST", "/v1/" + mount + "/keys/" + name + "/config",
+                VaultJson.write(Map.of("deletion_allowed", true)));
+        check(r, name, "allowing deletion of key " + name);
+        r = vault.call("DELETE", "/v1/" + mount + "/keys/" + name, null);
+        check(r, name, "deleting key " + name);
+        r = vault.call("GET", "/v1/" + mount + "/keys/" + name, null);
+        if (r.status() != 404) {
+            throw new CryptoException(CryptoError.CRYPTO_KEY_SERVICE_ERROR, "key " + name + " is still there after it"
+                    + " was deleted (HTTP " + r.status() + ")");
+        }
+        return KeyDestruction.Key.destroyed(role, name, v.latest());
     }
 
     @Override

@@ -4,14 +4,8 @@ import com.documentplatform.crypto.CryptoError;
 import com.documentplatform.crypto.CryptoException;
 import com.documentplatform.crypto.CustomerId;
 import com.documentplatform.crypto.KeyService;
-import com.documentplatform.crypto.vault.VaultAuth;
-import com.documentplatform.crypto.vault.VaultClient;
-import com.documentplatform.crypto.vault.VaultKeyService;
+import com.documentplatform.crypto.vault.VaultEnvironment;
 
-import java.net.URI;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -74,44 +68,11 @@ public final class SetupKeys {
 
     /** The default connector: Vault Transit, settings from the environment. */
     public static Connection vault(Map<String, String> env) {
-        String address = blank(env.get(VAULT_ADDR));
-        if (address == null) {
-            throw new SetupException(SetupRefusal.SETUP_KEY_SERVICE_SETTINGS_MISSING, VAULT_ADDR + " is not set in the "
-                    + "environment.");
-        }
-        String token = blank(env.get(VAULT_TOKEN));
-        String tokenFile = blank(env.get(VAULT_TOKEN_FILE));
-        String roleId = blank(env.get(VAULT_ROLE_ID));
-        String secretId = blank(env.get(VAULT_SECRET_ID));
-        List<String> logins = new ArrayList<>();
-        if (token != null) logins.add(VAULT_TOKEN);
-        if (tokenFile != null) logins.add(VAULT_TOKEN_FILE);
-        if (roleId != null || secretId != null) logins.add(VAULT_ROLE_ID + " + " + VAULT_SECRET_ID);
-        if (logins.size() != 1) {
-            throw new SetupException(SetupRefusal.SETUP_KEY_SERVICE_SETTINGS_MISSING, logins.isEmpty()
-                    ? "No key service login is set: give one of " + VAULT_TOKEN + ", " + VAULT_TOKEN_FILE + " or "
-                    + VAULT_ROLE_ID + " with " + VAULT_SECRET_ID + "."
-                    : "More than one key service login is set (" + String.join(", ", logins) + "): give one.");
-        }
-        if ((roleId == null) != (secretId == null)) {
-            throw new SetupException(SetupRefusal.SETUP_KEY_SERVICE_SETTINGS_MISSING, "An AppRole login needs both "
-                    + VAULT_ROLE_ID + " and " + VAULT_SECRET_ID + ".");
-        }
         try {
-            VaultAuth auth = token != null ? VaultAuth.token(token)
-                    : tokenFile != null ? VaultAuth.tokenFile(Path.of(tokenFile))
-                    : VaultAuth.appRole(env.getOrDefault(VAULT_APPROLE_MOUNT, "approle"), roleId, secretId);
-            VaultClient client = new VaultClient(URI.create(address), env.get(VAULT_NAMESPACE), auth,
-                    VaultClient.DEFAULT_TIMEOUT);
-            KeyService keys = new VaultKeyService(client,
-                    env.getOrDefault(VAULT_TRANSIT_MOUNT, VaultKeyService.DEFAULT_MOUNT),
-                    env.getOrDefault(VAULT_KEY_PREFIX, VaultKeyService.DEFAULT_PREFIX));
-            return new Connection(keys, client::close);
+            VaultEnvironment.Connection c = VaultEnvironment.connect(env, VaultEnvironment.SETUP);
+            return new Connection(c.keys(), c::close);
         } catch (CryptoException e) {
-            throw new SetupException(SetupRefusal.SETUP_KEY_SERVICE_SETTINGS_MISSING, e.getMessage());
-        } catch (IllegalArgumentException e) {
-            throw new SetupException(SetupRefusal.SETUP_KEY_SERVICE_SETTINGS_MISSING, VAULT_ADDR + " is not a valid "
-                    + "address.");
+            throw new SetupException(SetupRefusal.SETUP_KEY_SERVICE_SETTINGS_MISSING, e.reason());
         }
     }
 
@@ -145,9 +106,5 @@ public final class SetupKeys {
     static SetupException failed(CryptoException e) {
         return new SetupException(SetupRefusal.SETUP_KEY_SERVICE_FAILED, "The key service refused or failed ("
                 + e.getMessage() + ").");
-    }
-
-    private static String blank(String s) {
-        return s == null || s.isBlank() ? null : s.strip();
     }
 }
