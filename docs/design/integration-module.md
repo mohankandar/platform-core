@@ -90,3 +90,13 @@ LexaVault moves intake and export onto it as **part 3 of its switch-over**; the 
 4. LexaVault's `staged-pipeline-design.md` text about Vero's 409 is corrected (Vero answers 200 for "already received"; 409 = same key, different content).
 5. Profiles ship as **data** named after the published API (`sdv-ingestion-v1`); the spec copy is pinned to the current Vero commit until the `sdv-ingestion-v1.0.0` tag, then re-pinned.
 6. **Order approved:** P023 core + mock server → P024 packagings, field mapping, integrity, `sdv-ingestion-v1` profile, pinned spec, contract tests → P025 Spring + folder export with manifest → P026 mTLS + callbacks → P027 intake (polling, watched folder, virus scan hook) → P028 push-API sign-in check + client-ID bindings in setup. **LexaVault's part 3 starts after P023 + P024.** Full proposal: `docs/work/P022-report.md` sections B1–B8.
+
+## Decisions on the P023 report (shared-capabilities thread, 2026-11-22)
+
+P023 accepted: 897 tests, 3 TLS tests skipped on the owner's laptop (Norton re-signs loopback TLS). Its decisions 1–10 stand, including: generic default 5xx = outage, 408/429 = busy; 404 without a destination code = `NOT_CONFIGURED` / `INT_ADDRESS_NOT_FOUND`; a timeout after sending = `CANT_CONNECT` / `INT_TIMEOUT`, resent with the same idempotency key; the configuration is re-checked at every attempt.
+
+1. **DNS rebinding:** accepted for V1 (check every resolved address right before each call; not pinned). P025's install guide states it. **Strict pinning is built in P026** on the socket layer it builds for mTLS, and is required before the hosted service goes live.
+2. **Skipped TLS tests:** no repo change. They must pass on a machine without TLS interception (CI or another machine) before a release that changes `safety/` or `http/`. A Norton exclusion on the laptop is the owner's choice.
+3. **Proxy sign-in:** built in P025 with the Spring properties. The proxy password comes by secret reference; the install guide tells the customer to start the app with `-Djdk.http.auth.tunneling.disabledSchemes=` when their proxy needs Basic. The library never sets JVM properties.
+4. **503 default stays outage.** A destination that sends 503 + Retry-After to mean busy gets a profile rule. The configuration screen (P025) offers "503 with Retry-After means busy" as a ready-made rule.
+5. **`SecretResolver` from platform-notifications** accepted for now. When a third module needs it, it moves to a small shared module (no task yet).

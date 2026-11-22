@@ -114,3 +114,20 @@ when the file is read) and `SETUP_TIME_ZONE_SLOT_NOT_IN_LICENCE` (checked in the
 Owner answer to P020 question 3 (recorded in P021): `timeZone` becomes **required** at the next format change of the
 sign-in file (`platform-signin/2`). Not now: `platform-signin/1` keeps it optional, and an app falls back to its
 notifications tenant zone until identity has one.
+
+### 6.1 Client-binding input file: final format (2026-11-22)
+
+Fixed now because Vero task 0041 builds its own loader to the same format (on Enterprise Identity 0.3.0) before it moves to platform-core.
+
+- **File:** `client-bindings-<product>.csv`, UTF-8, comma-separated, one product per file, named in the sign-in file per product as `"clientBindingsFile"` (optional; no file = no machine callers for that product).
+- **Header (exact, required):** `client_id,entity_slot,source,description`
+- **Columns:**
+  - `client_id`: the verified token's client principal exactly as the customer's login system issues it (e.g. the Okta client ID). 1–255 characters, no spaces, commas, quotes or control characters. Compared as given (case-sensitive).
+  - `entity_slot`: the licence slot ID (`ENT-…`) the client may deliver to. Must be a slot of this customer's licence (it need not be activated yet; it is used only once ACTIVE).
+  - `source`: the product's sending-system key, `[a-z0-9][a-z0-9._-]{0,63}`. Must be listed in the sign-in file under the product's `"sources"` (optional list of `{ "key": "…", "name": "…" }`; added to `platform-signin/1` as an optional field, so older files still work).
+  - `description`: optional free text for people (up to 200 characters); never shown to callers; no secrets.
+- **Rules:** no secrets in the file; each `client_id` appears **once per product** (a duplicate line, or a client already bound to another entity or source, is refused); entity slot and source must exist, else setup stops with a clear message naming the line; a line removed from the file switches that binding **off** (never deleted); every change is in setup's plan and run log and in the binding history.
+- **Where it lands:** a shared table `idn_machine_binding` (customer, product, client ID, entity UUID derived from the slot, source key, status ACTIVE/INACTIVE, who/when) with history. platform-identity-jdbc gets a built-in `MachineClients` over it, so `PostgresMachineEntityBindings` works without an app-supplied table. The IT Admin's integration page later edits the same table (no second store).
+- **The connection:** a binding applies under the customer's ACTIVE login connection for that product (`ConnectionKey`), as `PostgresMachineEntityBindings` already checks.
+
+**Interface check (2026-11-22):** `MachineEntityBindings`, `EntityId` and `ConnectionKey` are identical between Enterprise Identity 0.3.0 (tag `v0.3.0`) and platform-core (only line endings differ); the Java package `com.documentplatform.identity.admission` is unchanged. Only the Maven coordinates differ (`com.documentplatform.identity:enterprise-identity-core` → `com.documentplatform.platform:platform-identity-core`).
