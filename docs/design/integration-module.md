@@ -100,3 +100,9 @@ P023 accepted: 897 tests, 3 TLS tests skipped on the owner's laptop (Norton re-s
 3. **Proxy sign-in:** built in P025 with the Spring properties. The proxy password comes by secret reference; the install guide tells the customer to start the app with `-Djdk.http.auth.tunneling.disabledSchemes=` when their proxy needs Basic. The library never sets JVM properties.
 4. **503 default stays outage.** A destination that sends 503 + Retry-After to mean busy gets a profile rule. The configuration screen (P025) offers "503 with Retry-After means busy" as a ready-made rule.
 5. **`SecretResolver` from platform-notifications** accepted for now. When a third module needs it, it moves to a small shared module (no task yet).
+
+## Vero busy vs down at the health check (LexaVault thread, master, 2026-11-22)
+
+No counting of failed checks. In the `sdv-ingestion-v1` profile, a readiness answer of **503 with `SDV-SYS-018` or with `Retry-After` = busy**: wait, send fewer at once, no pause, no attempt used. **Can't connect, a timeout, or a 503 without the busy code = down**: pause and probe. A busy spell over 30 minutes raises one IT notice (app side, LexaVault). Vero is asked to put the busy code and Retry-After on its readiness answer. Built in P024 (health rules may map to BUSY generically).
+
+**Update (master, 2026-11-22):** P024 pins Vero's spec at `docs/ingestion-contract` `76307d6` (0040 Part 2), re-pinned at `sdv-ingestion-v1.0.0`. Busy = 503 `SDV-SYS-018` with Retry-After (Vero setting 1–300 s, default 5). `SDV-STO-004` is a 503 without the busy code = **down**. Readiness-busy arrives in a separate Vero commit; the profile takes it when it lands.
