@@ -38,7 +38,8 @@ AWS KMS and Azure Key Vault: only the interface for now (section 5).
   operation and is wiped after it.
 - **Who creates keys:** the setup command (`setup apply`, `platform-setup`'s `SetupKeys`, calling
   `KeyService.createKeys`) with a login that has the set-up policy and is given to that run only. The app's runtime
-  policy cannot create, rotate, export or delete keys. A customer without keys gives `CRYPTO_KEY_MISSING`.
+  policy cannot create, rotate, export or delete keys. A customer without keys gives `CRYPTO_KEY_MISSING`. Destroying
+  them at customer exit: section 11.
 
 ## 3. Versions and rotation
 
@@ -153,8 +154,9 @@ path "transit/hmac/customer-*"              { capabilities = ["update"] }
 path "transit/keys/customer-*"              { capabilities = ["read"] }
 path "secret/data/platform/*"               { capabilities = ["read"] }
 
-# platform-crypto-setup: the set-up step. Creates the customer's keys and rotates the wrapping key.
-path "transit/keys/customer-*"              { capabilities = ["create", "update", "read"] }
+# platform-crypto-setup: the set-up step. Creates the customer's keys and rotates the wrapping key; at customer
+# exit destroys them (section 11).
+path "transit/keys/customer-*"              { capabilities = ["create", "update", "read", "delete"] }
 ```
 
 Retiring a version (`transit/keys/<name>/config`, `min_decryption_version`) is an operator action with an admin token.
@@ -239,3 +241,59 @@ Spring Boot wiring, the same layout as the other `-spring` modules. Install guid
 - Vault is not called at startup: an outage never stops the app.
 - `KeyServiceHealthIndicator` (`/actuator/health/keyService`, when Actuator is present): `UP` / `DOWN`, the key
   service kind, and on `DOWN` the `CRYPTO_*` code and a short reason. No secrets.
+
+## 11. Customer key destruction (customer exit, P021)
+
+Decision (b) + (c) of `docs/design/erase-log.md`: at customer exit, destroying the customer's keys makes **every**
+record, value, document and backup of that customer unreadable. The offboarding certificate rests on this.
+
+- **`KeyService.destroyCustomerKeys(customer)`** destroys the wrapping key and the fingerprint key, with every version.
+  Vault Transit: for each key, read its versions, `POST transit/keys/<name>/config` with `deletion_allowed=true`, then
+  `DELETE transit/keys/<name>`, then check it is gone (404). It returns a `KeyDestruction`: customer, key service,
+  per key its role, name, latest version and `DESTROYED` / `ABSENT`, and the time. Names and version numbers only.
+  A key that is already gone is `ABSENT`, so a rerun after a partial failure finishes the job. The default method of
+  the interface refuses (a key service that cannot destroy says so).
+- **Afterwards:** `unwrap`, `rewrap`, `newDataKey` and fingerprints give `CRYPTO_KEY_MISSING`, so `ValueCipher.open`,
+  `RecordCipher.openKey`, `StreamCipher.decrypt` and `Fingerprinter` fail with that code for this customer. Other
+  customers are untouched. Creating keys again for the customer makes **new** keys: nothing old opens with them.
+- **Who may:** only the set-up policy (`platform-crypto-setup` now has `delete` on `transit/keys/customer-*`; its
+  `update` covers `config`). The runtime policy has only `read` there: the first write is refused with
+  `CRYPTO_PERMISSION_DENIED` and nothing is destroyed.
+- **The command** (`command.CryptoCommand`, `crypto destroy-customer-keys`):
+
+  ```
+  crypto destroy-customer-keys --tenant-id TEN-… --operator "<who runs it>" [--confirm TEN-…] [--result-out <file>]
+  ```
+
+  - Key service login from the environment only, the same variables as the setup command
+    (`PLATFORM_SETUP_VAULT_*`, `vault.VaultEnvironment`, which `SetupKeys` now uses too).
+  - The tenant ID must be **typed back**: `--confirm`, or on the console when it is not given. Missing →
+    `CRYPTO_DESTROY_NOT_CONFIRMED`, different (also a different case, or the customer UUID instead) →
+    `CRYPTO_DESTROY_CONFIRMATION_WRONG`. Both before the key service is called; nothing destroyed.
+  - The result file is created **before** anything is destroyed and never overwritten (`CRYPTO_DESTROY_RESULT_FILE`);
+    default name `customer-keys-destroyed-<tenant>-<yyyyMMddTHHmmssZ>.json`.
+  - Neither key found → `CRYPTO_DESTROY_NO_KEYS` (wrong tenant ID or prefix, or already destroyed), exit 2.
+  - Exit codes: 0 destroyed, 1 failed (key service; rerun), 2 refused.
+- **Result** (`platform-key-destruction/1`, written to the file and printed), the data for the offboarding certificate:
+
+  ```json
+  {
+    "format": "platform-key-destruction/1",
+    "tenantId": "TEN-…",
+    "customer": "<customer UUID>",
+    "keyService": "vault-transit",
+    "keys": [
+      {"role": "WRAPPING", "name": "customer-<hex>", "versions": "1-3", "state": "DESTROYED"},
+      {"role": "FINGERPRINT", "name": "customer-<hex>-fp", "versions": "1-1", "state": "DESTROYED"}
+    ],
+    "destroyedAt": "2026-11-22T10:15:30Z",
+    "operator": "<who ran it>"
+  }
+  ```
+
+  No key material, wrapped key, token or value.
+- **Key service backups.** Vault snapshots (and any backup of Vault's storage) still hold the keys until they expire.
+  A restored snapshot would bring the keys back. So the key service's backup retention must also be within the agreed
+  period, and the offboarding certificate states that the keys are gone from the live key service at `destroyedAt`
+  and from its backups once their retention has passed. AWS KMS (`ScheduleKeyDeletion`, 7–30 days) and Azure Key
+  Vault (soft delete, then purge) have the same shape when they are added.

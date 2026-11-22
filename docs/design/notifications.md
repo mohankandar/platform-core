@@ -331,3 +331,15 @@ supported. Password login and the internal relay stay as they are.
   logged.
 - An app on platform-identity passes `idn_entity.time_zone` (`EntityTimeZones.zone(uuid)` → `ownZone()`), not the
   effective zone, so an entity without its own zone follows the same zone as tenant-level events.
+
+### The customer's zone comes from identity (owner answer to P020 question 2, built in P021)
+
+- Identity is the one source of the customer's time zone (`idn_customer.time_zone`). The app may supply
+  `CustomerZones` (tenant → the customer's zone in identity, if any), set with `Notifier.Builder.customerZones` or as a
+  Spring bean. `platform-notifications-spring` makes one itself when the app has platform-identity's
+  `EntityTimeZones` as a bean (`EntityTimeZones.customerZone(tenantId)`), unless the app defines its own.
+- When identity has a zone, it replaces the tenant zone of the notification settings (`notif_tenant.zone_id`) for
+  every event and summary of the tenant, with or without an entity. The tenant zone of the settings is used only when
+  identity has none, or when the lookup fails (a warning naming the tenant is logged).
+- An entity's own zone (`EntityZones`) still wins over the customer's. Order: entity's own → customer's (identity) →
+  notification settings.

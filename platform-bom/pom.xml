@@ -91,6 +91,21 @@
                 <artifactId>platform-crypto-spring</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.documentplatform.platform</groupId>
+                <artifactId>platform-erase-log</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.documentplatform.platform</groupId>
+                <artifactId>platform-erase-log-testkit</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.documentplatform.platform</groupId>
+                <artifactId>platform-erase-log-spring</artifactId>
+                <version>${project.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 </project>

@@ -257,6 +257,11 @@ own zone uses that zone for its daily summary time, its summary period and the t
 an entity, and entities without their own zone, keep the tenant's zone. If the bean fails, the tenant's zone is used
 and a warning with the entity id is logged.
 
+The customer's zone comes from identity: when the app has platform-identity's `EntityTimeZones` as a bean (or defines
+a `CustomerZones` bean), the customer's zone in `idn_customer.time_zone` replaces the tenant zone of the notification
+settings for every event and summary. The settings' zone is used only when identity has none for the customer. Set
+the customer's zone in one place, the app's settings screen (`EntityTimeZones.setCustomerZone`).
+
 ## 6. Several app servers
 
 Several instances of the app may share one database. Each message is sent by one instance only, and no extra setup

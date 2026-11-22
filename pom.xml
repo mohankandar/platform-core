@@ -26,6 +26,9 @@
         <module>platform-crypto</module>
         <module>platform-crypto-testkit</module>
         <module>platform-crypto-spring</module>
+        <module>platform-erase-log</module>
+        <module>platform-erase-log-testkit</module>
+        <module>platform-erase-log-spring</module>
     </modules>
     <properties>
         <maven.compiler.release>21</maven.compiler.release>

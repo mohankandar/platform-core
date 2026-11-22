@@ -110,3 +110,7 @@ where none is stored yet, in the same transaction as the slots; a zone already s
 is kept and shown as `unchanged … kept`. Rerun safe. Refusals: `SETUP_TIME_ZONE_INVALID` (not an IANA name, checked
 when the file is read) and `SETUP_TIME_ZONE_SLOT_NOT_IN_LICENCE` (checked in the plan). Both are optional fields of
 `platform-signin/1`; files without them work as before.
+
+Owner answer to P020 question 3 (recorded in P021): `timeZone` becomes **required** at the next format change of the
+sign-in file (`platform-signin/2`). Not now: `platform-signin/1` keeps it optional, and an app falls back to its
+notifications tenant zone until identity has one.

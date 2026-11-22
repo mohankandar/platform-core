@@ -198,3 +198,8 @@ P020 found that erase removes a record from the live database, but a backup take
 - **(c) Customer exit:** destroying the customer's keys makes all of that customer's data unreadable everywhere, backups included. This backs the offboarding certificate.
 - **(a) Per-record keys in the key service:** not now; only if a customer contract requires single-record shredding of backups.
 - Both go into the retention design of each app (Vero retention, LexaVault deletion). To be confirmed by the LexaVault thread (master).
+- Built in P021: the erase log (`platform-erase-log`, `docs/design/erase-log.md`) with the built-in `case-fields`
+  handler (`CaseFieldsEraseHandler`: legal hold checked before the entry is logged, `FieldValues.erase` as the erase,
+  the value store read by the verify step), and customer key destruction (`docs/design/crypto.md` section 11). Apps
+  erase case fields through `Eraser.erase` with kind `case-fields`, not by calling `FieldValues.erase` directly, so
+  every erasure is in the log.

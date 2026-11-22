@@ -11,7 +11,9 @@ policies:
 
 - `platform-crypto-app` for the **running app**: make data keys, unwrap, rewrap, fingerprints, read key versions.
   It cannot create, rotate, export or delete keys.
-- `platform-crypto-setup` for the **setup command** only (`docs/install/setup.md`), which creates the customer's keys.
+- `platform-crypto-setup` for the **setup command** only (`docs/install/setup.md`), which creates the customer's keys,
+  and for `crypto destroy-customer-keys` at customer exit (section 5). It has `create`, `update`, `read` and `delete`
+  on `transit/keys/customer-*`.
 
 ## 2. App settings (`platform.crypto.*`)
 
@@ -50,3 +52,29 @@ new data uses the new version and every older version still opens. Before switch
 (`min_decryption_version`), the app rewraps what uses it (`FieldValues.rewrap` per record; `ValueCipher.rewrap`,
 `StreamCipher.rewrap`). The fingerprint key is normally never rotated; if it is, search keeps finding values
 fingerprinted with older versions.
+
+## 5. Customer exit: destroying the customer's keys
+
+When a customer leaves, destroying their two keys makes all their data unreadable everywhere, including every backup
+of the app's database. **This cannot be undone.** It is a step of the offboarding runbook; its result is the data for
+the offboarding certificate.
+
+1. Agree the date with the customer, and that their data will not be needed again.
+2. Get a Vault login with the `platform-crypto-setup` policy, for this run only. Set it in the environment, as for the
+   setup command: `PLATFORM_SETUP_VAULT_ADDR` and one of `PLATFORM_SETUP_VAULT_TOKEN`,
+   `PLATFORM_SETUP_VAULT_TOKEN_FILE` or `PLATFORM_SETUP_VAULT_ROLE_ID` + `PLATFORM_SETUP_VAULT_SECRET_ID`
+   (`PLATFORM_SETUP_VAULT_KEY_PREFIX` if the installation does not use `customer-`).
+3. Run, from the product's distribution:
+
+   ```
+   crypto destroy-customer-keys --tenant-id TEN-… --operator "Your Name"
+   ```
+
+   It asks you to type the tenant ID again. If it is missing or different, nothing is destroyed.
+4. Keep the result file (`customer-keys-destroyed-<tenant>-<time>.json`; or give `--result-out`) with the offboarding
+   records. It lists the customer, the two keys with their versions, the date and time, and who ran it. No secrets.
+5. Revoke the Vault login.
+6. **Vault backups:** Vault snapshots taken before the run still hold the keys until they expire. Make sure snapshot
+   retention is within the agreed period; the certificate names the date when the last snapshot with the keys expires.
+
+The running app's login cannot do this (its policy has only `read` on the keys).
