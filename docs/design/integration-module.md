@@ -106,3 +106,59 @@ P023 accepted: 897 tests, 3 TLS tests skipped on the owner's laptop (Norton re-s
 No counting of failed checks. In the `sdv-ingestion-v1` profile, a readiness answer of **503 with `SDV-SYS-018` or with `Retry-After` = busy**: wait, send fewer at once, no pause, no attempt used. **Can't connect, a timeout, or a 503 without the busy code = down**: pause and probe. A busy spell over 30 minutes raises one IT notice (app side, LexaVault). Vero is asked to put the busy code and Retry-After on its readiness answer. Built in P024 (health rules may map to BUSY generically).
 
 **Update (master, 2026-11-22):** P024 pins Vero's spec at `docs/ingestion-contract` `76307d6` (0040 Part 2), re-pinned at `sdv-ingestion-v1.0.0`. Busy = 503 `SDV-SYS-018` with Retry-After (Vero setting 1–300 s, default 5). `SDV-STO-004` is a 503 without the busy code = **down**. Readiness-busy arrives in a separate Vero commit; the profile takes it when it lands.
+
+## Folder export and its manifest (P025)
+
+Kind `FOLDER_EXPORT`, configured and versioned like API push (`IntegrationConfig.folderExport`, `config.FolderTarget`), run by `folder.FolderExport`. One attempt per call, with the same `AttemptResult` outcomes. It never retries.
+
+**Configuration.** The target folder: an absolute local path (`D:\exports`, `/srv/exports`) or a share path (`\\fileserver\exports\in`), no `.` or `..` parts. On Linux a share is mounted and its mount path is configured. The package folder's name is a template, one path segment, default `{package.id}`. It may use `{package.id}`, `{package.documentCount}`, `{value.<name>}` and `{field:<key>}` (never a sensitive field). Each value is percent-encoded as in a P023 path segment. Each document's file name is either the document's own name made safe for Windows and Unix, or a template that may also use the document placeholders. Two names that differ only in case get ` (2)`, ` (3)` before the extension. The limits are the integration's own. There is no sign-in bundle: the folder's rights are the service account's. Refused on the hosted service (`INT_CONFIG_FOLDER_HOSTED`) and at save for a bad path or name (`INT_CONFIG_FOLDER_INVALID`).
+
+**Writing, so that a reader never sees a package folder without its manifest:**
+1. `<folder>/<package>.partial/` is made. A leftover of an earlier failed attempt is removed first.
+2. Each document is written to a temporary name (`.tmp-<n>`) and forced to the disk. It is read back, and its size and SHA-256 are checked against the delivery. Then it is renamed to its file name.
+3. `manifest.json` is written last, the same way.
+4. The folder is renamed from `.partial` to its final name.
+
+On any failure only the `.partial` folder is touched, and removed when possible. Each file must be written within the integration's read timeout (`INT_TIMEOUT`).
+
+**Outcomes:**
+
+| Case | Outcome | Code |
+|---|---|---|
+| Written | `SENT` | `INT_SENT` (value `export.folderName`) |
+| Final folder there, same package's manifest | `ALREADY_RECEIVED` | `INT_ALREADY_RECEIVED` |
+| Final folder there, other or no manifest | `REFUSED` | `INT_FOLDER_EXISTS_DIFFERENT` (nothing changed) |
+| Target folder missing | `NOT_CONFIGURED` | `INT_FOLDER_NOT_FOUND` |
+| No right to write | `NOT_CONFIGURED` | `INT_FOLDER_NO_PERMISSION` |
+| Disk or quota full (before or while writing) | `OUTAGE` | `INT_FOLDER_FULL` |
+| Share not reachable | `CANT_CONNECT` | `INT_FOLDER_UNREACHABLE` |
+| Checksum or size differs after writing | `UNCLEAR` | `INT_INTEGRITY_MISMATCH` |
+| Writing too slow | `CANT_CONNECT` | `INT_TIMEOUT` |
+| Any other write failure | `OUTAGE` | `INT_FOLDER_WRITE_FAILED` |
+
+"Same package" means the manifests are equal apart from `createdAt`, `correlationId` and `integration.configVersion`, which change between attempts.
+
+**Health:** the target exists and this account can write there. The check writes and removes one probe file (`.platform-health-<random>.tmp`) and nothing else. **Test action:** the fake one-page PDF and a manifest, written exactly like a package into `platform-test-<timestamp>`, then removed. It is audited like API push.
+
+**Manifest `platform-export-manifest/1`** (JSON Schema `schema/platform-export-manifest-1.schema.json`, next to the profile schema):
+
+| Member | What |
+|---|---|
+| `format` | `platform-export-manifest/1` |
+| `packageId`, `correlationId`, `createdAt` | the app's package ID; the attempt's correlation ID; when it was written (UTC, seconds) |
+| `product` | the product code |
+| `entitySlotId` | the entity's slot ID (`ENT-…`; it must be the integration's entity) |
+| `integration` | `id` and `configVersion` of the configuration used |
+| `documents` | per document: `fileName` (in the folder), `sourceDocumentId`, `contentType`, `size`, `sha256` |
+| `fields` | optional: the case field values in the `platform-field-values/1` wire format (platform-fields). A sensitive field goes only if the configuration allows its key (`allowedSensitiveFields`), as for API push; the others are left out |
+| `app` | an object the app fills (`ExportInfo.appSection`). platform-core writes it as given and never reads it |
+
+The app calls `FolderExport.attempt(stored, delivery, new ExportInfo(slotId, appSectionJson))`.
+
+## Proxy sign-in and "omit when missing" (P025)
+
+**Proxy sign-in** ("Decisions on the P023 report", item 3): the proxy's user and its password, by secret reference (read at every call), go as `Proxy-Authorization: Basic …`. That header is sent on the CONNECT of an https call and on plain-http requests through the proxy, never to the destination. The library never sets JVM properties. If the JVM still disables Basic for tunnels (the JDK's default), an https call through a proxy with sign-in fails before connecting with `INT_PROXY_SIGN_IN_DISABLED_BY_JVM`. That code's message names the start option `-Djdk.http.auth.tunneling.disabledSchemes=`. A 407 from the proxy gives `INT_PROXY_SIGN_IN_REFUSED`.
+
+**"Omit when missing"** (P024 question 1): one more fixed building block in JSON body templates. A placeholder written `{name?}` that is the whole value of an object member (`"loan":"{field:loan_number?}"`, `"amount":{field:loan_amount?}`) leaves out that whole member, with its comma, when it has no value. A value that is present but cannot be placed is still refused. Anywhere else it is refused at save (`INT_CONFIG_OMIT_PLACE`). Still no expressions.
+
+**Ready-made rule** (item 4): `Rule.busyWhen503WithRetryAfter()` (and `Rule.healthBusyWhen503WithRetryAfter()` for health rules) is the rule the configuration screen offers as "503 with Retry-After means busy".

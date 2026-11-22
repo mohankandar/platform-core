@@ -45,4 +45,12 @@ public interface IntegrationStore {
 
     /** The current version of every integration of an entity in a product. */
     List<StoredIntegration> list(UUID entity, String product);
+
+    /**
+     * The current version of every integration that is switched on, of every entity and product (for the health
+     * check per integration). Stores built before P025 do not have it.
+     */
+    default List<StoredIntegration> enabled() {
+        throw new UnsupportedOperationException("This integration store cannot list the enabled integrations");
+    }
 }

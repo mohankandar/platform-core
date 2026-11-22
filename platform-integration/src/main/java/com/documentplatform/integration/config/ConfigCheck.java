@@ -73,7 +73,12 @@ public final class ConfigCheck {
             address(c.endpoint().baseAddress(), "endpoint.baseAddress", installation, errors);
         }
 
-        signIn(c, installation, errors, warnings);
+        if (c.kind() == Kind.FOLDER_EXPORT) {
+            folder(c, installation, errors, fieldLists);
+        } else {
+            if (c.folder() != null) errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_INVALID, "folder", null));
+            signIn(c, installation, errors, warnings);
+        }
         settings(c, errors);
 
         if (c.errorCodePointer() != null && !Json.isPointer(c.errorCodePointer())) {
@@ -125,6 +130,81 @@ public final class ConfigCheck {
         Optional<IntegrationCode> blocked = literalOnly.check(uri.getHost(), true);
         if (blocked.isPresent()) {
             errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_ADDRESS_INVALID, where, null));
+        }
+    }
+
+    /** The placeholders a folder name may use; a file name may also use the document ones. */
+    private static boolean folderPlaceholder(String p, boolean fileName) {
+        if (p.equals("package.id") || p.equals("package.documentCount") || p.startsWith("value.")
+                || p.startsWith(Template.FIELD_PREFIX)) {
+            return true;
+        }
+        return fileName && p.startsWith("doc.");
+    }
+
+    /**
+     * Folder export: a target folder (absolute local or share path), no endpoint, steps or health call, no sign-in
+     * bundle (the service account's rights), not on the hosted service; the folder and file name templates are one
+     * path segment each, with fixed placeholders only and no sensitive field.
+     */
+    private static void folder(IntegrationConfig c, Installation installation, List<ConfigProblem> errors,
+                               FieldLists fieldLists) {
+        if (installation.hosted()) {
+            errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_FOLDER_HOSTED, "folder", null));
+        }
+        if (c.endpoint() != null) errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_INVALID, "endpoint", null));
+        if (c.health() != null) errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_INVALID, "health", null));
+        if (!(c.signIn() instanceof SignIn.None)) {
+            errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_INVALID, "signIn", null));
+        }
+        FolderTarget f = c.folder();
+        if (f == null) {
+            errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_FOLDER_INVALID, "folder", null));
+            return;
+        }
+        if (!FolderTarget.validFolder(f.folder())) {
+            errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_FOLDER_INVALID, "folder.folder", null));
+        }
+        FieldSet fields = fieldLists == null ? null : fieldLists.fieldsOf(c.entity(), c.product()).orElse(null);
+        nameTemplate(f.folderNameTemplate(), "folder.folderName", false, c, fields, fieldLists != null, errors);
+        if (f.fileNameTemplate() != null) {
+            nameTemplate(f.fileNameTemplate(), "folder.fileName", true, c, fields, fieldLists != null, errors);
+        }
+    }
+
+    private static void nameTemplate(String text, String where, boolean fileName, IntegrationConfig c, FieldSet fields,
+                                     boolean checkFields, List<ConfigProblem> errors) {
+        Template t;
+        try {
+            t = Template.parse(text, Template.Place.NAME);
+        } catch (Template.Problem p) {
+            errors.add(new ConfigProblem(p.code() == IntegrationCode.INT_CONFIG_TEMPLATE_INVALID
+                    ? IntegrationCode.INT_CONFIG_FOLDER_INVALID : p.code(), where, p.placeholder()));
+            return;
+        }
+        for (String p : t.placeholders()) {
+            if (!folderPlaceholder(p, fileName)) {
+                errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_PLACEHOLDER_PLACE, where, p));
+            } else if (p.startsWith(Template.FIELD_PREFIX) && checkFields) {
+                Optional<FieldSpec> spec = fields == null ? Optional.empty()
+                        : fields.find(p.substring(Template.FIELD_PREFIX.length()));
+                if (spec.isEmpty() || !spec.get().active()) {
+                    errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_FIELD_UNKNOWN, where, p));
+                } else if (spec.get().sensitive()) {
+                    // A name is seen by everyone with access to the folder: a sensitive value never goes there.
+                    errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_SENSITIVE_FIELD_NOT_ALLOWED, where, p));
+                }
+            }
+        }
+        // A sample rendering must be a valid name (literal text such as "manifest.json" or ".partial" is refused).
+        try {
+            String sample = t.fill(SAMPLE);
+            if (!FolderTarget.validName(sample)
+                    || sample.equalsIgnoreCase(FolderTarget.MANIFEST_FILE) && fileName) {
+                errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_FOLDER_INVALID, where, null));
+            }
+        } catch (Template.Problem p) {
+            errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_FOLDER_INVALID, where, p.placeholder()));
         }
     }
 
@@ -211,6 +291,8 @@ public final class ConfigCheck {
                 if (body != null) {
                     try {
                         Json.parse(body.template().fill(SAMPLE));
+                        // And with every "omit when missing" member left out.
+                        if (!body.template().optionalPlaceholders().isEmpty()) Json.parse(body.template().fill(OMITTED));
                     } catch (Json.Invalid | Template.Problem e) {
                         errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_BODY_NOT_JSON, at + ".bodyTemplate",
                                 null));
@@ -268,6 +350,29 @@ public final class ConfigCheck {
         @Override
         public List<Template.Values> documents() {
             return List.of(this);
+        }
+    };
+
+    /** The sample values with every "omit when missing" member left out (two fake documents). */
+    private static final Template.Values OMITTED = new Template.Values() {
+        @Override
+        public Optional<String> text(String name) {
+            return SAMPLE.text(name);
+        }
+
+        @Override
+        public Optional<String> json(String name) {
+            return SAMPLE.json(name);
+        }
+
+        @Override
+        public boolean has(String name) {
+            return false;
+        }
+
+        @Override
+        public List<Template.Values> documents() {
+            return List.of(this, this);
         }
     };
 

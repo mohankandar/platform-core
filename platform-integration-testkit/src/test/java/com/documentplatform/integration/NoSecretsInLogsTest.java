@@ -152,4 +152,95 @@ class NoSecretsInLogsTest {
             assertFalse(records.contains(planted), "the mock recorded " + planted);
         }
     }
+
+    /**
+     * P025: the proxy password (right and wrong), document text, a sensitive case field that is allowed into the
+     * manifest, and the export folder's path go through proxy sign-in and folder export (success, every failure,
+     * health, Test action), and none of it reaches a log line, a result's or an exception's text.
+     */
+    @Test
+    void nothingSecretOrContentFromProxySignInOrFolderExport(@TempDir Path dir) throws Exception {
+        String proxyPassword = "PROXYPW-planted-3c3c";
+        String sensitive = "SENSITIVE-planted-4d4d";
+        String pathPart = "PATHPART-planted-5e5e";
+        List<String> outputs = new ArrayList<>();
+
+        // Proxy sign-in: right, wrong, the JVM refusing Basic for https.
+        try (com.documentplatform.integration.testkit.MockProxy proxy =
+                     com.documentplatform.integration.testkit.MockProxy.start().requireBasic("svc", proxyPassword)) {
+            com.documentplatform.notifications.inmemory.InMemorySecretResolver s =
+                    new com.documentplatform.notifications.inmemory.InMemorySecretResolver()
+                            .put(SecretRef.of("int/bearer"), BEARER).put(SecretRef.of("int/proxy"), proxyPassword);
+            com.documentplatform.integration.safety.Installation inst = fx.installation.withProxy(
+                    com.documentplatform.integration.safety.ProxySettings.of(proxy.host(), proxy.port())
+                            .withSignIn("svc", SecretRef.of("int/proxy")));
+            outputs.add(inst.toString());
+            try (com.documentplatform.integration.engine.CallEngine engine =
+                         new com.documentplatform.integration.engine.CallEngine(
+                                 new com.documentplatform.integration.http.Outbound(inst, s), s, Clock.systemUTC())) {
+                IntegrationConfig c = Fx.twoStep(fx.mock.addressByName(), new SignIn.BearerFixed(SecretRef.of("int/bearer")));
+                fx.mock.reset();
+                Delivery d = Delivery.of("pkg-p", List.of(Delivery.Document.of("doc-1", "a.pdf", "application/pdf",
+                        (TEXT + " proxied").getBytes())), java.util.Map.of("loanId", VALUE));
+                outputs.add(engine.attempt(Fx.stored(c), d).toString());
+                s.put(SecretRef.of("int/proxy"), proxyPassword + "-wrong");
+                outputs.add(engine.attempt(Fx.stored(c), d).toString());
+                outputs.add(engine.health(Fx.stored(c)).toString());
+                IntegrationConfig https = c.withEndpoint(new com.documentplatform.integration.config.Endpoint(
+                        java.net.URI.create("https://localhost:" + fx.mock.port()), true));
+                outputs.add(engine.attempt(Fx.stored(https), d).toString());
+                outputs.add(new com.documentplatform.integration.http.Outbound.Failure(
+                        IntegrationCode.INT_PROXY_SIGN_IN_DISABLED_BY_JVM).getMessage());
+            }
+        }
+
+        // Folder export: success with a sensitive field allowed into the manifest, every failure, health, Test.
+        com.documentplatform.integration.testkit.MockFolder folder =
+                com.documentplatform.integration.testkit.MockFolder.in(dir.resolve(pathPart));
+        com.documentplatform.integration.folder.FolderExport export =
+                new com.documentplatform.integration.folder.FolderExport(fx.installation, folder, Clock.systemUTC());
+        com.documentplatform.fields.FieldSet fields = com.documentplatform.fields.FieldSet.of(List.of(
+                com.documentplatform.fields.FieldSpec.builder("holder_name", "Holder",
+                        com.documentplatform.fields.FieldType.TEXT).sensitive(true).build()));
+        com.documentplatform.fields.ValidatedFields v = fields.validate(java.util.Map.of("holder_name",
+                List.of(new com.documentplatform.fields.FieldValue.Text(sensitive))));
+        IntegrationConfig fc = IntegrationConfig.folderExport(FolderExportTest.ENTITY, "PRODUCT_A", "Share",
+                        com.documentplatform.integration.config.FolderTarget.of(folder.folder()))
+                .withAllowedSensitiveFields(java.util.Set.of("holder_name"));
+        com.documentplatform.integration.store.StoredIntegration stored = Fx.stored(fc);
+        com.documentplatform.integration.folder.ExportInfo info =
+                new com.documentplatform.integration.folder.ExportInfo(FolderExportTest.SLOT, "{\"note\":\"" + VALUE + "\"}");
+        int n = 0;
+        for (Runnable sw : List.<Runnable>of(folder::working, () -> folder.readOnly(true), () -> folder.missing(true),
+                () -> folder.unreachable(true), () -> folder.fullAfter(10), () -> folder.corrupt(true),
+                () -> folder.reportedSpace(1))) {
+            folder.working();
+            sw.run();
+            Delivery d = Delivery.of("pkg-f" + (n++), List.of(Delivery.Document.of("doc-1", "a.pdf", "application/pdf",
+                    (TEXT + " exported").getBytes())), java.util.Map.of())
+                    .withFields(com.documentplatform.integration.engine.CaseFields.of(fields, v));
+            AttemptResult r = export.attempt(stored, d, info);
+            outputs.add(r.toString());
+            outputs.add(r.values().toString());
+            outputs.add(export.health(stored).toString());
+            outputs.add(new TestAction(fx.engine, export, IntegrationAudit.NONE).run(stored, "admin").toString());
+        }
+        folder.working();
+        assertTrue(folder.manifest("pkg-f0").contains(sensitive), "allowed into the manifest on purpose");
+        outputs.add(assertThrows(IllegalArgumentException.class,
+                () -> new com.documentplatform.integration.folder.ExportInfo(FolderExportTest.SLOT, "[\"" + VALUE + "\"]"))
+                .getMessage());
+        outputs.add(fc.toString());
+
+        List<String> all = new ArrayList<>(outputs);
+        synchronized (lines) {
+            all.addAll(lines);
+        }
+        assertTrue(lines.stream().anyMatch(l -> l.contains("INT_FOLDER_NO_PERMISSION")), "folder export logs codes");
+        for (String line : all) {
+            for (String planted : List.of(proxyPassword, BEARER, TEXT, VALUE, sensitive, pathPart, "c3ZjOl")) {
+                assertFalse(line.contains(planted), "found " + planted + " in: " + line);
+            }
+        }
+    }
 }

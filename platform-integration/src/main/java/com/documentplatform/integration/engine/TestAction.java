@@ -3,7 +3,9 @@ package com.documentplatform.integration.engine;
 import com.documentplatform.integration.IntegrationCode;
 import com.documentplatform.integration.config.CallStep;
 import com.documentplatform.integration.config.IntegrationConfig;
+import com.documentplatform.integration.config.Kind;
 import com.documentplatform.integration.config.Template;
+import com.documentplatform.integration.folder.FolderExport;
 import com.documentplatform.integration.result.AttemptResult;
 import com.documentplatform.integration.result.HealthResult;
 import com.documentplatform.integration.result.Outcome;
@@ -45,10 +47,18 @@ public final class TestAction {
     public static final String FAKE_PDF_SHA256 = Delivery.sha256(FAKE_PDF);
 
     private final CallEngine engine;
+    private final FolderExport folders;
     private final IntegrationAudit audit;
 
+    /** For API push only: a folder export's Test action answers {@code INT_KIND_NOT_SUPPORTED}. */
     public TestAction(CallEngine engine, IntegrationAudit audit) {
+        this(engine, null, audit);
+    }
+
+    /** @param folders runs the Test action of folder exports (writes and removes a {@code platform-test-…} folder) */
+    public TestAction(CallEngine engine, FolderExport folders, IntegrationAudit audit) {
         this.engine = Objects.requireNonNull(engine, "engine");
+        this.folders = folders;
         this.audit = Objects.requireNonNull(audit, "audit");
     }
 
@@ -59,9 +69,17 @@ public final class TestAction {
      */
     public AttemptResult run(StoredIntegration integration, String by) {
         IntegrationConfig c = integration.config();
-        AttemptResult result = c.testMode() == IntegrationConfig.TestMode.CHECK_ONLY
-                ? checkOnly(integration)
-                : engine.run(integration, fakeDelivery(c), true);
+        AttemptResult result;
+        if (c.kind() == Kind.FOLDER_EXPORT) {
+            result = folders == null
+                    ? result(c, integration.version(), Outcome.NOT_CONFIGURED, IntegrationCode.INT_KIND_NOT_SUPPORTED,
+                    null, 0, null)
+                    : folders.test(integration, fakeDelivery(c));
+        } else {
+            result = c.testMode() == IntegrationConfig.TestMode.CHECK_ONLY
+                    ? checkOnly(integration)
+                    : engine.run(integration, fakeDelivery(c), true);
+        }
         audit.tested(result, by);
         return result;
     }
@@ -73,6 +91,10 @@ public final class TestAction {
             collect(s.path(), Template.Place.PATH, values);
             s.headers().values().forEach(h -> collect(h, Template.Place.HEADER, values));
             if (s.bodyTemplate() != null) collect(s.bodyTemplate(), Template.Place.JSON, values);
+        }
+        if (c.folder() != null) {
+            collect(c.folder().folderNameTemplate(), Template.Place.NAME, values);
+            if (c.folder().fileNameTemplate() != null) collect(c.folder().fileNameTemplate(), Template.Place.NAME, values);
         }
         String id = "test-" + UUID.randomUUID();
         return new Delivery(id, id, List.of(Delivery.Document.of(FAKE_DOCUMENT_ID, FAKE_FILE_NAME, "application/pdf",

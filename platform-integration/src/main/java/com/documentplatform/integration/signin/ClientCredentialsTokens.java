@@ -174,6 +174,8 @@ public final class ClientCredentialsTokens {
             IntegrationCode c = f.code();
             return Fetch.failed(c == IntegrationCode.INT_ADDRESS_BLOCKED || c == IntegrationCode.INT_ADDRESS_NOT_SECURE
                     || c == IntegrationCode.INT_TLS_FAILED || c == IntegrationCode.INT_PROXY_REFUSED
+                    || c == IntegrationCode.INT_PROXY_SIGN_IN_REFUSED || c == IntegrationCode.INT_PROXY_SIGN_IN_DISABLED_BY_JVM
+                    || c == IntegrationCode.INT_SECRET_NOT_FOUND || c == IntegrationCode.INT_SECRET_UNAVAILABLE
                     ? c : IntegrationCode.INT_TOKEN_UNREACHABLE);
         }
         int status = answer.status();

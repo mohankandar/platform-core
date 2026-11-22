@@ -116,9 +116,9 @@ public final class SignInHeaders {
     /** The result class of a token failure. */
     public static Outcome outcomeOf(IntegrationCode tokenFailure) {
         return switch (tokenFailure) {
-            case INT_SECRET_NOT_FOUND, INT_ADDRESS_NOT_SECURE -> Outcome.NOT_CONFIGURED;
+            case INT_SECRET_NOT_FOUND, INT_ADDRESS_NOT_SECURE, INT_PROXY_SIGN_IN_DISABLED_BY_JVM -> Outcome.NOT_CONFIGURED;
             case INT_SECRET_UNAVAILABLE, INT_TOKEN_UNREACHABLE, INT_ADDRESS_BLOCKED, INT_TLS_FAILED,
-                 INT_PROXY_REFUSED -> Outcome.CANT_CONNECT;
+                 INT_PROXY_REFUSED, INT_PROXY_SIGN_IN_REFUSED -> Outcome.CANT_CONNECT;
             default -> Outcome.SIGN_IN_FAILED;
         };
     }
