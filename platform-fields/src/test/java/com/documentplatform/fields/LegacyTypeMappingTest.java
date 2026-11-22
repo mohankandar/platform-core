@@ -85,22 +85,24 @@ class LegacyTypeMappingTest {
     }
 
     @Test
-    void metadataDecimalIsMoneyWhenItIsAnAmountOtherwiseTextWithAPattern() {
+    void metadataDecimalIsDecimalWithItsRangeOrMoneyWhenItIsAnAmount() {
         FieldSpec amount = builder("premium", "Premium", FieldType.MONEY).currency("USD").range("0", null).build();
         assertEquals("12.50", norm(amount, "12.5"));
-        FieldSpec rate = builder("rate", "Rate", FieldType.TEXT).pattern("-?[0-9]+(\\.[0-9]+)?").build();
+        FieldSpec rate = builder("rate", "Rate", FieldType.DECIMAL).range("0", "25.5").build();
         assertEquals("4.125", norm(rate, "4.125"));
-        assertEquals(ValueError.VALUE_PATTERN_MISMATCH, code(rate, "4,125"));
+        assertEquals("-0.5", norm(builder("d", "D", FieldType.DECIMAL).build(), "-0.50"));
+        assertEquals(ValueError.VALUE_NOT_A_DECIMAL, code(rate, "4,125"));
+        assertEquals(ValueError.VALUE_ABOVE_MAXIMUM, code(rate, "25.51"), "min/max kept, as the old rules had them");
+        assertEquals(ValueError.VALUE_BELOW_MINIMUM, code(rate, "-1"));
     }
 
     @Test
-    void metadataDateTimeIsTextWithAnIsoPattern() {
-        FieldSpec s = builder("received_at", "Received", FieldType.TEXT)
-                .pattern("[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]{1,9})?)?(Z|[+-][0-9]{2}:[0-9]{2})")
-                .build();
-        assertEquals("2026-11-21T10:15:30Z", norm(s, "2026-11-21T10:15:30Z"));
-        assertEquals("2026-11-21T10:15:30.5-05:00", norm(s, "2026-11-21T10:15:30.5-05:00"));
-        assertEquals(ValueError.VALUE_PATTERN_MISMATCH, code(s, "2026-11-21"));
+    void metadataDateTimeIsDateTimeWithItsOffset() {
+        FieldSpec s = builder("received_at", "Received", FieldType.DATE_TIME).build();
+        assertEquals("2026-11-21T10:15:30.000Z", norm(s, "2026-11-21T10:15:30Z"));
+        assertEquals("2026-11-21T15:15:30.500Z", norm(s, "2026-11-21T10:15:30.5-05:00"));
+        assertEquals(ValueError.VALUE_NOT_A_DATE_TIME, code(s, "2026-11-21"), "an offset is required, as before");
+        assertEquals(ValueError.VALUE_NOT_A_DATE_TIME, code(s, "2026-02-30T10:00:00Z"), "the calendar is checked");
     }
 
     @Test

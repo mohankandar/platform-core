@@ -85,6 +85,40 @@ class FieldDeliveryTest {
     }
 
     @Test
+    void anAddressTravelsWithItsSecondStreetLine() {
+        FieldSet list = FieldSet.of(List.of(builder("property_address", "Property address", FieldType.ADDRESS)
+                .build()));
+        Map<String, List<FieldValue>> in = Map.of("property_address",
+                List.of(FieldValue.address("1 Main St", "Suite 200", "Springfield", "IL", "62701")));
+        String doc = FieldDelivery.write(list, list.validate(in));
+        assertTrue(doc.contains("\"street2\":\"Suite 200\""), doc);
+        DeliveryResult r = FieldDelivery.verify(list, doc);
+        assertTrue(r.accepted(), r.problems().toString());
+        assertEquals("Suite 200",
+                ((FieldValue.Address) r.values().get(FieldKey.of("property_address")).get(0).display()).street2());
+
+        String without = FieldDelivery.write(list, list.validate(Map.of("property_address",
+                List.of(FieldValue.address("1 Main St", "Springfield", "IL", "62701")))));
+        assertFalse(without.contains("street2"), "no second line, no member");
+        assertTrue(FieldDelivery.verify(list, without).accepted());
+    }
+
+    @Test
+    void decimalAndDateTimeTravelAsStrings() {
+        FieldSet list = FieldSet.of(List.of(builder("rate", "Rate", FieldType.DECIMAL).build(),
+                builder("received_at", "Received", FieldType.DATE_TIME).build()));
+        Map<String, List<FieldValue>> in = Map.of("rate", List.of(text("4.50")),
+                "received_at", List.of(text("2026-11-21T10:15:30-05:00")));
+        DeliveryResult r = FieldDelivery.verify(list, FieldDelivery.write(list, list.validate(in)));
+        assertTrue(r.accepted(), r.problems().toString());
+        assertEquals("4.5", r.values().get(FieldKey.of("rate")).get(0).normalisedText());
+        assertEquals("2026-11-21T15:15:30.000Z", r.values().get(FieldKey.of("received_at")).get(0).normalisedText());
+        DeliveryResult wrong = FieldDelivery.verify(list, entries(
+                "{\"key\":\"rate\",\"type\":\"DECIMAL\",\"value\":\"4,5\"}"));
+        assertEquals(ValueError.VALUE_NOT_A_DECIMAL, wrong.problems().get(0).valueError());
+    }
+
+    @Test
     void unknownKeysAndTypeMismatchesHaveTheirCodes() {
         assertCodes(entries("{\"key\":\"loan_number\",\"type\":\"TEXT\",\"value\":\"LN-1\"}",
                 "{\"key\":\"secret_extra\",\"type\":\"TEXT\",\"value\":\"" + SECRET_NAME + "\"}"),

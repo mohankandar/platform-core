@@ -66,6 +66,14 @@ class PostgresFieldStoreTest {
     }
 
     @Test
+    void decimalAndDateTimeFieldsAreStoredAndReadBack() {
+        for (FieldSpec s : FieldListFileTest.newKinds()) {
+            fields.create(A, s, "u-admin");
+        }
+        assertEquals(FieldListFileTest.newKinds(), fields.list(A).stream().map(FieldDefinition::spec).toList());
+    }
+
+    @Test
     void keysAreUniqueIgnoringCapitalsPerEntityAndProduct() {
         fields.create(A, builder("Loan_Number", "Loan number", FieldType.TEXT).build(), "u-admin");
         refused(FieldDefinitionException.Code.FIELD_KEY_TAKEN,

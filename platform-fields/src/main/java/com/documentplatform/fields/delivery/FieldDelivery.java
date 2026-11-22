@@ -55,7 +55,7 @@ public final class FieldDelivery {
 
     private static final Set<String> TOP = Set.of("format", "fields");
     private static final Set<String> ENTRY = Set.of("key", "type", "currency", "value", "values");
-    private static final Set<String> ADDRESS = Set.of("street", "city", "state", "zip", "country");
+    private static final Set<String> ADDRESS = Set.of("street", "street2", "city", "state", "zip", "country");
 
     private FieldDelivery() {
     }
@@ -238,7 +238,7 @@ public final class FieldDelivery {
     private static FieldValue value(FieldSpec spec, Object v, String where) {
         if (spec.type() == FieldType.ADDRESS) {
             JsonFields a = only(JsonFields.of(v, where + ".value"), ADDRESS, where + ".value");
-            return new FieldValue.Address(part(a, "street"), part(a, "city"), part(a, "state"), part(a, "zip"),
+            return new FieldValue.Address(part(a, "street"), part(a, "street2"), part(a, "city"), part(a, "state"), part(a, "zip"),
                     a.has("country") ? a.string("country") : null);
         }
         if (!(v instanceof String s)) {
@@ -268,6 +268,9 @@ public final class FieldDelivery {
         FieldValue.Address a = (FieldValue.Address) v;
         Map<String, Object> m = new TreeMap<>();
         m.put("street", a.street());
+        if (a.street2() != null) {
+            m.put("street2", a.street2());
+        }
         m.put("city", a.city());
         m.put("state", a.state());
         m.put("zip", a.zip());

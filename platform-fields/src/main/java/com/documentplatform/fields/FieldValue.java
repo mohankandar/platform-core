@@ -13,7 +13,11 @@ public sealed interface FieldValue permits FieldValue.Text, FieldValue.Address {
     }
 
     static Address address(String street, String city, String state, String zip) {
-        return new Address(street, city, state, zip, null);
+        return new Address(street, null, city, state, zip, null);
+    }
+
+    static Address address(String street, String street2, String city, String state, String zip) {
+        return new Address(street, street2, city, state, zip, null);
     }
 
     /** A value of every type but ADDRESS. */
@@ -29,18 +33,30 @@ public sealed interface FieldValue permits FieldValue.Text, FieldValue.Address {
     }
 
     /**
-     * An ADDRESS value. US format for now: street, city, state (two letters), ZIP ({@code 12345} or
-     * {@code 12345-6789}). The country is optional and means US when absent; other countries come later.
+     * An ADDRESS value. US format for now: street, an optional second street line (apartment, suite), city, state
+     * (two letters), ZIP ({@code 12345} or {@code 12345-6789}). The country is optional and means US when absent;
+     * other countries come later.
      */
-    record Address(String street, String city, String state, String zip, String country) implements FieldValue {
+    record Address(String street, String street2, String city, String state, String zip, String country)
+            implements FieldValue {
 
         /** The only country checked for now. */
         public static final String US = "US";
 
+        /** An address without a second street line. */
+        public Address(String street, String city, String state, String zip, String country) {
+            this(street, null, city, state, zip, country);
+        }
+
+        /** All parts, in order: street, street2, city, state, zip, country (each may be null). */
+        String[] parts() {
+            return new String[]{street, street2, city, state, zip, country};
+        }
+
         /** All parts together, for the length limit. */
         int length() {
             int n = 0;
-            for (String p : new String[]{street, city, state, zip, country}) {
+            for (String p : parts()) {
                 n += p == null ? 0 : p.length();
             }
             return n;

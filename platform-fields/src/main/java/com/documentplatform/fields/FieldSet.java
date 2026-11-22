@@ -113,7 +113,7 @@ public final class FieldSet {
             return t.value().isBlank();
         }
         FieldValue.Address a = (FieldValue.Address) v;
-        for (String p : new String[]{a.street(), a.city(), a.state(), a.zip()}) {
+        for (String p : new String[]{a.street(), a.street2(), a.city(), a.state(), a.zip()}) {
             if (p != null && !p.isBlank()) {
                 return false;
             }

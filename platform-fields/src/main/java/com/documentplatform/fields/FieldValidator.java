@@ -3,6 +3,8 @@ package com.documentplatform.fields;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.format.ResolverStyle;
@@ -26,6 +28,7 @@ public final class FieldValidator {
 
     private static final Pattern CONTROL = Pattern.compile("[\\p{Cntrl}\\u2028\\u2029&&[^\\t]]");
     private static final Pattern WHOLE = Pattern.compile("-?[0-9]+");
+    private static final Pattern DECIMAL_FORM = Pattern.compile("-?[0-9]+(?:\\.[0-9]+)?");
     private static final Pattern AMOUNT = Pattern.compile("-?(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\\.([0-9]+))?");
     private static final Pattern EMAIL = Pattern.compile("[^\\s@]+@[^\\s@]+\\.[^\\s@]+");
     private static final Pattern UUID_FORM = Pattern.compile(
@@ -33,6 +36,17 @@ public final class FieldValidator {
     private static final Pattern ZIP = Pattern.compile("([0-9]{5})(?:-?([0-9]{4}))?");
     private static final DateTimeFormatter ISO = DateTimeFormatter.ofPattern("uuuu-MM-dd")
             .withResolverStyle(ResolverStyle.STRICT);
+    /** ISO 8601 date and time with an offset; seconds and a fraction of up to 9 digits are optional. */
+    private static final DateTimeFormatter ISO_DATE_TIME = new java.time.format.DateTimeFormatterBuilder()
+            .appendPattern("uuuu-MM-dd'T'HH:mm")
+            .optionalStart().appendPattern(":ss")
+            .optionalStart().appendFraction(java.time.temporal.ChronoField.NANO_OF_SECOND, 1, 9, true).optionalEnd()
+            .optionalEnd()
+            .appendOffset("+HH:MM", "Z")
+            .toFormatter(Locale.ROOT).withResolverStyle(ResolverStyle.STRICT);
+    private static final DateTimeFormatter UTC_MILLIS = DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss.SSS'Z'");
+    private static final DateTimeFormatter UTC_NANOS = DateTimeFormatter.ofPattern(
+            "uuuu-MM-dd'T'HH:mm:ss.SSSSSSSSS'Z'");
     private static final DateTimeFormatter US_DATE = DateTimeFormatter.ofPattern("M/d/uuuu")
             .withResolverStyle(ResolverStyle.STRICT);
     /** USPS codes: the states, DC, the territories and the military post codes. */
@@ -146,6 +160,26 @@ public final class FieldValidator {
                     return range;
                 }
             }
+            case DECIMAL -> {
+                if (!DECIMAL_FORM.matcher(display).matches()) {
+                    return refused(spec, index, ValueError.VALUE_NOT_A_DECIMAL, "must be a number such as 4.125");
+                }
+                BigDecimal d = FieldSpec.plain(new BigDecimal(display));
+                Checked range = range(spec, d, index);
+                if (range != null) {
+                    return range;
+                }
+                normalised = d.toPlainString();
+            }
+            case DATE_TIME -> {
+                OffsetDateTime when = dateTime(display);
+                if (when == null) {
+                    return refused(spec, index, ValueError.VALUE_NOT_A_DATE_TIME,
+                            "must be a date and time with its offset, such as 2026-11-21T10:15:30Z");
+                }
+                OffsetDateTime utc = when.withOffsetSameInstant(ZoneOffset.UTC);
+                normalised = (utc.getNano() % 1_000_000 == 0 ? UTC_MILLIS : UTC_NANOS).format(utc);
+            }
             case MONEY -> {
                 Object amount = money(spec, display, index);
                 if (amount instanceof Checked refusal) {
@@ -245,6 +279,14 @@ public final class FieldValidator {
         return null;
     }
 
+    private static OffsetDateTime dateTime(String v) {
+        try {
+            return OffsetDateTime.parse(v, ISO_DATE_TIME);
+        } catch (DateTimeParseException e) {
+            return null;
+        }
+    }
+
     private static Checked range(FieldSpec spec, BigDecimal value, Integer index) {
         if (spec.minValue() != null && value.compareTo(spec.minValue()) < 0) {
             return refused(spec, index, ValueError.VALUE_BELOW_MINIMUM,
@@ -279,7 +321,7 @@ public final class FieldValidator {
             return refused(spec, index, ValueError.VALUE_TOO_LONG,
                     "has more than " + FieldSpec.MAX_VALUE_LENGTH + " characters in all");
         }
-        for (String part : new String[]{a.street(), a.city(), a.state(), a.zip(), a.country()}) {
+        for (String part : a.parts()) {
             if (part != null && CONTROL.matcher(part).find()) {
                 return refused(spec, index, ValueError.VALUE_CONTROL_CHARACTERS,
                         "must not contain line breaks or other control characters");
@@ -291,6 +333,7 @@ public final class FieldValidator {
                     "only US addresses can be entered for now");
         }
         String street = tidy(a.street());
+        String street2 = tidy(a.street2());
         String city = tidy(a.city());
         String state = tidy(a.state()).toUpperCase(Locale.ROOT);
         String zip = tidy(a.zip());
@@ -310,7 +353,8 @@ public final class FieldValidator {
                     "the ZIP must be 5 digits or ZIP+4 such as 12345-6789");
         }
         String tidyZip = z.group(2) == null ? z.group(1) : z.group(1) + "-" + z.group(2);
-        FieldValue.Address clean = new FieldValue.Address(street, city, state, tidyZip, FieldValue.Address.US);
+        FieldValue.Address clean = new FieldValue.Address(street,
+                street2.isEmpty() ? null : street2, city, state, tidyZip, FieldValue.Address.US);
         return new Checked(new ValidValue(clean, clean), null);
     }
 

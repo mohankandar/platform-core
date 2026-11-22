@@ -15,16 +15,20 @@ public enum ValueError {
     VALUE_CONTROL_CHARACTERS,
     /** NUMBER: not a whole number. */
     VALUE_NOT_A_NUMBER,
+    /** DECIMAL: not a number. */
+    VALUE_NOT_A_DECIMAL,
     /** MONEY: not an amount. */
     VALUE_NOT_MONEY,
     /** MONEY: more decimals than the currency has. */
     VALUE_TOO_MANY_DECIMALS,
-    /** NUMBER, MONEY: below the lowest value. */
+    /** NUMBER, DECIMAL, MONEY: below the lowest value. */
     VALUE_BELOW_MINIMUM,
-    /** NUMBER, MONEY: above the highest value. */
+    /** NUMBER, DECIMAL, MONEY: above the highest value. */
     VALUE_ABOVE_MAXIMUM,
     /** DATE: not a calendar date. */
     VALUE_NOT_A_DATE,
+    /** DATE_TIME: not a date and time with its offset from UTC. */
+    VALUE_NOT_A_DATE_TIME,
     /** EMAIL: not an e-mail address. */
     VALUE_NOT_AN_EMAIL,
     /** UUID: not a UUID. */

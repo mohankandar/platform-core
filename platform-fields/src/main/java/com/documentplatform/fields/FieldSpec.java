@@ -31,8 +31,8 @@ import java.util.regex.PatternSyntaxException;
  * @param pattern      a regular expression the whole normalised value must match; required for CUSTOM_PATTERN,
  *                     optional for TEXT, NUMBER and EMAIL
  * @param normalisation case and stripping, for TEXT, NUMBER, EMAIL, DROPDOWN and CUSTOM_PATTERN; NONE otherwise
- * @param minValue     NUMBER and MONEY: lowest value allowed
- * @param maxValue     NUMBER and MONEY: highest value allowed
+ * @param minValue     NUMBER, DECIMAL and MONEY: lowest value allowed
+ * @param maxValue     NUMBER, DECIMAL and MONEY: highest value allowed
  * @param primary      the field identifies the case (with any other primary fields); one value, active
  * @param searchable   people can search by it
  * @param searchMode   how it is searched; EXACT when not searchable; always EXACT for a sensitive field
@@ -299,12 +299,21 @@ public record FieldSpec(FieldKey key, String label, FieldType type, String curre
                         what + ": the lowest and highest values of a NUMBER field are whole numbers");
             }
         }
+        if (type == FieldType.DECIMAL) {
+            return plain(b);
+        }
         int decimals = Currency.getInstance(currency).getDefaultFractionDigits();
         if (b.stripTrailingZeros().scale() > decimals) {
             throw new FieldDefinitionException(Code.FIELD_RANGE_INVALID,
                     what + ": the lowest and highest values have at most " + decimals + " decimals");
         }
         return b.setScale(decimals);
+    }
+
+    /** A decimal without trailing zeros, never in exponent form ({@code 4.50} becomes {@code 4.5}). */
+    static BigDecimal plain(BigDecimal d) {
+        BigDecimal s = d.stripTrailingZeros();
+        return s.scale() < 0 ? s.setScale(0) : s;
     }
 
     /** Builds a {@link FieldSpec}; {@link #build()} checks every rule. */

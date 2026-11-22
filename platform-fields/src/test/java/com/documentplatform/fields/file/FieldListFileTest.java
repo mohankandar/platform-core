@@ -157,6 +157,26 @@ public class FieldListFileTest {
         return e;
     }
 
+    /** The types and parts added with the owner answers to P017. */
+    public static List<FieldSpec> newKinds() {
+        return List.of(
+                builder("rate", "Interest rate", FieldType.DECIMAL).range("-1.5", "25.125").searchable(true)
+                        .displayOrder(20).build(),
+                builder("received_at", "Received", FieldType.DATE_TIME).required(true).displayOrder(21).build());
+    }
+
+    @Test
+    void newKindsRoundTrip() {
+        String file = FieldListFile.write(newKinds(), AT);
+        assertEquals(newKinds(), FieldListFile.read(file).fields());
+        assertTrue(file.contains("\"type\": \"DECIMAL\""), file);
+        assertTrue(file.contains("\"type\": \"DATE_TIME\""), file);
+        assertTrue(file.contains("\"maxValue\": \"25.125\""), file);
+        for (FieldSpec s : newKinds()) {
+            assertEquals(s, FieldListFile.fromJsonText(FieldListFile.toJsonText(s)), s.key().value());
+        }
+    }
+
     @Test
     void historySnapshotsRoundTrip() {
         for (FieldSpec s : everyKind()) {
