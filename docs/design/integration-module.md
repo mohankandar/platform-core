@@ -162,3 +162,11 @@ The app calls `FolderExport.attempt(stored, delivery, new ExportInfo(slotId, app
 **"Omit when missing"** (P024 question 1): one more fixed building block in JSON body templates. A placeholder written `{name?}` that is the whole value of an object member (`"loan":"{field:loan_number?}"`, `"amount":{field:loan_amount?}`) leaves out that whole member, with its comma, when it has no value. A value that is present but cannot be placed is still refused. Anywhere else it is refused at save (`INT_CONFIG_OMIT_PLACE`). Still no expressions.
 
 **Ready-made rule** (item 4): `Rule.busyWhen503WithRetryAfter()` (and `Rule.healthBusyWhen503WithRetryAfter()` for health rules) is the rule the configuration screen offers as "503 with Retry-After means busy".
+
+## Decisions on the P025 report (shared-capabilities thread, 2026-11-22)
+
+P025 accepted (1048 tests on CI, 0 skipped; the test-count question was a counting error in P031's report, not a double run). Its decisions stand, including: manifest "identical" ignores `createdAt`, `correlationId` and `integration.configVersion`; sensitive fields only when allowed and never in names; folder export refused on the hosted service; proxy sign-in sent preemptively; health cached 60 s.
+
+1. **`doc.attr.*` stays in the app section** of the manifest; the envelope stays stable.
+2. **A full disk (`INT_FOLDER_FULL`)** should raise one IT notice at once: app side (passed to the LexaVault thread on the board).
+3. **The `integrations` health contributor** is revisited in P032 (monitoring): there, each destination is reported as Working / Having problems / Down with its cause, and the app's own health and readiness never go DOWN because another system is down.
