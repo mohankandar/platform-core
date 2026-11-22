@@ -62,6 +62,10 @@ public final class Plan {
     final Map<String, Set<Grant>> grantsToAdd = new TreeMap<>();
     final Map<String, Set<Grant>> grantsToRemove = new TreeMap<>();
     ConfigFragment.State config;
+    /** The customer's time zone to store (none stored yet), or null. */
+    java.time.ZoneId customerZone;
+    /** Entity slots whose own time zone to store (none stored yet). */
+    final Map<String, java.time.ZoneId> entityZones = new TreeMap<>();
 
     void add(Action action, String text) {
         items.add(new Item(action, text));

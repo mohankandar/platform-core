@@ -101,3 +101,12 @@ Registers which machine client may call which entity, for Vero's and LexaVault's
   4. Removing a line switches the binding off, never deletes it.
   5. Every change is audited.
 - **Later:** the IT Admin's integration page (integration module screens) edits the same bindings. No second store.
+
+## Time zones (P020)
+
+The sign-in file may give the customer's time zone (`timeZone`) and a default zone per entity slot
+(`entityTimeZones`), as IANA names. Setup stores each into `idn_customer.time_zone` / `idn_entity.time_zone` only
+where none is stored yet, in the same transaction as the slots; a zone already stored (by the app or an earlier run)
+is kept and shown as `unchanged … kept`. Rerun safe. Refusals: `SETUP_TIME_ZONE_INVALID` (not an IANA name, checked
+when the file is read) and `SETUP_TIME_ZONE_SLOT_NOT_IN_LICENCE` (checked in the plan). Both are optional fields of
+`platform-signin/1`; files without them work as before.

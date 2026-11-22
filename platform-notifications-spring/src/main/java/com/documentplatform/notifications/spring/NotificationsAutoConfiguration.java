@@ -2,6 +2,7 @@ package com.documentplatform.notifications.spring;
 
 import com.documentplatform.notifications.ActionLinks;
 import com.documentplatform.notifications.ConditionStore;
+import com.documentplatform.notifications.EntityZones;
 import com.documentplatform.notifications.EventCatalogue;
 import com.documentplatform.notifications.NotificationSettings;
 import com.documentplatform.notifications.Notifier;
@@ -144,7 +145,7 @@ public class NotificationsAutoConfiguration {
     Notifier notifier(NotificationSettings settings, ObjectProvider<RecipientResolver> recipients,
                       NotificationChannels channels, OutboxStore outbox, SummaryStore summaries,
                       ConditionStore conditions, NotificationsConfig config, SenderSignal signal,
-                      ObjectProvider<ActionLinks> actionLinks) {
+                      ObjectProvider<ActionLinks> actionLinks, ObjectProvider<EntityZones> entityZones) {
         Notifier.Builder b = Notifier.builder(settings, required(recipients, RecipientResolver.class,
                         "the app's recipient resolver (role → people)"))
                 .channels(channels.channels())
@@ -155,6 +156,7 @@ public class NotificationsAutoConfiguration {
                 .batchSize(config.batchSize())
                 .whenQueued(signal::raise);
         actionLinks.ifUnique(b::actionLinks);
+        entityZones.ifUnique(b::entityZones);
         return b.build();
     }
 

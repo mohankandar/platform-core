@@ -5,6 +5,8 @@ import com.documentplatform.identity.store.ActivationOutcome;
 import com.documentplatform.identity.store.EntityRecord;
 import com.documentplatform.identity.store.EntityStatus;
 import com.documentplatform.identity.store.EntityStore;
+import com.documentplatform.identity.store.EntityTimeZone;
+import com.documentplatform.identity.store.EntityTimeZones;
 import com.documentplatform.identity.store.SlotSync;
 
 import javax.sql.DataSource;
@@ -13,6 +15,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -173,6 +176,92 @@ public final class PostgresEntityStore implements EntityStore {
                 return one(ps);
             }
         });
+    }
+
+    @Override
+    public Optional<ZoneId> customerTimeZone(String tenantId) {
+        return db.read("read customer time zone", c -> {
+            try (PreparedStatement ps = c.prepareStatement("select time_zone from idn_customer where tenant_id = ?")) {
+                ps.setString(1, tenantId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next() ? zone(rs.getString(1)) : Optional.empty();
+                }
+            }
+        });
+    }
+
+    @Override
+    public Optional<Change> setCustomerTimeZone(String tenantId, ZoneId zone) {
+        EntityUuid.requireTenantId(tenantId);
+        Objects.requireNonNull(zone, "zone");
+        return db.inTransaction("set customer time zone", c -> {
+            try (PreparedStatement ps = c.prepareStatement("update idn_customer set time_zone = ?, updated_at = now() "
+                    + "where tenant_id = ? and time_zone is distinct from ?")) {
+                ps.setString(1, zone.getId());
+                ps.setString(2, tenantId);
+                ps.setString(3, zone.getId());
+                if (ps.executeUpdate() == 1) return Optional.of(Change.UPDATED);
+            }
+            try (PreparedStatement ps = c.prepareStatement("select 1 from idn_customer where tenant_id = ?")) {
+                ps.setString(1, tenantId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next() ? Optional.of(Change.UNCHANGED) : Optional.empty();
+                }
+            }
+        });
+    }
+
+    @Override
+    public Optional<EntityTimeZone> timeZone(String slotId) {
+        return db.read("read entity time zone", c -> {
+            try (PreparedStatement ps = c.prepareStatement(ZONES + "where e.slot_id = ?")) {
+                ps.setString(1, slotId);
+                return zones(ps);
+            }
+        });
+    }
+
+    @Override
+    public Optional<EntityTimeZone> timeZone(UUID entityUuid) {
+        return db.read("read entity time zone", c -> {
+            try (PreparedStatement ps = c.prepareStatement(ZONES + "where e.entity_uuid = ?")) {
+                ps.setObject(1, entityUuid);
+                return zones(ps);
+            }
+        });
+    }
+
+    @Override
+    public Optional<Change> setEntityTimeZone(String slotId, ZoneId zone) {
+        EntityUuid.requireSlotId(slotId);
+        String id = zone == null ? null : zone.getId();
+        return db.inTransaction("set entity time zone", c -> {
+            try (PreparedStatement ps = c.prepareStatement("update idn_entity set time_zone = ?, updated_at = now() "
+                    + "where slot_id = ? and time_zone is distinct from ?")) {
+                ps.setString(1, id);
+                ps.setString(2, slotId);
+                ps.setString(3, id);
+                if (ps.executeUpdate() == 1) return Optional.of(Change.UPDATED);
+            }
+            return read(c, slotId).map(r -> Change.UNCHANGED);
+        });
+    }
+
+    private static final String ZONES = "select e.slot_id, e.entity_uuid, e.tenant_id, e.time_zone, "
+            + "c.time_zone as customer_time_zone from idn_entity e join idn_customer c using (tenant_id) ";
+
+    private static Optional<EntityTimeZone> zones(PreparedStatement ps) throws SQLException {
+        try (ResultSet rs = ps.executeQuery()) {
+            if (!rs.next()) return Optional.empty();
+            return Optional.of(new EntityTimeZone(rs.getString("slot_id"), rs.getObject("entity_uuid", UUID.class),
+                    rs.getString("tenant_id"), zone(rs.getString("time_zone")).orElse(null),
+                    zone(rs.getString("customer_time_zone")).orElse(null)));
+        }
+    }
+
+    /** A stored zone name; one this Java does not know (written by a newer release) is treated as none. */
+    private static Optional<ZoneId> zone(String name) {
+        return EntityTimeZones.parse(name);
     }
 
     @Override

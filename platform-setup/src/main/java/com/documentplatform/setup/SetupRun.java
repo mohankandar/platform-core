@@ -14,6 +14,7 @@ import com.documentplatform.identity.mapping.SlotTargets;
 import com.documentplatform.identity.store.ChangeSource;
 import com.documentplatform.identity.store.ConnectionChange;
 import com.documentplatform.identity.store.EntityRecord;
+import com.documentplatform.identity.store.EntityTimeZone;
 import com.documentplatform.identity.store.EntityStatus;
 import com.documentplatform.identity.store.LoginConnection;
 import com.documentplatform.licensing.ClockGuard;
@@ -100,6 +101,7 @@ final class SetupRun {
         }
         p.licensedSlots = Set.copyOf(licensed);
         Map<String, EntityRecord> stored = planSlots(p, licensed);
+        planTimeZones(p, licensed, stored);
         List<MappingRow> rows = readMapping(licensed, stored);
         planConnection(p);
         planGrants(p, rows);
@@ -117,6 +119,8 @@ final class SetupRun {
         }
         entities.saveCustomer(tenant, in.licence().customer());
         entities.syncSlots(tenant, p.licensedSlots);
+        if (p.customerZone != null) entities.setCustomerTimeZone(tenant, p.customerZone);
+        p.entityZones.forEach(entities::setEntityTimeZone);
         switch (p.connectionStep) {
             case INSERT -> connections.insert(p.connection, ChangeSource.SETUP, CHANGED_BY);
             case UPDATE -> connections.update(p.connection, p.connectionExpectedVersion, ChangeSource.SETUP, CHANGED_BY)
@@ -239,6 +243,47 @@ final class SetupRun {
             }
         }
         return stored;
+    }
+
+    /**
+     * The sign-in file's time zones are defaults: stored where none is stored yet; a zone already stored (set in the
+     * app or by an earlier run) is kept, so a rerun changes nothing. A zone for a slot the licence does not list
+     * refuses the run.
+     */
+    private void planTimeZones(Plan p, Set<String> licensed, Map<String, EntityRecord> stored) {
+        SigninFile s = in.signin();
+        if (s.timeZone() != null) {
+            Optional<java.time.ZoneId> now = entities.customerTimeZone(tenant);
+            String label = "time zone of customer " + tenant;
+            if (now.isEmpty()) {
+                p.customerZone = s.timeZone();
+                p.add(CREATE, label + ": " + s.timeZone().getId());
+            } else if (now.get().equals(s.timeZone())) {
+                p.add(UNCHANGED, label + ": " + now.get().getId());
+            } else {
+                p.add(UNCHANGED, label + ": " + now.get().getId() + " kept (already set; the sign-in file's "
+                        + s.timeZone().getId() + " is a default only)");
+            }
+        }
+        for (Map.Entry<String, java.time.ZoneId> e : s.entityTimeZones().entrySet()) {
+            String slot = e.getKey();
+            if (!licensed.contains(slot)) {
+                throw new SetupException(SetupRefusal.SETUP_TIME_ZONE_SLOT_NOT_IN_LICENCE, "The sign-in file gives a "
+                        + "time zone for entity slot " + slot + ", which the licence does not list.");
+            }
+            Optional<java.time.ZoneId> now = stored.containsKey(slot)
+                    ? entities.timeZone(slot).map(EntityTimeZone::own) : Optional.empty();
+            String label = "time zone of entity slot " + slot;
+            if (now.isEmpty()) {
+                p.entityZones.put(slot, e.getValue());
+                p.add(CREATE, label + ": " + e.getValue().getId());
+            } else if (now.get().equals(e.getValue())) {
+                p.add(UNCHANGED, label + ": " + now.get().getId());
+            } else {
+                p.add(UNCHANGED, label + ": " + now.get().getId() + " kept (already set; the sign-in file's "
+                        + e.getValue().getId() + " is a default only)");
+            }
+        }
     }
 
     private List<MappingRow> readMapping(Set<String> licensed, Map<String, EntityRecord> stored) {

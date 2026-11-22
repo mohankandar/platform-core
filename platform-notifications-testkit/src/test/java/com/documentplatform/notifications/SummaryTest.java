@@ -96,6 +96,58 @@ class SummaryTest {
         assertTrue(amsterdam.email.sent().get(0).message().text().contains("Period: 2026-11-20 11:05 CET"));
     }
 
+    /** A notifier on the fixture's stores where entity E1 has its own zone (New York) and E2 has none. */
+    private Notifier withEntityZones(EntityZones zones) {
+        return Notifier.builder(f.settings, f.resolver).channels(List.of(f.email, f.teams, f.slack)).clock(f.clock)
+                .outbox(f.outbox).summaries(f.summaries).conditions(f.conditions).entityZones(zones).build();
+    }
+
+    private static final ZoneId NEW_YORK = ZoneId.of("America/New_York");
+    private static final EntityZones E1_IN_NEW_YORK = (tenant, entity) ->
+            entity.equals(E1) ? java.util.Optional.of(NEW_YORK) : java.util.Optional.empty();
+
+    @Test
+    void dailySummaryGoesAtTheEntitysLocalTimeAcrossADaylightSavingChange() {
+        Notifier n = withEntityZones(E1_IN_NEW_YORK);
+        // Before the change (New York on EDT, UTC-4): 08:00 local is 12:00 UTC.
+        f.clock.set(Instant.parse("2026-10-30T13:00:00Z"));
+        f.via(n).publish(event(QUOTA).entity(E1).count("percent", 85).build());
+        assertTrue(n.tick(Instant.parse("2026-10-31T11:59:00Z")).isEmpty());
+        assertEquals(DeliveryStatus.SENT, n.tick(Instant.parse("2026-10-31T12:00:00Z")).get(0).status());
+        String before = f.email.sent().get(0).message().text();
+        assertTrue(before.contains("Period: 2026-10-30 09:00 EDT"), before);
+        assertEquals(Set.of(CY), f.email.sent().get(0).recipients());
+
+        // Daylight saving ends on 2026-11-01 at 02:00 local (EST, UTC-5): 08:00 local is now 13:00 UTC.
+        f.clock.set(Instant.parse("2026-10-31T13:00:00Z"));
+        f.via(n).publish(event(QUOTA).entity(E1).count("percent", 90).build());
+        f.via(n).publish(event(QUOTA).entity(E2).count("percent", 85).build());
+        List<DeliveryReport> utc = n.tick(Instant.parse("2026-11-01T08:00:00Z"));
+        assertEquals(1, utc.size(), "E2 has no zone of its own: 08:00 in the tenant's zone (UTC)");
+        assertEquals(Set.of(Fixture.ANN), f.email.sent().get(1).recipients());
+        assertTrue(f.email.sent().get(1).message().text().contains("Period: 2026-10-31 13:00 Z"));
+        assertTrue(n.tick(Instant.parse("2026-11-01T12:00:00Z")).isEmpty(), "not at the old 12:00 UTC");
+        assertTrue(n.tick(Instant.parse("2026-11-01T12:59:00Z")).isEmpty());
+        assertEquals(DeliveryStatus.SENT, n.tick(Instant.parse("2026-11-01T13:00:00Z")).get(0).status());
+        String after = f.email.sent().get(2).message().text();
+        assertTrue(after.contains("Period: 2026-10-31 09:00 EDT"), after);
+    }
+
+    @Test
+    void eventsWithoutAnEntityKeepTheTenantsZoneAndAFailingLookupFallsBackToIt() {
+        Notifier n = withEntityZones(E1_IN_NEW_YORK);
+        f.via(n).publish(rejected("b-1", 2));
+        n.tick(Instant.parse("2026-11-20T11:00:00Z"));
+        assertTrue(f.email.sent().get(0).message().text().contains("- b-1, 2026-11-20 10:05 Z"));
+
+        Notifier failing = withEntityZones((tenant, entity) -> {
+            throw new IllegalStateException("identity store down");
+        });
+        f.via(failing).publish(event(QUOTA).entity(E1).count("percent", 85).build());
+        assertEquals(DeliveryStatus.SENT, failing.tick(Instant.parse("2026-11-21T08:00:00Z")).get(0).status(),
+                "08:00 in the tenant's zone");
+    }
+
     @Test
     void eachDestinationGetsItsOwnSummary() {
         f.settings.setTechnicalEvent(TENANT, FILES_REJECTED,

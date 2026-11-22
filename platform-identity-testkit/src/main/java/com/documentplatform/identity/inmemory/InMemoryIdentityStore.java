@@ -16,6 +16,7 @@ import com.documentplatform.identity.store.ConnectionChange;
 import com.documentplatform.identity.store.EntityRecord;
 import com.documentplatform.identity.store.EntityStatus;
 import com.documentplatform.identity.store.EntityStore;
+import com.documentplatform.identity.store.EntityTimeZone;
 import com.documentplatform.identity.store.GroupGrantStore;
 import com.documentplatform.identity.store.LoginConnection;
 import com.documentplatform.identity.store.LoginConnectionStore;
@@ -24,6 +25,7 @@ import com.documentplatform.identity.store.SlotSync;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -53,6 +55,8 @@ public final class InMemoryIdentityStore implements EntityStore, LoginConnection
 
     private final Map<String, String> customers = new TreeMap<>();
     private final Map<String, EntityRecord> entities = new TreeMap<>();
+    private final Map<String, ZoneId> customerZones = new TreeMap<>();
+    private final Map<String, ZoneId> entityZones = new TreeMap<>();
     /** status_before_removal: the status of a NOT_IN_LICENCE slot when it left the licence (activated ones only). */
     private final Map<String, EntityStatus> statusBeforeRemoval = new TreeMap<>();
     private final Map<UUID, LoginConnection> connections = new LinkedHashMap<>();
@@ -85,6 +89,41 @@ public final class InMemoryIdentityStore implements EntityStore, LoginConnection
     @Override
     public synchronized Optional<String> customerName(String tenantId) {
         return Optional.ofNullable(customers.get(tenantId));
+    }
+
+    @Override
+    public synchronized Optional<ZoneId> customerTimeZone(String tenantId) {
+        return Optional.ofNullable(customerZones.get(tenantId));
+    }
+
+    @Override
+    public synchronized Optional<Change> setCustomerTimeZone(String tenantId, ZoneId zone) {
+        EntityUuid.requireTenantId(tenantId);
+        Objects.requireNonNull(zone, "zone");
+        if (!customers.containsKey(tenantId)) return Optional.empty();
+        return Optional.of(zone.equals(customerZones.put(tenantId, zone)) ? Change.UNCHANGED : Change.UPDATED);
+    }
+
+    @Override
+    public synchronized Optional<EntityTimeZone> timeZone(String slotId) {
+        EntityRecord r = entities.get(slotId);
+        if (r == null) return Optional.empty();
+        return Optional.of(new EntityTimeZone(r.slotId(), r.entityUuid(), r.tenantId(), entityZones.get(slotId),
+                customerZones.get(r.tenantId())));
+    }
+
+    @Override
+    public synchronized Optional<EntityTimeZone> timeZone(UUID entityUuid) {
+        return entities.values().stream().filter(r -> r.entityUuid().equals(entityUuid)).findFirst()
+                .flatMap(r -> timeZone(r.slotId()));
+    }
+
+    @Override
+    public synchronized Optional<Change> setEntityTimeZone(String slotId, ZoneId zone) {
+        EntityUuid.requireSlotId(slotId);
+        if (!entities.containsKey(slotId)) return Optional.empty();
+        ZoneId before = zone == null ? entityZones.remove(slotId) : entityZones.put(slotId, zone);
+        return Optional.of(Objects.equals(before, zone) ? Change.UNCHANGED : Change.UPDATED);
     }
 
     @Override

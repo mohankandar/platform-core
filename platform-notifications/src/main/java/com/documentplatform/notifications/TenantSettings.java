@@ -30,6 +30,11 @@ public record TenantSettings(URI appBaseUrl, ZoneId zone, Map<DestinationId, Cha
         destinations = Map.copyOf(destinations);
     }
 
+    /** The same settings with another time zone (an entity's own, for its messages and summaries). */
+    public TenantSettings withZone(ZoneId other) {
+        return other.equals(zone) ? this : new TenantSettings(appBaseUrl, other, destinations);
+    }
+
     public boolean isConnected(DestinationId destination) {
         return destinations.containsKey(destination);
     }

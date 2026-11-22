@@ -318,3 +318,16 @@ supported. Password login and the internal relay stay as they are.
   purge runs first, so a request that expired longer ago than the retention (after a long outage) is deleted, not
   announced late. A failure is logged once with its neutral reason, like the other workers.
 - An app without the Spring module calls `tellExpired` from its own scheduler and purges as before.
+
+## 7. Time zone per entity (P020, requirement 20 of `integration-standards.md`)
+
+- Entities can be separate companies in different places. The tenant settings keep the tenant's zone; the app may
+  supply `EntityZones` (tenant, entity → the entity's own zone, if any), set with `Notifier.Builder.entityZones` or as a
+  Spring bean.
+- An event (or summary bucket, which is per entity) that belongs to an entity with its own zone uses that zone for
+  the daily summary time (`Schedule.nextDue`), the summary period and every time shown in its message. Events without
+  an entity, and entities without their own zone, keep the tenant's zone.
+- A failing `EntityZones` never stops a notification: the tenant's zone is used and a warning with the entity id is
+  logged.
+- An app on platform-identity passes `idn_entity.time_zone` (`EntityTimeZones.zone(uuid)` → `ownZone()`), not the
+  effective zone, so an entity without its own zone follows the same zone as tenant-level events.

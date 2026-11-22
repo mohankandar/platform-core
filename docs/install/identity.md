@@ -70,3 +70,24 @@ activates and names each one in the app. The app records who did what.
   to it until it is resumed.
 - If a newer licence drops a suspended entity and a later one lists it again, it comes back **suspended**
   (`idn_entity.status_before_removal` remembers it while the entity is `NOT_IN_LICENCE`).
+
+## 5. Time zones per entity
+
+Entities can be separate companies in different places, so each entity may have its own time zone for off-hours
+windows, reports, retention timers and notification times.
+
+- **Columns:** `idn_customer.time_zone` (the customer's zone) and `idn_entity.time_zone` (the entity's own zone),
+  both IANA names such as `America/New_York`. An entity without its own zone follows the customer's.
+- **Setting them:** the setup command stores the defaults the sign-in file gives (`docs/install/setup.md`, section 2).
+  After that, the app's settings screen uses `EntityTimeZones` (identity-core): `setEntityZone(slotId, name, actor)`
+  (a blank name clears the entity's own zone) and `setCustomerZone(tenantId, name, actor)`. The app audits each call
+  from the result.
+- **Reading:** `EntityTimeZones.effective(entityUuid)` gives the zone that applies (the entity's own, else the
+  customer's); `zone(…)` gives both.
+- **Refusals:** a name that is not an IANA name, including offsets such as `+05:00`, gives `TIME_ZONE_INVALID`;
+  others are `SLOT_UNKNOWN`, `CUSTOMER_UNKNOWN` and `NOT_AN_ID`. Nothing is stored when a call is refused.
+- **Notifications:** an app on `platform-notifications` passes the entity's own zone to the notifier (an
+  `EntityZones` bean, or `Notifier.Builder.entityZones`): `(tenant, entity) -> zones.zone(UUID.fromString(
+  entity.value())).flatMap(EntityTimeZone::ownZone)`. Events of that entity then use its zone; events without an
+  entity, and entities without their own zone, use the tenant's zone from the notification settings.
+- The runtime user needs nothing new (UPDATE on `idn_customer` and `idn_entity` is already granted).

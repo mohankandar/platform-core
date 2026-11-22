@@ -13,6 +13,12 @@ public enum SetupRefusal {
             + "installation."),
     SETUP_SIGNIN_INVALID(SetupCommand.EXIT_REFUSED, "Correct the sign-in file (format platform-signin/1). It holds "
             + "no secrets: client secrets are never written in it."),
+    /** A time zone in the sign-in file is not an IANA name. */
+    SETUP_TIME_ZONE_INVALID(SetupCommand.EXIT_REFUSED, "Write time zones as IANA names such as America/New_York or "
+            + "Europe/London (not offsets such as -05:00, which do not follow daylight saving)."),
+    /** The sign-in file gives a time zone for an entity slot the licence does not list. */
+    SETUP_TIME_ZONE_SLOT_NOT_IN_LICENCE(SetupCommand.EXIT_REFUSED, "Give time zones in entityTimeZones only for "
+            + "entity slots the licence lists."),
     SETUP_MODE_NOT_SUPPORTED(SetupCommand.EXIT_REFUSED, "This version sets up direct sign-in only (mode \"direct\")."),
     SETUP_WRONG_TENANT(SetupCommand.EXIT_REFUSED, "The sign-in file must name the customer (tenantId) of the licence; "
             + "use the sign-in file made for this customer."),

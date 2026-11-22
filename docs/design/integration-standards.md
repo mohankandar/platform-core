@@ -22,7 +22,7 @@ Recorded 2026-11-21 by the Shared capabilities thread, from the LexaVault capabi
 
 | # | Requirement | Shared part |
 |---|---|---|
-| 20 | **Per-entity time zone** for off-hours migration, reports and retention timers. Today notifications holds one time zone per customer. Entities can be separate companies in different places. | `idn_entity.time_zone`, defaulting to the customer's; notifications and the apps read the entity's zone |
+| 20 | **Per-entity time zone** for off-hours migration, reports and retention timers. Today notifications holds one time zone per customer. Entities can be separate companies in different places. **Built in P020** (`docs/install/identity.md` section 5). | `idn_entity.time_zone`, defaulting to the customer's; notifications and the apps read the entity's zone |
 
 ## Already captured elsewhere (no action here)
 

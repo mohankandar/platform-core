@@ -4,11 +4,11 @@
 -- classpath:db/platform/identity and the history table idn_schema_history. Table names are unqualified: they are
 -- created in the schema the app's connection uses.
 --
--- What is stored: customers (tenant ID from the licence, name from the licence), entity slots (slot ID, the entity
--- UUID derived from it, status, the name the Business Admin gave it, who activated it and when), each customer's
--- login-system connection per product (provider, issuer, client ID, API audience, a reference to where a secret is
--- kept) and its history, and group-to-role grants per entity slot and product. What is never stored: secrets (only
--- references such as vault:kv/path#field), tokens, claims, passwords, document data.
+-- What is stored: customers (tenant ID from the licence, name from the licence, time zone), entity slots (slot ID, the
+-- entity UUID derived from it, status, the name the Business Admin gave it, who activated it and when, its own time
+-- zone), each customer's login-system connection per product (provider, issuer, client ID, API audience, a
+-- reference to where a secret is kept) and its history, and group-to-role grants per entity slot and product. What
+-- is never stored: secrets (only references such as vault:kv/path#field), tokens, claims, passwords, document data.
 --
 -- This is the only place the idn_ tables are created or changed. The app never runs DDL at startup: it checks
 -- idn_schema_version and stops with a specific message if the tables are missing or at another version. At runtime
@@ -27,6 +27,9 @@ insert into idn_schema_version (version) values (1);
 create table idn_customer (
     tenant_id  text        primary key check (tenant_id ~ '^TEN-[A-Z0-9-]{1,60}$'),
     name       text        not null check (length(name) between 1 and 200),
+    -- The customer's time zone (IANA name, e.g. America/New_York): every entity without its own follows it. Null
+    -- until the setup command or the app sets it.
+    time_zone  text        check (time_zone ~ '^[A-Za-z][A-Za-z0-9_+/-]{0,63}$'),
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
 );
@@ -45,6 +48,9 @@ create table idn_entity (
     -- While NOT_IN_LICENCE: the status the slot had when it left the licence (ACTIVE or SUSPENDED), so it comes back
     -- as it was; null when it had never been activated. Always null in the other statuses.
     status_before_removal text check (status_before_removal in ('ACTIVE', 'SUSPENDED')),
+    -- The entity's own time zone (IANA name); null = it follows the customer's (idn_customer.time_zone). Entities can
+    -- be separate companies in different places.
+    time_zone    text        check (time_zone ~ '^[A-Za-z][A-Za-z0-9_+/-]{0,63}$'),
     created_at   timestamptz not null default now(),
     updated_at   timestamptz not null default now(),
     -- An activated slot has a name and an activation; a slot never activated has neither.

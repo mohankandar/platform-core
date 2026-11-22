@@ -5,10 +5,13 @@ import com.documentplatform.crypto.CryptoException;
 import com.documentplatform.crypto.CustomerId;
 import com.documentplatform.crypto.testkit.InMemoryKeyService;
 import com.documentplatform.identity.EntityUuid;
+import com.documentplatform.identity.jdbc.PostgresEntityStore;
 import com.documentplatform.identity.jdbc.PostgresLoginConnectionStore;
 import com.documentplatform.identity.store.ChangeSource;
 import com.documentplatform.identity.store.ConnectionChange;
+import com.documentplatform.identity.store.EntityTimeZones;
 import com.documentplatform.identity.store.LoginConnection;
+import com.documentplatform.identity.store.TimeZoneOutcome;
 import com.documentplatform.licensing.Allowance;
 import com.documentplatform.licensing.AllowanceType;
 import com.documentplatform.licensing.Deployment;
@@ -283,6 +286,71 @@ class SetupCommandTest {
         assertEquals(0, update.exit(), update.all());
         assertTrue(update.out().contains("update      login connection PRODUCT_A (version 3) -> version 4: browserClientId"),
                 update.out());
+    }
+
+    /** The demo sign-in file with time zones added at its end (raw JSON members). */
+    private void withTimeZones(String members) throws IOException {
+        write("signin-demo.json", read("signin-demo.json").replaceFirst("\\}\\s*\\z", ", " + members + "}\n"));
+    }
+
+    @Test
+    void timeZonesFromTheSignInFileAreDefaultsAndARerunKeepsWhatTheAppSet() throws Exception {
+        demo();
+        Pg db = Pg.migrated();
+        withTimeZones("\"timeZone\": \"America/New_York\", \"entityTimeZones\": {\"" + S1 + "\": \"America/Chicago\"}");
+
+        Result plan = run(db, "plan", A);
+        assertEquals(0, plan.exit(), plan.all());
+        assertTrue(plan.out().contains("create      time zone of customer " + TENANT + ": America/New_York"), plan.out());
+        assertTrue(plan.out().contains("create      time zone of entity slot " + S1 + ": America/Chicago"), plan.out());
+        assertEquals(0, rows(db));
+
+        Result first = run(db, "apply", A);
+        assertEquals(0, first.exit(), first.all());
+        assertEquals(List.of("America/New_York"), db.strings("select time_zone from idn_customer"));
+        assertEquals(List.of(S1 + " America/Chicago", S2 + " -"),
+                db.strings("select slot_id || ' ' || coalesce(time_zone, '-') from idn_entity order by 1"));
+        EntityTimeZones zones = new EntityTimeZones(new PostgresEntityStore(db.appDataSource(PASSWORD)));
+        assertEquals(java.util.Optional.of(java.time.ZoneId.of("America/New_York")),
+                zones.effective(EntityUuid.fromSlotId(S2)), "S2 follows the customer's zone");
+
+        Result again = run(db, "apply", A);
+        assertEquals(0, again.exit(), again.all());
+        assertTrue(again.out().contains("unchanged   time zone of entity slot " + S1 + ": America/Chicago"), again.out());
+        assertTrue(again.out().contains("0 created, 0 updated, 0 removed"), again.out());
+
+        // The app changes S1's zone; setup keeps it.
+        assertEquals(TimeZoneOutcome.Result.SET, zones.setEntityZone(S1, "America/Denver", "admin-1").result());
+        Result kept = run(db, "apply", A);
+        assertEquals(0, kept.exit(), kept.all());
+        assertTrue(kept.out().contains("unchanged   time zone of entity slot " + S1 + ": America/Denver kept (already "
+                + "set; the sign-in file's America/Chicago is a default only)"), kept.out());
+        assertEquals(List.of("America/Denver"), db.strings("select time_zone from idn_entity where slot_id = '" + S1
+                + "'"));
+    }
+
+    @Test
+    void anInvalidTimeZoneOrOneForASlotOutsideTheLicenceIsRefused() throws Exception {
+        demo();
+        Pg db = Pg.migrated();
+        String signin = read("signin-demo.json");
+        withTimeZones("\"entityTimeZones\": {\"" + S1 + "\": \"-05:00\"}");
+        Result offset = run(db, "apply", A);
+        assertEquals(SetupCommand.EXIT_REFUSED, offset.exit(), offset.all());
+        assertTrue(offset.err().startsWith("SETUP_TIME_ZONE_INVALID: The sign-in file is not valid: entityTimeZones."
+                + S1 + " is not an IANA time zone name"), offset.err());
+        assertEquals(0, rows(db));
+
+        write("signin-demo.json", signin);
+        withTimeZones("\"timeZone\": \"New York\"");
+        assertTrue(run(db, "apply", A).err().startsWith("SETUP_TIME_ZONE_INVALID"));
+
+        write("signin-demo.json", signin);
+        withTimeZones("\"entityTimeZones\": {\"ENT-DEMO-0099\": \"UTC\"}");
+        Result outside = run(db, "apply", A);
+        assertEquals(SetupCommand.EXIT_REFUSED, outside.exit(), outside.all());
+        assertTrue(outside.err().startsWith("SETUP_TIME_ZONE_SLOT_NOT_IN_LICENCE"), outside.err());
+        assertEquals(0, rows(db));
     }
 
     @Test

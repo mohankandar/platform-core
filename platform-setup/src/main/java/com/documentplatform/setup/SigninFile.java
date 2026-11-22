@@ -1,6 +1,7 @@
 package com.documentplatform.setup;
 
 import com.documentplatform.identity.EntityUuid;
+import com.documentplatform.identity.store.EntityTimeZones;
 import com.documentplatform.identity.store.LoginConnection;
 import com.documentplatform.licensing.json.Fields;
 import com.documentplatform.licensing.json.Json;
@@ -8,11 +9,13 @@ import com.documentplatform.licensing.json.JsonException;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * The sign-in file ({@value #FORMAT}): which login system the customer's people sign in with, and per product the
@@ -27,15 +30,21 @@ import java.util.Set;
  *   "loginSystem": {"type": "OIDC", "issuer": "https://login.example/oauth2/default", "providerId": "okta"},
  *   "products": {
  *     "PRODUCT_A": {"browserClientId": "…", "apiAudience": "api://product-a", "roleMappingFile": "roles-a.csv"}
- *   }
+ *   },
+ *   "timeZone": "America/New_York",
+ *   "entityTimeZones": {"ENT-…": "America/Chicago"}
  * }
  * </pre>
  *
  * {@code roleMappingFile} is relative to the sign-in file's folder (or absolute). Only mode {@code direct} is
  * supported in this version.
+ *
+ * <p>{@code timeZone} (the customer's) and {@code entityTimeZones} (per entity slot) are optional defaults, IANA
+ * names: setup stores one only where none is stored yet, and never changes a zone already set (for example in the
+ * app). A name that is not an IANA name refuses the file ({@code SETUP_TIME_ZONE_INVALID}).
  */
 public record SigninFile(String tenantId, String mode, String loginType, URI issuer, String providerId,
-                         Map<String, Product> products) {
+                         Map<String, Product> products, ZoneId timeZone, Map<String, ZoneId> entityTimeZones) {
 
     public static final String FORMAT = "platform-signin/1";
     public static final String DIRECT = "direct";
@@ -46,6 +55,7 @@ public record SigninFile(String tenantId, String mode, String loginType, URI iss
 
     public SigninFile {
         products = Map.copyOf(products);
+        entityTimeZones = java.util.Collections.unmodifiableMap(new TreeMap<>(entityTimeZones));
     }
 
     public Optional<Product> product(String code) {
@@ -67,7 +77,7 @@ public record SigninFile(String tenantId, String mode, String loginType, URI iss
                 }
                 throw invalid("mode must be \"direct\"");
             }
-            f.only(Set.of("format", "tenantId", "mode", "loginSystem", "products"));
+            f.only(Set.of("format", "tenantId", "mode", "loginSystem", "products", "timeZone", "entityTimeZones"));
             String tenant = f.string("tenantId");
             if (!EntityUuid.isTenantId(tenant)) throw invalid("tenantId must be TEN- followed by 1 to 60 of A-Z 0-9 -");
 
@@ -91,7 +101,19 @@ public record SigninFile(String tenantId, String mode, String loginType, URI iss
                         text(p.string("apiAudience"), "products." + code + ".apiAudience", 200),
                         text(p.string("roleMappingFile"), "products." + code + ".roleMappingFile", 500)));
             }
-            return new SigninFile(tenant, mode, type, issuer, providerId, out);
+            ZoneId customerZone = f.has("timeZone") ? zone(f.string("timeZone"), "timeZone") : null;
+            Map<String, ZoneId> entityZones = new TreeMap<>();
+            if (f.has("entityTimeZones")) {
+                Fields z = f.object("entityTimeZones");
+                for (String slot : z.map().keySet()) {
+                    if (!EntityUuid.isSlotId(slot)) {
+                        throw invalid("entityTimeZones: a key is not an entity slot ID (ENT- followed by 1 to 60 of "
+                                + "A-Z 0-9 -)");
+                    }
+                    entityZones.put(slot, zone(z.string(slot), "entityTimeZones." + slot));
+                }
+            }
+            return new SigninFile(tenant, mode, type, issuer, providerId, out, customerZone, entityZones);
         } catch (JsonException e) {
             throw invalid(e.getMessage());
         }
@@ -108,6 +130,12 @@ public record SigninFile(String tenantId, String mode, String loginType, URI iss
         } catch (URISyntaxException e) {
             throw invalid("loginSystem.issuer is not an address");
         }
+    }
+
+    private static ZoneId zone(String value, String field) {
+        return EntityTimeZones.parse(value).orElseThrow(() -> new SetupException(SetupRefusal.SETUP_TIME_ZONE_INVALID,
+                "The sign-in file is not valid: " + field + " is not an IANA time zone name such as "
+                        + "America/New_York."));
     }
 
     private static String text(String value, String field, int max) {

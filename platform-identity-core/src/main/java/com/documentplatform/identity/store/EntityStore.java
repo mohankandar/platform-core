@@ -23,6 +23,30 @@ public interface EntityStore {
 
     Optional<String> customerName(String tenantId);
 
+    /** The customer's time zone, if one is set. */
+    Optional<java.time.ZoneId> customerTimeZone(String tenantId);
+
+    /**
+     * Sets the customer's time zone. Only {@link EntityTimeZones} and the setup command call this, with a checked zone.
+     *
+     * @return UPDATED or UNCHANGED; empty when the customer is not stored
+     */
+    Optional<Change> setCustomerTimeZone(String tenantId, java.time.ZoneId zone);
+
+    /** The slot's own time zone and its customer's; empty when the slot is not stored. */
+    Optional<EntityTimeZone> timeZone(String slotId);
+
+    /** The same, by entity UUID. */
+    Optional<EntityTimeZone> timeZone(UUID entityUuid);
+
+    /**
+     * Sets the slot's own time zone, or clears it with null (the slot then follows the customer's). Only
+     * {@link EntityTimeZones} and the setup command call this, with a checked zone.
+     *
+     * @return UPDATED or UNCHANGED; empty when the slot is not stored
+     */
+    Optional<Change> setEntityTimeZone(String slotId, java.time.ZoneId zone);
+
     /**
      * Brings the customer's slots in line with a licence: missing slots are added as NOT_ACTIVATED with their derived
      * entity UUID; stored slots the licence no longer lists become NOT_IN_LICENCE; a NOT_IN_LICENCE slot listed again

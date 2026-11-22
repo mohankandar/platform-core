@@ -50,12 +50,21 @@ This version sets up **direct sign-in**: your people sign in with your own login
   "loginSystem": { "type": "OIDC", "issuer": "https://login.example.com/oauth2/default", "providerId": "okta" },
   "products": {
     "PRODUCT_A": { "browserClientId": "…", "apiAudience": "api://…", "roleMappingFile": "role-mapping-product-a.csv" }
-  }
+  },
+  "timeZone": "America/New_York",
+  "entityTimeZones": { "ENT-…": "America/Chicago" }
 }
 ```
 
 - `tenantId` must be the customer ID in your licence.
 - `roleMappingFile` is relative to the sign-in file's folder.
+- `timeZone` (the customer's) and `entityTimeZones` (per entity slot) are optional, as IANA names
+  (`America/New_York`, `Europe/London`, `UTC`; not offsets such as `-05:00`). They are **defaults**: setup stores a
+  zone only where none is stored yet, and keeps a zone that was already set (for example in the app). The plan shows
+  `create` for a zone it will store and `unchanged` for one it keeps, so a rerun changes nothing. An entity without
+  its own zone follows the customer's. A name that is not an IANA name refuses the file
+  (`SETUP_TIME_ZONE_INVALID`); a zone for a slot the licence does not list refuses the run
+  (`SETUP_TIME_ZONE_SLOT_NOT_IN_LICENCE`).
 - **No secrets.** Direct sign-in needs no client secret in setup. Any field not shown above refuses the file, so a
   secret pasted in by mistake is never read or stored (the message names the field, never its value).
 

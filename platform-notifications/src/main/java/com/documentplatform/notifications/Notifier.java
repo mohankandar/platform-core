@@ -65,6 +65,7 @@ public final class Notifier {
     private final int batchSize;
     private final Runnable whenQueued;
     private final ActionLinks actionLinks;
+    private final EntityZones entityZones;
 
     private Notifier(Builder b) {
         this.settings = Objects.requireNonNull(b.settings, "settings");
@@ -86,6 +87,7 @@ public final class Notifier {
         this.batchSize = b.batchSize;
         this.whenQueued = b.whenQueued;
         this.actionLinks = b.actionLinks;
+        this.entityZones = b.entityZones;
     }
 
     public static Builder builder(NotificationSettings settings, RecipientResolver recipients) {
@@ -138,7 +140,7 @@ public final class Notifier {
             if (stop.isPresent()) {
                 return List.of(stop.get().report());
             }
-            TenantSettings t = settings.tenant(event.tenant()).orElseThrow();
+            TenantSettings t = zoned(settings.tenant(event.tenant()).orElseThrow(), event.tenant(), event.entity());
             Message message = MessageBuilder.single(o, t).forRequest(requestId);
             for (DestinationId destination : t.targetsFor(s.destinations())) {
                 ChannelKind kind = t.kindOf(destination);
@@ -171,7 +173,7 @@ public final class Notifier {
             if (stop.isPresent()) {
                 return List.of(stop.get().report());
             }
-            TenantSettings t = settings.tenant(event.tenant()).orElseThrow();
+            TenantSettings t = zoned(settings.tenant(event.tenant()).orElseThrow(), event.tenant(), event.entity());
             Optional<DestinationId> mail = t.targetsFor(s.destinations()).stream()
                     .filter(d -> t.kindOf(d) == ChannelKind.EMAIL).findFirst()
                     .or(() -> t.targetsFor(Set.of()).stream().findFirst());
@@ -375,7 +377,7 @@ public final class Notifier {
             return List.of(Routed.of(new DeliveryReport(e.tenant(), types, null, o.kind(),
                     DeliveryStatus.NO_DESTINATION, null)));
         }
-        TenantSettings t = tenant.get();
+        TenantSettings t = zoned(tenant.get(), e.tenant(), e.entity());
         List<Routed> reports = new ArrayList<>();
         for (DestinationId destination : targets) {
             ChannelKind kind = t.kindOf(destination);
@@ -390,6 +392,23 @@ public final class Notifier {
             }
         }
         return reports;
+    }
+
+    /**
+     * The tenant's settings with the entity's own time zone, when the event belongs to an entity that has one; the
+     * tenant's zone otherwise. If the app's {@link EntityZones} fails, the tenant's zone, with a warning.
+     */
+    private TenantSettings zoned(TenantSettings t, TenantId tenant, EntityId entity) {
+        if (entity == null) {
+            return t;
+        }
+        try {
+            return entityZones.zoneOf(tenant, entity).map(t::withZone).orElse(t);
+        } catch (RuntimeException e) {
+            LOG.log(Level.WARNING, "Time zone of entity {0} of tenant {1} not available ({2}); the tenant''s zone is "
+                    + "used", entity.value(), tenant.value(), e.getClass().getSimpleName());
+            return t;
+        }
     }
 
     private List<Routed> queueSummary(SummaryBuckets.Due due, Instant now) {
@@ -414,7 +433,7 @@ public final class Notifier {
             return List.of(Routed.of(failedReport(bucket.tenant(), types, bucket.destination(), null,
                     MessageKind.SUMMARY, FailureCode.DESTINATION_NOT_CONNECTED, "summary dropped")));
         }
-        TenantSettings t = tenant.get();
+        TenantSettings t = zoned(tenant.get(), bucket.tenant(), bucket.entity());
         OutboxEntry entry = OutboxEntry.pending(Keys.summary(bucket), bucket.tenant(), bucket.destination(),
                 t.kindOf(bucket.destination()), bucket.entity(), bucket.roles(), types,
                 MessageBuilder.summary(items, t), now);
@@ -606,6 +625,7 @@ public final class Notifier {
         private int batchSize = 100;
         private Runnable whenQueued = () -> { };
         private ActionLinks actionLinks;
+        private EntityZones entityZones = EntityZones.NONE;
 
         private Builder(NotificationSettings settings, RecipientResolver recipients) {
             this.settings = settings;
@@ -692,6 +712,15 @@ public final class Notifier {
          */
         public Builder actionLinks(ActionLinks links) {
             this.actionLinks = Objects.requireNonNull(links, "links");
+            return this;
+        }
+
+        /**
+         * The entities' own time zones: an event of an entity with its own zone gets that zone for its daily summary
+         * time, its summary period and the times in its messages. Without it, the tenant's zone everywhere.
+         */
+        public Builder entityZones(EntityZones zones) {
+            this.entityZones = Objects.requireNonNull(zones, "zones");
             return this;
         }
 
