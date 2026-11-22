@@ -27,7 +27,9 @@ public final class Plan {
         /** A grant not in the mapping file, kept because --remove-unlisted-grants was not given. */
         NOT_REMOVED("not removed"),
         /** A client binding no longer in the client-binding file: switched off (INACTIVE), never deleted. */
-        SWITCH_OFF("switch off");
+        SWITCH_OFF("switch off"),
+        /** An integration profile named in the sign-in file: checked, stored nowhere. */
+        CHECKED("checked");
 
         private final String label;
 

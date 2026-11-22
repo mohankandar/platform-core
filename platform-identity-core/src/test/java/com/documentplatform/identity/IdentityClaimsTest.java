@@ -76,7 +76,7 @@ class IdentityClaimsTest {
     void knownFinding_moreThan200GroupsThrowsIllegalArgumentException() {
         List<String> groups = new ArrayList<>();
         for (int i = 0; i < 201; i++) groups.add("g" + i);
-        // Callers must map this to a refusal themselves (LexaVault: 403, SDV: 401). Unmapped, it would be a 500.
+        // Callers must map this to a refusal themselves (one product answers 403, another 401). Unmapped, it would be a 500.
         assertThrows(IllegalArgumentException.class, () -> IdentityClaims.values(groups));
         groups.remove(200);
         assertEquals(200, IdentityClaims.values(groups).size());

@@ -23,7 +23,7 @@ import java.util.Map;
  */
 record SetupInputs(String product, byte[] licenceFile, Licence licence, TrustedKeys keys, SigninFile signin,
                    SigninFile.Product productSignin, ProductRoles roles, byte[] mapping, String mappingName,
-                   List<ClientBindingsFile.Row> bindings, String bindingsName,
+                   List<ClientBindingsFile.Row> bindings, String bindingsName, List<CheckedProfile> profiles,
                    Path configOut, boolean removeUnlistedGrants, boolean replaceConnection) {
 
     /** @throws SetupException with the first problem found, in the order the files are listed */
@@ -67,10 +67,48 @@ record SetupInputs(String product, byte[] licenceFile, Licence licence, TrustedK
             if (!r.valid()) throw bindingsInvalid(bindingsName, r.errors());
             bindings = r.rows();
         }
+        List<CheckedProfile> profiles = new java.util.ArrayList<>();
+        for (SigninFile.ProfileEntry e : productSignin.integrationProfiles()) {
+            profiles.add(checkProfile(e, signinPath.toAbsolutePath().getParent().resolve(e.file())));
+        }
         Path configOut = Path.of(o.getOrDefault("--config-out", ConfigFragment.DEFAULT_NAME));
         return new SetupInputs(product, licenceFile, licence, keys, signin, productSignin, roles, mapping,
-                mappingPath.getFileName().toString(), bindings, bindingsName, configOut, removeUnlisted,
+                mappingPath.getFileName().toString(), bindings, bindingsName, List.copyOf(profiles), configOut, removeUnlisted,
                 replaceConnection);
+    }
+
+    /** An integration profile that passed: its name, version, tag and file name, for the plan and the run log. */
+    record CheckedProfile(String name, String version, String tag, String file) {
+    }
+
+    /**
+     * Checks one profile named in the sign-in file: a tag is given, the file passes the profile format's validator,
+     * the profile's own name is the entry's, and the tag ends with the profile's version. Nothing is stored.
+     */
+    static CheckedProfile checkProfile(SigninFile.ProfileEntry e, Path file) {
+        String fileName = file.getFileName().toString();
+        if (e.tag() == null) {
+            throw new SetupException(SetupRefusal.SETUP_PROFILE_TAG_MISSING, "The sign-in file names integration "
+                    + "profile " + e.name() + " (file " + fileName + ") without its release tag.");
+        }
+        com.documentplatform.integration.profile.ProfileValidator.Result r =
+                com.documentplatform.integration.profile.ProfileLoader.check(file);
+        if (!r.valid()) {
+            throw new SetupException(SetupRefusal.SETUP_PROFILE_INVALID, "The integration profile file " + fileName
+                    + " has " + r.problems().size() + " problem(s).", r.problems().stream()
+                    .map(p -> fileName + " " + p).toList());
+        }
+        var profile = r.profile();
+        if (!profile.name().equals(e.name())) {
+            throw new SetupException(SetupRefusal.SETUP_PROFILE_INVALID, "The integration profile file " + fileName
+                    + " is profile " + profile.name() + ", not " + e.name() + ".", List.of(fileName + " /name"));
+        }
+        if (!e.tag().endsWith(profile.version())) {
+            throw new SetupException(SetupRefusal.SETUP_PROFILE_INVALID, "The integration profile file " + fileName
+                    + " is version " + profile.version() + ", which the tag " + e.tag() + " does not name.",
+                    List.of(fileName + " /version"));
+        }
+        return new CheckedProfile(profile.name(), profile.version(), e.tag(), fileName);
     }
 
     /** SETUP_CLIENT_BINDINGS_INVALID with one detail line per problem (line number, code, what is wrong). */

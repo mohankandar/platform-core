@@ -1,50 +1,54 @@
-# Enterprise Identity 0.3.0
+# platform-core
 
-Shared, product-neutral identity foundation for LexaVault and SDV.
+Shared platform libraries for document products: identity, licensing, notifications, case fields, encryption and
+keys, the erase log, configurable integrations and the setup command. Each module is a plain Java library (some with
+a Spring Boot wiring module) that an app puts on its classpath. platform-core is not a server and is never deployed on
+its own.
 
-Scope in this first candidate:
+## Using it
 
-- normalized authenticated identity contract
-- OIDC/JWT claim normalization
-- reusable audience validator
-- stable issuer+subject identity id helper
+Apps use **released versions only**, from GitHub Packages:
 
-Deliberately NOT included yet: product roles/authorization, machine-to-machine authorization, SAML, LDAP, admin UI,
-secret storage.
+```xml
+<repositories>
+  <repository>
+    <id>github-platform-core</id>
+    <url>https://maven.pkg.github.com/mohankandar/platform-core</url>
+  </repository>
+</repositories>
 
-## 0.2.0 — Enterprise Identity Administration foundation
+<dependencyManagement>
+  <dependencies>
+    <dependency>
+      <groupId>com.documentplatform.platform</groupId>
+      <artifactId>platform-bom</artifactId>
+      <version>0.1.0</version>
+      <type>pom</type>
+      <scope>import</scope>
+    </dependency>
+  </dependencies>
+</dependencyManagement>
+```
 
-Adds product-neutral provider lifecycle types, a secret-free `OidcConnectionBinding`, a fail-closed resolver contract,
-and a bounded TTL caching resolver. Persistence and product authorization remain product-owned.
+Reading packages needs a token with `read:packages` in your own `~/.m2/settings.xml` (server id
+`github-platform-core`), never in a repository. Release notes: `docs/releases/`.
 
-## 0.2.1 — Null-safe audience validation
+## Modules
 
-`RequiredAudienceValidator` no longer throws when a token has no `aud` claim. It now returns the normal
-"Required API audience is missing." failure, so the resource server answers 401 instead of 500. Adds the first unit
-tests for the validator.
+The module list, with what each one holds, is in [CLAUDE.md](CLAUDE.md). Install guides are in `docs/install/`,
+designs in `docs/design/`.
 
-## 0.3.0 — Entity admission (several entities behind one login system)
+## Building
 
-Adds the package `com.documentplatform.identity.admission` to the core module (plain Java, no Spring). It holds the
-rules for signing a person in to one of several entities (organizations) that share one login system, moved here from
-LexaVault's R1B work so SDV can use the same rules:
+```
+mvn verify
+```
 
-- `EntityMembershipResolver`: an entity is admitted only when it has an ACTIVE connection for this login system **and**
-  one of the person's verified groups is granted in that entity; roles come from that entity's grants only.
-- `EntitySelection` and `TrustedEntityAdmission`: the person's entity choice is a request, never proof; without a choice
-  exactly one entity must be admissible.
-- `EntityGroupAuthorization`, `SharedIssuerPreflight`: group-to-role rules; the product's platform role can never be
-  granted through an entity's groups.
-- `MachineEntityAdmission`: a machine identity must be bound to exactly one entity.
-- `IdentityAdmissionException` with a `Reason` for every refusal, so each product chooses its own status and words.
+Java 21, Maven 3.9+. Releases are tags `platform-core-vX.Y.Z`; the release workflow publishes them. To build a tag
+offline into a separate local repository: `scripts/build-release.ps1 -Tag platform-core-vX.Y.Z -Repository <path>`
+(or `scripts/build-release.sh`).
 
-The library owns **no tables and no setting names**. Each product implements four small interfaces
-(`ActiveEntityCandidates`, `EntityGroupGrants`, `MachineEntityBindings`, `EntityRoleCatalog`) and builds
-`AdmissionSettings` from its own settings, with shared-issuer selection off by default. The columns a product must
-provide are in [SCHEMA_CONTRACT.md](SCHEMA_CONTRACT.md).
+## History
 
-Also adds tests for the classes that had none. Tests named `knownFinding_*` pin behaviour that is to be revisited:
-a plain-string groups claim is split on spaces and commas; more than 200 groups, a group value over 200 characters, or a
-token without `sub` throws `IllegalArgumentException` (callers must turn it into a refusal); the caching resolver strips
-one trailing slash from the issuer while the admission lookups compare the raw `iss`. A guard test fails the build if any
-product package name appears in the library. The 0.2.1 classes are unchanged.
+Releases before platform-core were the identity library alone (tags `v0.2.1` and `v0.3.0`); they are kept as they
+are and are not published here.

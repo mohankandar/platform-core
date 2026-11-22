@@ -2,7 +2,7 @@ package com.documentplatform.integration.testkit;
 
 import com.documentplatform.integration.json.Json;
 import com.documentplatform.integration.testkit.openapi.OpenApiSpec;
-import com.documentplatform.integration.testkit.openapi.Schemas;
+import com.documentplatform.integration.json.JsonSchema;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpsConfigurator;
@@ -174,11 +174,12 @@ public final class MockDestination implements AutoCloseable {
     private volatile boolean healthBusy;
     private volatile Duration healthDelay = Duration.ZERO;
     private volatile boolean recordValues;
+    private volatile String errorCodePointer = "/code";
     private final List<Route> routes = new CopyOnWriteArrayList<>();
 
     // spec mode
     private volatile OpenApiSpec spec;
-    private volatile Schemas schemas;
+    private volatile JsonSchema schemas;
     private volatile SpecBehaviour behaviour;
     private final List<String> specProblems = new CopyOnWriteArrayList<>();
 
@@ -426,7 +427,7 @@ public final class MockDestination implements AutoCloseable {
     /** Follows the OpenAPI document: its operations only, requests checked, answers from its schemas. */
     public MockDestination specMode(OpenApiSpec document, SpecBehaviour b) {
         spec = document;
-        schemas = new Schemas(document);
+        schemas = new JsonSchema(document.root());
         behaviour = b;
         return this;
     }
@@ -642,8 +643,11 @@ public final class MockDestination implements AutoCloseable {
     private void health(HttpExchange ex) throws IOException {
         pause(healthDelay);
         if (healthBusy) {
-            String b = healthBusyCode == null ? "{\"status\":\"NOT_READY\"}"
-                    : "{\"status\":\"NOT_READY\",\"code\":\"" + healthBusyCode + "\"}";
+            Map<String, Object> body = healthBusyCode == null ? new LinkedHashMap<>()
+                    : errorBody(errorCodePointer, healthBusyCode);
+            body.remove("message");
+            body.put("status", "NOT_READY");
+            String b = Json.write(body);
             send(ex, 503, b, healthBusyRetryAfter);
         } else if (healthFailing) {
             send(ex, 503, "{\"status\":\"" + (spec != null ? "NOT_READY" : "DOWN") + "\"}", null);
@@ -676,7 +680,7 @@ public final class MockDestination implements AutoCloseable {
                 if (p.required()) problems.add(p.in() + " " + p.name() + ": missing");
                 continue;
             }
-            for (String s : schemas.check(v, p.schema())) problems.add(p.in() + " " + p.name() + s);
+            for (JsonSchema.Problem s : schemas.check(v, p.schema())) problems.add(p.in() + " " + p.name() + " " + s.what());
         }
         Object json = null;
         if (!op.requestBodies().isEmpty()) {
@@ -688,10 +692,37 @@ public final class MockDestination implements AutoCloseable {
                 return;
             }
             if (op.bodyRequired() && body.length == 0) problems.add("body: missing");
+            if (type.equals("multipart/form-data")) {
+                Map<String, Object> schema = schemas.resolve(op.requestBodies().get(type));
+                String fullType = ex.getRequestHeaders().getFirst("Content-Type");
+                List<Part> parts = parts(fullType, body);
+                if (schema.get("required") instanceof List<?> req) {
+                    for (Object name : req) {
+                        if (parts.stream().noneMatch(p -> name.equals(p.name()))) problems.add("part " + name + ": missing");
+                    }
+                }
+                if (schema.get("properties") instanceof Map<?, ?> props) {
+                    for (Part p : parts) {
+                        if (p.contentType() != null && p.contentType().toLowerCase(Locale.ROOT).contains("json")
+                                && props.get(p.name()) instanceof Map<?, ?> ps) {
+                            try {
+                                @SuppressWarnings("unchecked") Map<String, Object> partSchema = (Map<String, Object>) ps;
+                                Object partJson = Json.parse(new String(partContent(fullType, body, p.name()),
+                                        StandardCharsets.UTF_8));
+                                for (JsonSchema.Problem s : schemas.check(partJson, partSchema)) {
+                                    problems.add("part " + p.name() + s);
+                                }
+                            } catch (Json.Invalid e) {
+                                problems.add("part " + p.name() + ": not JSON");
+                            }
+                        }
+                    }
+                }
+            }
             if (type.contains("json")) {
                 try {
                     json = Json.parse(new String(body, StandardCharsets.UTF_8));
-                    for (String s : schemas.check(json, op.requestBodies().get(type))) problems.add("body" + s);
+                    for (JsonSchema.Problem s : schemas.check(json, op.requestBodies().get(type))) problems.add("body" + s);
                 } catch (Json.Invalid e) {
                     problems.add("body: not JSON");
                 }
@@ -724,9 +755,9 @@ public final class MockDestination implements AutoCloseable {
             out.putAll(replay ? behaviour.replay(request) : behaviour.answer(request));
             sample = out;
         }
-        List<String> own = schemas.check(sample, answer.schema());
+        List<JsonSchema.Problem> own = schemas.check(sample, answer.schema());
         if (!own.isEmpty()) {
-            for (String p : own) specProblems.add(op.id() + " answer " + statusKey + ": " + p);
+            for (JsonSchema.Problem p : own) specProblems.add(op.id() + " answer " + statusKey + ": " + p);
             send(ex, 500, error("MOCK-SPEC-ANSWER-INVALID", reference), null);
             return;
         }
@@ -829,6 +860,24 @@ public final class MockDestination implements AutoCloseable {
             at = next;
         }
         return List.copyOf(out);
+    }
+
+    /** The content of the first part with this name (for checking a JSON part in spec mode; never recorded). */
+    static byte[] partContent(String contentType, byte[] body, String name) {
+        java.util.regex.Matcher bm = Pattern.compile("boundary=([^;]+)").matcher(contentType);
+        if (!bm.find()) return new byte[0];
+        byte[] delimiter = ("--" + bm.group(1)).getBytes(StandardCharsets.ISO_8859_1);
+        int at = indexOf(body, delimiter, 0);
+        while (at >= 0) {
+            int start = at + delimiter.length + 2;
+            int headEnd = indexOf(body, "\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1), start);
+            int next = indexOf(body, delimiter, headEnd < 0 ? start : headEnd);
+            if (headEnd < 0 || next < 0) break;
+            String head = new String(body, start, headEnd - start, StandardCharsets.UTF_8);
+            if (head.contains("name=\"" + name + "\"")) return java.util.Arrays.copyOfRange(body, headEnd + 4, next - 2);
+            at = next;
+        }
+        return new byte[0];
     }
 
     private static int indexOf(byte[] hay, byte[] needle, int from) {
@@ -993,7 +1042,29 @@ public final class MockDestination implements AutoCloseable {
             return Json.write(b.error(c, reference == null ? UUID.randomUUID().toString() : reference));
         }
         if (c == null) return "{\"message\":\"mock answer\"}";
-        return "{\"code\":\"" + c + "\",\"message\":\"mock answer\"}";
+        return Json.write(errorBody(errorCodePointer, c));
+    }
+
+    /** {@code {"message": ..., <pointer>: code}}, for example {@code /error/code} → {@code {"error":{"code":...}}}. */
+    public static Map<String, Object> errorBody(String pointer, String code) {
+        Map<String, Object> top = new LinkedHashMap<>();
+        String[] parts = pointer.substring(1).split("/");
+        Map<String, Object> cur = top;
+        for (int i = 0; i < parts.length - 1; i++) {
+            Map<String, Object> next = new LinkedHashMap<>();
+            cur.put(parts[i].replace("~1", "/").replace("~0", "~"), next);
+            cur = next;
+        }
+        if (code != null) cur.put(parts[parts.length - 1].replace("~1", "/").replace("~0", "~"), code);
+        top.putIfAbsent("message", "mock answer");
+        return top;
+    }
+
+    /** Where error answers put their code (default {@code /code}). */
+    public MockDestination errorCodePointer(String pointer) {
+        if (!com.documentplatform.integration.json.Json.isPointer(pointer)) throw new IllegalArgumentException("not a pointer");
+        errorCodePointer = pointer;
+        return this;
     }
 
     private static void send(HttpExchange ex, int status, String body, Duration retryAfter) throws IOException {

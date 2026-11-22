@@ -14,15 +14,15 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Ported case for case from LexaVault OidcTenantMembershipResolverTest. The product interfaces are single-method,
+ * Ported case for case from the original OidcTenantMembershipResolverTest. The product interfaces are single-method,
  * so lambdas replace the Mockito mocks; a lambda that checks its key replaces Mockito's argument matching.
  */
 class EntityMembershipResolverTest {
     private static final EntityId A = EntityId.of(UUID.fromString("00000000-0000-0000-0000-000000000001"));
     private static final EntityId B = EntityId.of(UUID.fromString("00000000-0000-0000-0000-000000000002"));
     private static final URI ISSUER = URI.create("https://identity.example.test/realms/shared");
-    private static final ConnectionKey KEY = new ConnectionKey("customer-oidc", ISSUER, "lexavault-api");
-    private static final AdmissionSettings SETTINGS = new AdmissionSettings(true, true, "customer-oidc", "lexavault-api");
+    private static final ConnectionKey KEY = new ConnectionKey("customer-oidc", ISSUER, "product-a-api");
+    private static final AdmissionSettings SETTINGS = new AdmissionSettings(true, true, "customer-oidc", "product-a-api");
 
     private static ActiveEntityCandidates candidates(Set<EntityId> answer) {
         return key -> KEY.equals(key) ? answer : Set.of();

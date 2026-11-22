@@ -8,7 +8,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-/** Ported case for case from LexaVault SharedIssuerActivationPreflightTest. */
+/** Ported case for case from the original SharedIssuerActivationPreflightTest. */
 class SharedIssuerPreflightTest {
     private static final EntityId A = EntityId.of(UUID.fromString("00000000-0000-0000-0000-000000000001"));
     private static final EntityId B = EntityId.of(UUID.fromString("00000000-0000-0000-0000-000000000002"));

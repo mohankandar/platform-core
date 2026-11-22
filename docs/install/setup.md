@@ -149,6 +149,34 @@ client to another entity or system: remove its line and run setup, then add the 
 newer licence drops an entity slot, remove that slot's lines too. Every change is in the plan, the run log and the
 binding history (`idn_machine_binding_history`).
 
+## 3b. Integration profiles (only if the product's integrations use one)
+
+An integration profile describes another system's published API. Its owner publishes the profile with a release
+tag. If the product's integrations use profiles, name each one in the sign-in file under the product:
+
+```json
+"integrationProfiles": [
+  { "name": "acme-archive-v1", "file": "acme-archive-v1.profile.json", "tag": "acme-archive-profile-v1.2.0" }
+]
+```
+
+- `name`: the profile's name, as written in the file.
+- `file`: the profile file you received, relative to the sign-in file's folder. Keep it unchanged.
+- `tag`: the release tag the profile came from. It ends with the profile's version (here `1.2.0`).
+
+Setup checks each file before anything else: the format, every rule of the format, that the name is the one you
+wrote, and that the tag names the file's version. The plan lists each profile as `checked`, and so does the run
+log. **Setup stores nothing for profiles**: the product's integration screens read the file when IT sets up the
+integration.
+
+Refusals:
+
+- `SETUP_PROFILE_TAG_MISSING`: no tag.
+- `SETUP_PROFILE_INVALID`: the file is not valid, or is not the profile or version named. Each problem names the
+  file and the place in it, for example `acme-archive-v1.profile.json INT_PROFILE_SCHEMA at /direction`.
+
+Sign-in files without `integrationProfiles` work as before.
+
 ## 4. Running it
 
 ```
@@ -160,7 +188,7 @@ setup apply (the same options)
 Optional: `--config-out FILE` (default `platform-tenant.properties`), `--run-log FILE` (default
 `platform-setup-runs.log`), `--remove-unlisted-grants`, `--replace-connection`, `--no-customer-keys`.
 
-The plan lists every item as `create`, `unchanged`, `update`, `conflict`, `remove`, `not removed` or `switch off`:
+The plan lists every item as `create`, `unchanged`, `update`, `conflict`, `remove`, `not removed`, `switch off` or `checked`:
 
 ```
   create      licence LIC-… v1 (first licence)
@@ -202,7 +230,7 @@ and it now differs from the sign-in file, the plan shows `conflict` and setup le
 Refusal codes: `SETUP_BAD_OPTION`, `SETUP_FILE_UNREADABLE`, `SETUP_KEYS_INVALID`, `SETUP_LICENCE_REFUSED` (with the
 licence code, for example `LICENCE_UNKNOWN_KEY_ID`), `SETUP_SIGNIN_INVALID`, `SETUP_MODE_NOT_SUPPORTED`,
 `SETUP_WRONG_TENANT`, `SETUP_PRODUCT_NOT_IN_LICENCE`, `SETUP_PRODUCT_NOT_IN_SIGNIN`, `SETUP_PRODUCT_ROLES_INVALID`,
-`SETUP_MAPPING_INVALID` (with every bad line), `SETUP_CLIENT_BINDINGS_INVALID` (with every bad line, section 3a),
+`SETUP_MAPPING_INVALID` (with every bad line), `SETUP_CLIENT_BINDINGS_INVALID` (with every bad line, section 3a), `SETUP_PROFILE_INVALID` and `SETUP_PROFILE_TAG_MISSING` (section 3b),
 `SETUP_DB_SETTINGS_MISSING`, `SETUP_DB_UNREACHABLE`,
 `SETUP_TABLES_NOT_READY`, `SETUP_OTHER_CUSTOMER_INSTALLED`, `SETUP_LICENCE_OLDER`, `SETUP_LICENCE_VERSION_CONFLICT`,
 `SETUP_CONFIG_OTHER_TENANT`, `SETUP_KEY_SERVICE_SETTINGS_MISSING`, `SETUP_KEY_SERVICE_FAILED`. Failures: `SETUP_FAILED`, `SETUP_CONFIG_NOT_WRITTEN`.

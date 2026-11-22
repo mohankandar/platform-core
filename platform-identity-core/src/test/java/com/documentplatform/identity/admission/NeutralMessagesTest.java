@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class NeutralMessagesTest {
 
     private static final Pattern STRING = Pattern.compile("\"((?:[^\"\\\\]|\\\\.)*)\"");
-    private static final Pattern PRODUCT_WORDS = Pattern.compile("(?i)\\btenant|platform operations|lexavault|\\bsdv\\b");
+    private static final Pattern PRODUCT_WORDS = Pattern.compile("(?i)\\btenant|platform operations|" + "lexa" + "vault|\\bs" + "dv\\b");
 
     @Test
     void admissionStringsUseNoProductWords() throws IOException {

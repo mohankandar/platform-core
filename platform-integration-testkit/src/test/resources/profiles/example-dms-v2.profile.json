@@ -1,0 +1,75 @@
+{
+  "format": "platform-integration-profile/1",
+  "name": "example-dms-v2",
+  "version": "2.0.1",
+  "description": "A made-up document management API for tests: one multipart call per package.",
+  "api": {
+    "title": "Example DMS",
+    "version": "2.0"
+  },
+  "direction": "OUTBOUND",
+  "kind": "API_PUSH",
+  "packaging": {
+    "preset": "MULTIPART",
+    "path": "/api/v2/packages",
+    "jsonPart": "metadata",
+    "filePart": "files",
+    "jsonTemplate": "{\"package\":\"{package.id}\",\"files\":[{#each doc}{\"name\":\"{doc.fileName}\",\"sha256\":\"{doc.sha256}\"}{/each}],\"index\":{}}"
+  },
+  "signIn": {
+    "types": [
+      "API_KEY"
+    ],
+    "apiKeyHeader": "X-Dms-Key",
+    "installationSupplies": [
+      "apiKey"
+    ]
+  },
+  "health": {
+    "method": "GET",
+    "path": "/api/v2/status",
+    "signIn": true,
+    "rules": []
+  },
+  "rules": [
+    {
+      "status": "409",
+      "code": "DMS-DUPLICATE",
+      "outcome": "ALREADY_RECEIVED"
+    },
+    {
+      "status": "403",
+      "code": "DMS-KEY",
+      "outcome": "SIGN_IN_FAILED"
+    },
+    {
+      "status": "4xx",
+      "code": "DMS-*",
+      "outcome": "REFUSED"
+    },
+    {
+      "status": "429",
+      "outcome": "BUSY"
+    },
+    {
+      "status": "500",
+      "code": "DMS-INTERNAL",
+      "outcome": "OUTAGE"
+    },
+    {
+      "status": "5xx",
+      "outcome": "OUTAGE"
+    }
+  ],
+  "errorCodePointer": "/error/code",
+  "testMode": "FULL",
+  "fields": {
+    "step": "send",
+    "object": "index",
+    "expected": [],
+    "others": true
+  },
+  "notes": [
+    "Ask the DMS administrator for an API key with upload rights."
+  ]
+}

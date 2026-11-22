@@ -1,0 +1,98 @@
+{
+  "openapi": "3.1.0",
+  "info": {"title": "Acme Archive API", "version": "1.0.0", "description": "A made-up API for tests."},
+  "paths": {
+    "/ready": {
+      "get": {
+        "operationId": "ready",
+        "security": [],
+        "responses": {
+          "200": {"description": "Ready", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Ready"}}}},
+          "503": {"description": "Not ready", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Ready"}}}}
+        }
+      }
+    },
+    "/v1/batches": {
+      "post": {
+        "operationId": "createBatch",
+        "parameters": [{"$ref": "#/components/parameters/CorrelationId"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateBatch"}}}},
+        "responses": {
+          "201": {"description": "Created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Batch"}}}},
+          "200": {"description": "Replay", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Batch"}}}},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "409": {"description": "Conflict", "x-error-codes": ["ACME-CONFLICT"], "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "503": {"$ref": "#/components/responses/Unavailable"}
+        }
+      }
+    },
+    "/v1/batches/{batchId}/files": {
+      "post": {
+        "operationId": "uploadFile",
+        "parameters": [
+          {"$ref": "#/components/parameters/CorrelationId"},
+          {"in": "path", "name": "batchId", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"in": "header", "name": "X-Acme-File-Name", "required": true, "schema": {"type": "string", "minLength": 1, "maxLength": 300}},
+          {"in": "header", "name": "X-Acme-Item-Ref", "required": true, "schema": {"type": "string", "maxLength": 200}},
+          {"in": "header", "name": "X-Acme-Class", "required": false, "schema": {"enum": ["PUBLIC", "INTERNAL", "RESTRICTED"]}}
+        ],
+        "requestBody": {"required": true, "content": {"application/pdf": {"schema": {"type": "string", "contentMediaType": "application/pdf"}}}},
+        "responses": {
+          "201": {"description": "Stored", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/File"}}}},
+          "200": {"description": "Replay", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/File"}}}},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "409": {"description": "Conflict", "x-error-codes": ["ACME-CONFLICT"], "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "503": {"$ref": "#/components/responses/Unavailable"}
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "CorrelationId": {"in": "header", "name": "X-Correlation-Id", "required": false, "schema": {"type": "string", "maxLength": 128}}
+    },
+    "responses": {
+      "BadRequest": {"description": "Bad request", "x-error-codes": ["ACME-BAD-REQUEST"], "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "Unauthorized": {"description": "Sign-in", "x-error-codes": ["ACME-TOKEN"], "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "Unavailable": {"description": "Busy or down", "x-error-codes": ["ACME-BUSY", "ACME-DOWN"], "headers": {"Retry-After": {"schema": {"type": "integer"}}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+    },
+    "schemas": {
+      "Ready": {"type": "object", "required": ["status"], "properties": {"status": {"type": "string"}, "code": {"type": "string"}}},
+      "CreateBatch": {
+        "type": "object",
+        "required": ["batchRef", "count", "items"],
+        "additionalProperties": false,
+        "properties": {
+          "batchRef": {"type": "string", "minLength": 1, "maxLength": 200},
+          "count": {"type": "integer", "minimum": 1},
+          "items": {"type": "array", "uniqueItems": true, "items": {"type": "object", "required": ["ref"], "properties": {"ref": {"type": "string"}}}},
+          "label": {"type": "string"},
+          "attributes": {"type": "object", "additionalProperties": {"oneOf": [{"type": "string"}, {"type": "number"}]}}
+        }
+      },
+      "Batch": {
+        "type": "object",
+        "required": ["batchId", "batchRef", "replay"],
+        "properties": {
+          "batchId": {"type": "string", "format": "uuid"},
+          "batchRef": {"type": "string"},
+          "replay": {"type": "boolean"}
+        }
+      },
+      "File": {
+        "type": "object",
+        "required": ["fileId", "sha256", "size", "state", "replay"],
+        "properties": {
+          "fileId": {"type": "string", "format": "uuid"},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "size": {"type": "integer", "minimum": 0},
+          "state": {"enum": ["STORED", "DUPLICATE"]},
+          "replay": {"type": "boolean"}
+        }
+      },
+      "Error": {"type": "object", "required": ["code", "message"], "properties": {"code": {"type": "string"}, "message": {"type": "string"}}}
+    }
+  }
+}

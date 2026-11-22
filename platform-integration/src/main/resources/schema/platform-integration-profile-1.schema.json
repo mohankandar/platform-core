@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "platform-integration-profile-1.schema.json",
+  "title": "platform-integration-profile/1",
+  "description": "An integration profile: what a published API fixes (calls, answers, health), published by the API's owner next to its specification. Never an address, a secret, a client ID, an entity or customer data: the installation adds those. Described in docs/design/integration-profile-format.md.",
+  "type": "object",
+  "required": ["format", "name", "version", "api", "direction", "kind", "signIn", "errorCodePointer"],
+  "additionalProperties": false,
+  "properties": {
+    "format": {"const": "platform-integration-profile/1"},
+    "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"},
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "description": {"type": "string", "maxLength": 1000},
+    "api": {
+      "type": "object",
+      "required": ["title", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "title": {"type": "string", "minLength": 1, "maxLength": 200},
+        "version": {"type": "string", "minLength": 1, "maxLength": 50}
+      }
+    },
+    "direction": {"enum": ["OUTBOUND", "INBOUND"]},
+    "kind": {"enum": ["API_PUSH", "API_POLL"]},
+    "packaging": {
+      "type": "object",
+      "description": "A packaging preset, instead of steps: it expands to ordinary steps.",
+      "required": ["preset"],
+      "additionalProperties": false,
+      "properties": {
+        "preset": {"enum": ["TWO_STEP", "MULTIPART", "FILE_PER_CALL"]},
+        "createPath": {"$ref": "#/$defs/path"},
+        "createBody": {"type": "string", "maxLength": 65536},
+        "idValue": {"$ref": "#/$defs/name"},
+        "idPointer": {"$ref": "#/$defs/pointer"},
+        "uploadPath": {"$ref": "#/$defs/path"},
+        "path": {"$ref": "#/$defs/path"},
+        "jsonPart": {"type": "string", "pattern": "^[A-Za-z0-9_.\\[\\]-]{1,64}$"},
+        "filePart": {"type": "string", "pattern": "^[A-Za-z0-9_.\\[\\]-]{1,64}$"},
+        "jsonTemplate": {"type": "string", "maxLength": 65536},
+        "headers": {"$ref": "#/$defs/headers"}
+      }
+    },
+    "steps": {"type": "array", "minItems": 1, "maxItems": 20, "items": {"$ref": "#/$defs/step"}},
+    "signIn": {
+      "type": "object",
+      "required": ["types"],
+      "additionalProperties": false,
+      "properties": {
+        "types": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": {"enum": ["NONE", "BASIC", "API_KEY", "BEARER_FIXED", "OAUTH2_CLIENT_CREDENTIALS"]}
+        },
+        "installationSupplies": {
+          "type": "array", "uniqueItems": true,
+          "description": "What the installation must supply for sign-in, in words IT recognises (for example tokenAddress, clientId, credential, scope, audience, apiKeyHeader).",
+          "items": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"}
+        },
+        "apiKeyHeader": {"type": "string", "pattern": "^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}$"}
+      }
+    },
+    "health": {
+      "type": "object",
+      "required": ["method", "path", "signIn"],
+      "additionalProperties": false,
+      "properties": {
+        "method": {"enum": ["GET", "HEAD"]},
+        "path": {"$ref": "#/$defs/path"},
+        "signIn": {"type": "boolean"},
+        "rules": {"$ref": "#/$defs/rules"}
+      }
+    },
+    "rules": {"$ref": "#/$defs/rules"},
+    "errorCodePointer": {"$ref": "#/$defs/pointer"},
+    "sendCorrelationId": {"type": "boolean"},
+    "testMode": {"enum": ["FULL", "CHECK_ONLY"]},
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "connectTimeoutMs": {"type": "integer", "minimum": 1000, "maximum": 120000},
+        "readTimeoutMs": {"type": "integer", "minimum": 1000, "maximum": 1800000},
+        "maxFileBytes": {"type": "integer", "minimum": 1},
+        "maxDocuments": {"type": "integer", "minimum": 1, "maximum": 100000},
+        "maxResponseBytes": {"type": "integer", "minimum": 1024, "maximum": 16777216},
+        "maxPackageBytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "values": {
+      "type": "array",
+      "description": "The app values the templates use as {value.<name>}.",
+      "items": {
+        "type": "object", "required": ["name", "required"], "additionalProperties": false,
+        "properties": {
+          "name": {"$ref": "#/$defs/name"},
+          "required": {"type": "boolean"},
+          "description": {"type": "string", "maxLength": 500}
+        }
+      }
+    },
+    "fields": {
+      "type": "object",
+      "description": "Where the case fields the installation maps go: one JSON object of a step's body ({\"<object>\":{}} in its template), filled with \"<apiName>\":{field:<key>} per mapped field.",
+      "required": ["step", "object"],
+      "additionalProperties": false,
+      "properties": {
+        "step": {"$ref": "#/$defs/name"},
+        "object": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,100}$"},
+        "expected": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["name", "required"], "additionalProperties": false,
+            "properties": {
+              "name": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,100}$"},
+              "required": {"type": "boolean"},
+              "description": {"type": "string", "maxLength": 500}
+            }
+          }
+        },
+        "others": {"type": "boolean", "description": "Whether names not listed under expected may be mapped too."}
+      }
+    },
+    "documentAttributes": {
+      "type": "array",
+      "description": "Per-document values the templates use as {doc.attr.<name>}.",
+      "items": {
+        "type": "object", "required": ["name", "values", "default"], "additionalProperties": false,
+        "properties": {
+          "name": {"$ref": "#/$defs/name"},
+          "values": {"type": "array", "minItems": 1, "items": {"type": "string", "maxLength": 200}},
+          "default": {"type": "string", "maxLength": 200}
+        }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "description": "Named settings the installation chooses; each value stands for engine settings (for example token.requiredClaims).",
+      "additionalProperties": {
+        "type": "object", "required": ["default", "values"], "additionalProperties": false,
+        "properties": {
+          "default": {"type": "string"},
+          "description": {"type": "string", "maxLength": 1000},
+          "values": {
+            "type": "object",
+            "additionalProperties": {"type": "object", "additionalProperties": {"type": "string", "maxLength": 500}}
+          }
+        }
+      }
+    },
+    "notes": {"type": "array", "description": "Notes for IT, in plain words.", "items": {"type": "string", "maxLength": 2000}}
+  },
+  "$defs": {
+    "name": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"},
+    "path": {"type": "string", "pattern": "^/", "maxLength": 2000},
+    "pointer": {"type": "string", "pattern": "^(/([^~/]|~[01])*)+$", "maxLength": 200},
+    "headers": {"type": "object", "additionalProperties": {"type": "string", "maxLength": 2000}},
+    "rules": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/rule"}},
+    "rule": {
+      "type": "object",
+      "required": ["status", "outcome"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {"type": "string", "pattern": "^(any|[1-5]xx|[1-5][0-9][0-9]|[1-5][0-9][0-9]-[1-5][0-9][0-9])$"},
+        "code": {"type": "string", "pattern": "^(-|\\*|[A-Za-z0-9_.:-]{1,40}\\*?)$"},
+        "pointer": {"$ref": "#/$defs/pointer"},
+        "equals": {"type": "string", "maxLength": 200},
+        "retryAfter": {"type": "boolean"},
+        "outcome": {"enum": ["SENT", "ALREADY_RECEIVED", "REFUSED", "SIGN_IN_FAILED", "CANT_CONNECT", "BUSY", "OUTAGE", "UNCLEAR", "NOT_CONFIGURED"]},
+        "platformCode": {"type": "string", "pattern": "^INT_[A-Z_]+$"},
+        "attemptUsed": {"type": "boolean"}
+      }
+    },
+    "step": {
+      "type": "object",
+      "required": ["name", "method", "path", "body", "repeat"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"$ref": "#/$defs/name"},
+        "method": {"enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]},
+        "path": {"$ref": "#/$defs/path"},
+        "headers": {"$ref": "#/$defs/headers"},
+        "body": {"enum": ["NONE", "JSON", "FILE", "MULTIPART"]},
+        "bodyTemplate": {"type": "string", "maxLength": 65536},
+        "repeat": {"enum": ["ONCE", "EACH_DOCUMENT"]},
+        "read": {"type": "object", "additionalProperties": {"$ref": "#/$defs/pointer"}},
+        "required": {"type": "array", "items": {"$ref": "#/$defs/name"}},
+        "rules": {"$ref": "#/$defs/rules"},
+        "multipart": {
+          "type": "object", "required": ["jsonPart", "filePart", "fileName"], "additionalProperties": false,
+          "properties": {
+            "jsonPart": {"type": "string", "pattern": "^[A-Za-z0-9_.\\[\\]-]{1,64}$"},
+            "filePart": {"type": "string", "pattern": "^[A-Za-z0-9_.\\[\\]-]{1,64}$"},
+            "fileName": {"type": "string", "maxLength": 2000}
+          }
+        },
+        "integrity": {
+          "type": "object", "additionalProperties": false,
+          "properties": {"sha256Value": {"$ref": "#/$defs/name"}, "sizeValue": {"$ref": "#/$defs/name"}}
+        }
+      }
+    }
+  }
+}

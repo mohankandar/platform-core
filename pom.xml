@@ -7,7 +7,7 @@
     <version>0.1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>platform-core</name>
-    <description>Shared libraries for LexaVault and Vero: one module per capability, one version for all modules.</description>
+    <description>Shared platform libraries for document products</description>
     <modules>
         <module>platform-bom</module>
         <module>platform-identity-core</module>
@@ -31,7 +31,6 @@
         <module>platform-erase-log-spring</module>
         <module>platform-integration</module>
         <module>platform-integration-testkit</module>
-        <module>platform-integration-profiles</module>
     </modules>
     <properties>
         <maven.compiler.release>21</maven.compiler.release>
@@ -46,6 +45,14 @@
         <testcontainers.version>2.0.5</testcontainers.version>
         <postgresql.version>42.7.14</postgresql.version>
     </properties>
+    <distributionManagement>
+        <!-- Releases only (tags platform-core-vX.Y.Z, published by .github/workflows/release.yml). -->
+        <repository>
+            <id>github</id>
+            <name>GitHub Packages</name>
+            <url>https://maven.pkg.github.com/mohankandar/platform-core</url>
+        </repository>
+    </distributionManagement>
     <build>
         <pluginManagement>
             <plugins>
@@ -56,6 +63,11 @@
                     <configuration>
                         <release>21</release>
                     </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-deploy-plugin</artifactId>
+                    <version>3.1.3</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
