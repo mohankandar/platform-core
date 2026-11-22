@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.documentplatform.platform</groupId>
+        <artifactId>platform-core</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>platform-crypto</artifactId>
+    <description>Encryption and keys (plain Java, no Spring, no runtime dependencies): the key service plug-in point
+        (Vault Transit now; AWS KMS and Azure Key Vault later), separate keys per customer, AES-256-GCM envelope
+        encryption of values and streams with data keys wrapped by the key service, key versions and rotation, keyed
+        fingerprints (HMAC-SHA256 in the key service) for exact-match search of sensitive values, and a Vault client
+        (Transit and KV, token or AppRole login) with specific failure codes and no secret in any output.</description>
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>
