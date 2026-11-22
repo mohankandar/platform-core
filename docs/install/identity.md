@@ -25,10 +25,14 @@ The identity tables all start with `idn_`:
 | `idn_login_connection` | Your login system per product: provider, issuer address, client ID, API audience, a secret reference, status, version. One active connection per product, shared by all your entities |
 | `idn_login_connection_history` | Every version of each login connection, with who changed it (setup, the app, a migration) |
 | `idn_group_grant` | Which group of your login system gets which role, per entity and product |
+| `idn_machine_binding` | Integration client bindings (version 2): which client ID of your login system may send to which entity, as which system, per product; ACTIVE or INACTIVE (never deleted). Loaded by the setup command from the client-binding file (`docs/install/setup.md` section 3a). Client IDs only, never secrets |
+| `idn_machine_binding_history` | Every version of each client binding, with who changed it |
 | `idn_schema_version` | The version of the tables |
 
 1. **Run the identity schema step as its own Flyway run,** apart from the app's other tables:
-   - location `classpath:db/platform/identity` (files `V1__identity.sql`, …)
+   - location `classpath:db/platform/identity` (files `V1__identity.sql`, `V2__machine_binding.sql`; a database
+     that ran only V1 gets V2 at the next schema step, and the app refuses to start with `IDN_VERSION_OLDER` until
+     then)
    - history table `idn_schema_history`
    - run it as the schema owner, in the same schema the app connects to.
 2. **Grant the app's database user** SELECT, INSERT, UPDATE and DELETE on the `idn_` tables, and SELECT on

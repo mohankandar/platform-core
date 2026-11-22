@@ -94,7 +94,7 @@ final class Pg {
         }
     }
 
-    private static void exec(DataSource ds, String... sql) {
+    static void exec(DataSource ds, String... sql) {
         try (Connection c = ds.getConnection(); Statement s = c.createStatement()) {
             for (String q : sql) {
                 s.execute(q);

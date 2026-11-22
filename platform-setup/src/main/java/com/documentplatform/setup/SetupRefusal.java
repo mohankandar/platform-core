@@ -30,6 +30,11 @@ public enum SetupRefusal {
             + "release, for the product given with --product."),
     SETUP_MAPPING_INVALID(SetupCommand.EXIT_REFUSED, "Correct the role mapping file at the lines listed; nothing was "
             + "written."),
+    /** The client-binding file has errors (each with its line number and code), or a client is bound elsewhere. */
+    SETUP_CLIENT_BINDINGS_INVALID(SetupCommand.EXIT_REFUSED, "Correct the client-binding file at the lines listed "
+            + "(header client_id,entity_slot,source,description; client IDs only, never secrets; each client ID once; "
+            + "entity slots of the licence; sources listed in the sign-in file). To move a client to another entity "
+            + "or source, remove its line, run setup, then add the new line. Nothing was written."),
     SETUP_DB_SETTINGS_MISSING(SetupCommand.EXIT_REFUSED, "Set " + SetupCommand.DB_URL + ", " + SetupCommand.DB_USER
             + " and " + SetupCommand.DB_PASSWORD + " in the environment (the app's everyday database user is enough)."),
     SETUP_DB_UNREACHABLE(SetupCommand.EXIT_REFUSED, "Check the database address, user and password in the "

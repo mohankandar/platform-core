@@ -8,6 +8,7 @@ Demo values only. Nothing here belongs to a real customer, login system or produ
 | `development-trusted-keys.json` | The development public key. Only demo and test installs list it. |
 | `signin-demo.json` | Sign-in file (`platform-signin/1`), direct mode. No secrets. |
 | `role-mapping-product-a.csv`, `role-mapping-product-b.csv` | Role mapping per product, by slot ID. |
+| `client-bindings-product-a.csv` | Integration client bindings for `PRODUCT_A` (client ID → entity slot → source; demo client IDs, no secrets). Named in `signin-demo.json` as `clientBindingsFile`, with the product's `sources`. `PRODUCT_B` has none, so it has no machine callers. |
 | `product-roles-product-a.json`, `product-roles-product-b.json` | Stand-ins for the `product-roles.json` each product ships. |
 
 Run against a demo database (one run per product database):

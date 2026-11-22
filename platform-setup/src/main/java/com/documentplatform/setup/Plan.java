@@ -25,7 +25,9 @@ public final class Plan {
         /** A grant not in the mapping file, removed because --remove-unlisted-grants was given. */
         REMOVE("remove"),
         /** A grant not in the mapping file, kept because --remove-unlisted-grants was not given. */
-        NOT_REMOVED("not removed");
+        NOT_REMOVED("not removed"),
+        /** A client binding no longer in the client-binding file: switched off (INACTIVE), never deleted. */
+        SWITCH_OFF("switch off");
 
         private final String label;
 
@@ -66,6 +68,13 @@ public final class Plan {
     java.time.ZoneId customerZone;
     /** Entity slots whose own time zone to store (none stored yet). */
     final Map<String, java.time.ZoneId> entityZones = new TreeMap<>();
+    /** Client bindings to create. */
+    final List<com.documentplatform.identity.store.MachineBinding> bindingsToInsert = new ArrayList<>();
+    /** Client bindings to change (switched off, switched on again, new description), with the version read. */
+    final List<BindingUpdate> bindingsToUpdate = new ArrayList<>();
+
+    record BindingUpdate(com.documentplatform.identity.store.MachineBinding binding, long expectedVersion) {
+    }
 
     void add(Action action, String text) {
         items.add(new Item(action, text));

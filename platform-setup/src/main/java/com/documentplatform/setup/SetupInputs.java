@@ -1,5 +1,6 @@
 package com.documentplatform.setup;
 
+import com.documentplatform.identity.mapping.ClientBindingsFile;
 import com.documentplatform.licensing.Licence;
 import com.documentplatform.licensing.LicenceException;
 import com.documentplatform.licensing.LicenceVerifier;
@@ -9,6 +10,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -16,9 +18,12 @@ import java.util.Map;
  * {@link #load}, which refuses with a SETUP_* code before anything else happens.
  *
  * @param mappingName the role mapping file's name, for messages
+ * @param bindings    the client-binding file's rows, checked line by line; null when the sign-in file names no file
+ * @param bindingsName the client-binding file's name, for messages; null without one
  */
 record SetupInputs(String product, byte[] licenceFile, Licence licence, TrustedKeys keys, SigninFile signin,
                    SigninFile.Product productSignin, ProductRoles roles, byte[] mapping, String mappingName,
+                   List<ClientBindingsFile.Row> bindings, String bindingsName,
                    Path configOut, boolean removeUnlistedGrants, boolean replaceConnection) {
 
     /** @throws SetupException with the first problem found, in the order the files are listed */
@@ -52,9 +57,28 @@ record SetupInputs(String product, byte[] licenceFile, Licence licence, TrustedK
         ProductRoles roles = ProductRoles.parse(text(o.get("--product-roles"), "--product-roles"), product);
         Path mappingPath = signinPath.toAbsolutePath().getParent().resolve(productSignin.roleMappingFile());
         byte[] mapping = bytes(mappingPath, "roleMappingFile of " + product);
+        List<ClientBindingsFile.Row> bindings = null;
+        String bindingsName = null;
+        if (productSignin.clientBindingsFile() != null) {
+            Path bindingsPath = signinPath.toAbsolutePath().getParent().resolve(productSignin.clientBindingsFile());
+            bindingsName = bindingsPath.getFileName().toString();
+            ClientBindingsFile.Result r = ClientBindingsFile.read(bytes(bindingsPath, "clientBindingsFile of "
+                    + product), productSignin.sourceKeys());
+            if (!r.valid()) throw bindingsInvalid(bindingsName, r.errors());
+            bindings = r.rows();
+        }
         Path configOut = Path.of(o.getOrDefault("--config-out", ConfigFragment.DEFAULT_NAME));
         return new SetupInputs(product, licenceFile, licence, keys, signin, productSignin, roles, mapping,
-                mappingPath.getFileName().toString(), configOut, removeUnlisted, replaceConnection);
+                mappingPath.getFileName().toString(), bindings, bindingsName, configOut, removeUnlisted,
+                replaceConnection);
+    }
+
+    /** SETUP_CLIENT_BINDINGS_INVALID with one detail line per problem (line number, code, what is wrong). */
+    static SetupException bindingsInvalid(String name, List<ClientBindingsFile.Problem> problems) {
+        List<String> lines = problems.stream().map(ClientBindingsFile.Problem::display).toList();
+        List<String> codes = problems.stream().map(p -> p.code().name()).distinct().toList();
+        return new SetupException(SetupRefusal.SETUP_CLIENT_BINDINGS_INVALID, "The client-binding file " + name
+                + " has " + problems.size() + " error(s) " + codes + ".", lines);
     }
 
     private static String text(String file, String option) {

@@ -5,6 +5,8 @@ import com.documentplatform.identity.IdentityProviderType;
 import com.documentplatform.identity.jdbc.PostgresEntityStore;
 import com.documentplatform.identity.jdbc.PostgresGroupGrantStore;
 import com.documentplatform.identity.jdbc.PostgresLoginConnectionStore;
+import com.documentplatform.identity.jdbc.PostgresMachineBindingStore;
+import com.documentplatform.identity.mapping.ClientBindingsFile;
 import com.documentplatform.identity.mapping.Grant;
 import com.documentplatform.identity.mapping.MappingError;
 import com.documentplatform.identity.mapping.MappingPlan;
@@ -17,6 +19,8 @@ import com.documentplatform.identity.store.EntityRecord;
 import com.documentplatform.identity.store.EntityTimeZone;
 import com.documentplatform.identity.store.EntityStatus;
 import com.documentplatform.identity.store.LoginConnection;
+import com.documentplatform.identity.store.MachineBinding;
+import com.documentplatform.identity.store.MachineBindingStatus;
 import com.documentplatform.licensing.ClockGuard;
 import com.documentplatform.licensing.EntitySlot;
 import com.documentplatform.licensing.Licence;
@@ -53,8 +57,8 @@ import static com.documentplatform.setup.Plan.Action.*;
  * The database part of one setup run, on one connection inside one transaction that the caller opened (auto-commit
  * off) and commits or rolls back. {@link #plan} takes the transaction-scoped advisory lock first, so two runs on the
  * same database never interleave; then it reads everything and refuses before any write. {@link #apply} writes the
- * plan: licence, customer, entity slots, login connection, grants. All stores work on this one connection, so a
- * failure anywhere rolls the whole database part back and a rerun does it all again.
+ * plan: licence, customer, entity slots, login connection, grants, client bindings. All stores work on this one
+ * connection, so a failure anywhere rolls the whole database part back and a rerun does it all again.
  */
 final class SetupRun {
 
@@ -72,6 +76,7 @@ final class SetupRun {
     private final PostgresEntityStore entities;
     private final PostgresLoginConnectionStore connections;
     private final PostgresGroupGrantStore grants;
+    private final PostgresMachineBindingStore bindings;
     private final String tenant;
 
     SetupRun(SetupInputs in, Clock clock, Connection c) {
@@ -82,6 +87,7 @@ final class SetupRun {
         this.entities = PostgresEntityStore.onConnection(c);
         this.connections = PostgresLoginConnectionStore.onConnection(c);
         this.grants = PostgresGroupGrantStore.onConnection(c);
+        this.bindings = PostgresMachineBindingStore.onConnection(c);
         this.tenant = in.licence().tenantId();
     }
 
@@ -105,6 +111,7 @@ final class SetupRun {
         List<MappingRow> rows = readMapping(licensed, stored);
         planConnection(p);
         planGrants(p, rows);
+        planClientBindings(p, licensed);
         planConfig(p);
         return p;
     }
@@ -133,6 +140,14 @@ final class SetupRun {
         p.grantsToAdd.forEach((slot, set) -> grants.add(slot, product, in.signin().issuer(), set));
         if (in.removeUnlistedGrants()) {
             p.grantsToRemove.forEach((slot, set) -> grants.remove(slot, product, in.signin().issuer(), set));
+        }
+        for (MachineBinding b : p.bindingsToInsert) {
+            bindings.insertBinding(b, ChangeSource.SETUP, CHANGED_BY);
+        }
+        for (Plan.BindingUpdate u : p.bindingsToUpdate) {
+            bindings.updateBinding(u.binding(), u.expectedVersion(), ChangeSource.SETUP, CHANGED_BY)
+                    .orElseThrow(() -> new SetupException(SetupRefusal.SETUP_FAILED, "The client binding of "
+                            + u.binding().clientId() + " was changed in the app while setup ran."));
         }
     }
 
@@ -421,6 +436,68 @@ final class SetupRun {
         List<Grant> out = new ArrayList<>(set);
         out.sort(java.util.Comparator.comparing(Grant::group).thenComparing(Grant::role));
         return out;
+    }
+
+    /**
+     * The client-binding file is the product's complete list of machine callers: a line not stored yet is created, a
+     * line removed from the file switches its binding off (never deleted), and no file at all switches every binding
+     * of the product off. A client already ACTIVE for another entity or source is refused: it is switched off first
+     * (line removed, setup run), then bound again.
+     */
+    private void planClientBindings(Plan p, Set<String> licensed) {
+        String product = in.product();
+        Map<String, MachineBinding> stored = new TreeMap<>();
+        for (MachineBinding b : bindings.bindings(tenant, product)) stored.put(b.clientId(), b);
+        List<ClientBindingsFile.Row> rows = in.bindings() == null ? List.of() : in.bindings();
+
+        List<ClientBindingsFile.Problem> problems = new ArrayList<>();
+        for (ClientBindingsFile.Row r : rows) {
+            if (!licensed.contains(r.slotId())) {
+                problems.add(new ClientBindingsFile.Problem(r.line(), ClientBindingsFile.Code.SLOT_UNKNOWN,
+                        "entity slot " + r.slotId() + " is not a slot of this customer's licence"));
+                continue;
+            }
+            MachineBinding b = stored.get(r.clientId());
+            if (b != null && b.status() == MachineBindingStatus.ACTIVE
+                    && (!b.slotId().equals(r.slotId()) || !b.sourceKey().equals(r.source()))) {
+                problems.add(new ClientBindingsFile.Problem(r.line(), ClientBindingsFile.Code.CLIENT_BOUND_ELSEWHERE,
+                        "client \"" + r.clientId() + "\" is already bound to " + b.slotId() + ", source "
+                                + b.sourceKey() + "; remove its line and run setup to switch that binding off first"));
+            }
+        }
+        if (!problems.isEmpty()) throw SetupInputs.bindingsInvalid(in.bindingsName(), problems);
+
+        Set<String> inFile = new java.util.HashSet<>();
+        for (ClientBindingsFile.Row r : rows) {
+            inFile.add(r.clientId());
+            MachineBinding b = stored.get(r.clientId());
+            String label = "client binding " + product + ": client \"" + r.clientId() + "\" -> " + r.slotId()
+                    + ", source " + r.source();
+            if (b == null) {
+                p.bindingsToInsert.add(MachineBinding.create(tenant, product, r.clientId(), r.slotId(), r.source(),
+                        r.description()));
+                p.add(CREATE, label);
+            } else if (b.status() == MachineBindingStatus.INACTIVE) {
+                p.bindingsToUpdate.add(new Plan.BindingUpdate(b.activeFor(r.slotId(), r.source(), r.description()),
+                        b.version()));
+                p.add(UPDATE, label + " (switched on again)");
+            } else if (!java.util.Objects.equals(b.description(), r.description())) {
+                p.bindingsToUpdate.add(new Plan.BindingUpdate(b.activeFor(r.slotId(), r.source(), r.description()),
+                        b.version()));
+                p.add(UPDATE, label + " (description)");
+            } else {
+                p.add(UNCHANGED, label);
+            }
+        }
+        for (MachineBinding b : stored.values()) {
+            if (b.status() == MachineBindingStatus.ACTIVE && !inFile.contains(b.clientId())) {
+                p.bindingsToUpdate.add(new Plan.BindingUpdate(b.switchedOff(), b.version()));
+                p.add(SWITCH_OFF, "client binding " + product + ": client \"" + b.clientId() + "\" -> " + b.slotId()
+                        + ", source " + b.sourceKey() + " ("
+                        + (in.bindings() == null ? "the sign-in file names no client-binding file"
+                        : "not in " + in.bindingsName()) + "; kept as INACTIVE, never deleted)");
+            }
+        }
     }
 
     private void planConfig(Plan p) {

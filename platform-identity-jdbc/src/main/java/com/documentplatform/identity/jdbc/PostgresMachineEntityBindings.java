@@ -12,8 +12,8 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * {@link MachineEntityBindings} for one product: the app's enabled machine integrations for the client principal
- * ({@link MachineClients}), kept only where the entity is ACTIVE and its customer has the ACTIVE login connection for
+ * {@link MachineEntityBindings} for one product: the client's bindings ({@link MachineClients}: built in over
+ * {@code idn_machine_binding}, or the app's own enabled machine integrations), kept only where the entity is ACTIVE and its customer has the ACTIVE login connection for
  * the key. Returns null when either side cannot be read (the library then refuses).
  */
 public final class PostgresMachineEntityBindings implements MachineEntityBindings {
@@ -21,6 +21,12 @@ public final class PostgresMachineEntityBindings implements MachineEntityBinding
     private final ActiveEntityCandidates candidates;
     private final MachineClients clients;
 
+    /** Over the built-in client bindings ({@code idn_machine_binding}, loaded by the setup command). */
+    public PostgresMachineEntityBindings(DataSource ds, String productCode) {
+        this(ds, productCode, new PostgresMachineClients(ds, productCode));
+    }
+
+    /** Over the app's own integration table. */
     public PostgresMachineEntityBindings(DataSource ds, String productCode, MachineClients clients) {
         this.candidates = new PostgresIdentityLookup(ds, productCode);
         this.clients = Objects.requireNonNull(clients, "clients");

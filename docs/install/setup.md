@@ -60,6 +60,8 @@ This version sets up **direct sign-in**: your people sign in with your own login
 
 - `tenantId` must be the customer ID in your licence.
 - `roleMappingFile` is relative to the sign-in file's folder.
+- `clientBindingsFile` and `sources` (per product) are optional: only for systems that send to the product's API
+  (section 3a).
 - `timeZone` (the customer's) and `entityTimeZones` (per entity slot) are optional, as IANA names
   (`America/New_York`, `Europe/London`, `UTC`; not offsets such as `-05:00`). They are **defaults**: setup stores a
   zone only where none is stored yet, and keeps a zone that was already set (for example in the app). The plan shows
@@ -86,6 +88,67 @@ ENT-…,,Finance Readers,READER
   shown in the plan as `not removed` and kept, unless you add `--remove-unlisted-grants`; then the plan shows them as
   `remove` first, and `apply` removes them.
 
+## 3a. The client-binding file (only if other systems send to the product)
+
+Other systems that send documents to the product's API (for example your loan system) sign in with their own client
+ID from your login system. This file says which client may send to which entity, and as which system. Without the
+file, the product accepts no such system. Leave it out if no system sends to the product.
+
+**1. List the sending systems in the sign-in file**, under the product:
+
+```json
+"PRODUCT_A": {
+  "browserClientId": "…", "apiAudience": "api://…", "roleMappingFile": "role-mapping-product-a.csv",
+  "clientBindingsFile": "client-bindings-product-a.csv",
+  "sources": [ { "key": "loan-system", "name": "Loan servicing system" } ]
+}
+```
+
+- `key`: a short name for the system, lower case: letters, digits, `.`, `_`, `-` (for example `loan-system`).
+- `name`: a name people recognise.
+- `clientBindingsFile` is relative to the sign-in file's folder. Both fields are optional; sign-in files without them
+  work as before.
+
+**2. Write the file**, one line per client, with this first line exactly:
+
+```
+client_id,entity_slot,source,description
+0oa1b2c3d4E5f6G7h8i9,ENT-…,loan-system,Loan system for Finance
+```
+
+- `client_id`: the client ID your login system shows for that system's app registration (for example the Okta client
+  ID), copied exactly. Capitals matter. No spaces, commas or quotes.
+- `entity_slot`: the entity's slot ID from the licence (`ENT-…`). The entity need not be activated yet; the client is
+  accepted only once your Business Admin has activated it.
+- `source`: one of the `key`s you listed in the sign-in file.
+- `description`: optional, for people (up to 200 characters). Never shown to the sending system.
+- Save as "CSV UTF-8". A spreadsheet's quotes around a description with a comma are fine.
+
+**Never put a secret in the file.** Only the client ID goes here; the client's secret or certificate stays in your
+login system and in the sending system. A value that looks like a secret (a token, a key, `password=…`) refuses the
+file.
+
+**Rules setup checks** (the run is refused with `SETUP_CLIENT_BINDINGS_INVALID`, and each problem is listed with its
+line number, for example `line 4: SOURCE_UNKNOWN`; nothing is written):
+
+| Code | Means |
+|---|---|
+| `HEADER_WRONG` | The first line is not exactly `client_id,entity_slot,source,description` |
+| `WRONG_COLUMN_COUNT`, `BAD_QUOTES`, `NOT_UTF8` | The line is not four comma-separated values, or the file is not UTF-8 |
+| `CLIENT_ID_INVALID`, `SLOT_INVALID`, `SOURCE_INVALID`, `DESCRIPTION_INVALID` | A value is not written as described above |
+| `SECRET_LIKE` | A value looks like a secret |
+| `DUPLICATE_CLIENT_ID` | The client ID is on an earlier line too: each client sends to exactly one entity, as one system |
+| `SOURCE_UNKNOWN` | The source is not listed under the product's `sources` in the sign-in file |
+| `SLOT_UNKNOWN` | The entity slot is not in your licence |
+| `CLIENT_BOUND_ELSEWHERE` | The client is already set up for another entity or system |
+
+**Changes.** The file is the complete list for the product. A new line is created; a line you remove switches that
+client off (it is kept as INACTIVE, never deleted, and the plan shows `switch off`); a line you add back switches it
+on again. Removing `clientBindingsFile` from the sign-in file switches every client of the product off. To move a
+client to another entity or system: remove its line and run setup, then add the new line and run setup again. When a
+newer licence drops an entity slot, remove that slot's lines too. Every change is in the plan, the run log and the
+binding history (`idn_machine_binding_history`).
+
 ## 4. Running it
 
 ```
@@ -97,7 +160,7 @@ setup apply (the same options)
 Optional: `--config-out FILE` (default `platform-tenant.properties`), `--run-log FILE` (default
 `platform-setup-runs.log`), `--remove-unlisted-grants`, `--replace-connection`, `--no-customer-keys`.
 
-The plan lists every item as `create`, `unchanged`, `update`, `conflict`, `remove` or `not removed`:
+The plan lists every item as `create`, `unchanged`, `update`, `conflict`, `remove`, `not removed` or `switch off`:
 
 ```
   create      licence LIC-… v1 (first licence)
@@ -105,6 +168,7 @@ The plan lists every item as `create`, `unchanged`, `update`, `conflict`, `remov
   create      entity slot ENT-… (NOT_ACTIVATED)
   create      login connection PRODUCT_A: provider okta, issuer https://…, browser client ID …, API audience api://…
   create      grant ENT-… PRODUCT_A: group "Finance Readers" -> READER
+  create      client binding PRODUCT_A: client "0oa1b2c3d4E5f6G7h8i9" -> ENT-…, source loan-system
   create      config platform-tenant.properties (platform.licensing.tenant-id=TEN-…)
 Customer keys:
   create      customer keys TEN-… (<customer UUID>) in key service vault-transit
@@ -117,7 +181,8 @@ customer UUID shown, derived from your tenant ID. A key service problem refuses 
 (`SETUP_KEY_SERVICE_FAILED`, with the `CRYPTO_…` code naming the cause).
 
 `apply` then writes, in one database transaction: the licence, your customer, your entities (an entity that a newer
-licence drops is kept as `NOT_IN_LICENCE`, never deleted), the login connection, and the grants. Then it writes
+licence drops is kept as `NOT_IN_LICENCE`, never deleted), the login connection, the grants and the client
+bindings. Then it writes
 `platform-tenant.properties` with `platform.licensing.tenant-id`; import it in the app's config
 (`spring.config.import=optional:file:./platform-tenant.properties`).
 
@@ -137,7 +202,8 @@ and it now differs from the sign-in file, the plan shows `conflict` and setup le
 Refusal codes: `SETUP_BAD_OPTION`, `SETUP_FILE_UNREADABLE`, `SETUP_KEYS_INVALID`, `SETUP_LICENCE_REFUSED` (with the
 licence code, for example `LICENCE_UNKNOWN_KEY_ID`), `SETUP_SIGNIN_INVALID`, `SETUP_MODE_NOT_SUPPORTED`,
 `SETUP_WRONG_TENANT`, `SETUP_PRODUCT_NOT_IN_LICENCE`, `SETUP_PRODUCT_NOT_IN_SIGNIN`, `SETUP_PRODUCT_ROLES_INVALID`,
-`SETUP_MAPPING_INVALID` (with every bad line), `SETUP_DB_SETTINGS_MISSING`, `SETUP_DB_UNREACHABLE`,
+`SETUP_MAPPING_INVALID` (with every bad line), `SETUP_CLIENT_BINDINGS_INVALID` (with every bad line, section 3a),
+`SETUP_DB_SETTINGS_MISSING`, `SETUP_DB_UNREACHABLE`,
 `SETUP_TABLES_NOT_READY`, `SETUP_OTHER_CUSTOMER_INSTALLED`, `SETUP_LICENCE_OLDER`, `SETUP_LICENCE_VERSION_CONFLICT`,
 `SETUP_CONFIG_OTHER_TENANT`, `SETUP_KEY_SERVICE_SETTINGS_MISSING`, `SETUP_KEY_SERVICE_FAILED`. Failures: `SETUP_FAILED`, `SETUP_CONFIG_NOT_WRITTEN`.
 

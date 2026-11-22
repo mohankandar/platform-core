@@ -20,6 +20,10 @@ import com.documentplatform.identity.store.EntityTimeZone;
 import com.documentplatform.identity.store.GroupGrantStore;
 import com.documentplatform.identity.store.LoginConnection;
 import com.documentplatform.identity.store.LoginConnectionStore;
+import com.documentplatform.identity.store.MachineBinding;
+import com.documentplatform.identity.store.MachineBindingChange;
+import com.documentplatform.identity.store.MachineBindingStatus;
+import com.documentplatform.identity.store.MachineBindingStore;
 import com.documentplatform.identity.store.SlotSync;
 
 import java.net.URI;
@@ -48,7 +52,8 @@ import static com.documentplatform.identity.store.ActivationOutcome.Result.*;
  * product, names unique per customer ignoring case). {@link #lookup} gives the sign-in lookups for one product.
  * Thread safe (one lock).
  */
-public final class InMemoryIdentityStore implements EntityStore, LoginConnectionStore, GroupGrantStore {
+public final class InMemoryIdentityStore implements EntityStore, LoginConnectionStore, GroupGrantStore,
+        MachineBindingStore {
 
     private record GrantKey(String slotId, String productCode, String issuer) {
     }
@@ -62,6 +67,8 @@ public final class InMemoryIdentityStore implements EntityStore, LoginConnection
     private final Map<UUID, LoginConnection> connections = new LinkedHashMap<>();
     private final Map<UUID, List<ConnectionChange>> history = new LinkedHashMap<>();
     private final Map<GrantKey, Set<Grant>> grants = new LinkedHashMap<>();
+    private final Map<UUID, MachineBinding> bindings = new LinkedHashMap<>();
+    private final Map<UUID, List<MachineBindingChange>> bindingHistory = new LinkedHashMap<>();
     private final Clock clock;
 
     public InMemoryIdentityStore() {
@@ -341,6 +348,79 @@ public final class InMemoryIdentityStore implements EntityStore, LoginConnection
             if (set.remove(g)) removed++;
         }
         return removed;
+    }
+
+    // ---- integration client bindings
+
+    @Override
+    public synchronized List<MachineBinding> bindings(String tenantId, String productCode) {
+        return bindings.values().stream()
+                .filter(b -> b.tenantId().equals(tenantId) && b.productCode().equals(productCode))
+                .sorted(java.util.Comparator.comparing(MachineBinding::clientId)).toList();
+    }
+
+    @Override
+    public synchronized Optional<MachineBinding> activeBinding(String productCode, String clientId) {
+        return bindings.values().stream().filter(b -> b.productCode().equals(productCode)
+                && b.clientId().equals(clientId) && b.status() == MachineBindingStatus.ACTIVE).findFirst();
+    }
+
+    @Override
+    public synchronized MachineBinding insertBinding(MachineBinding binding, ChangeSource source, String changedBy) {
+        requireBindingChange(source, changedBy);
+        MachineBinding v1 = binding.withVersion(1);
+        if (!customers.containsKey(v1.tenantId())) throw new IllegalStateException("customer is not stored");
+        if (!entities.containsKey(v1.slotId())) throw new IllegalStateException("entity slot is not stored");
+        boolean taken = bindings.values().stream().anyMatch(b -> b.tenantId().equals(v1.tenantId())
+                && b.productCode().equals(v1.productCode()) && b.clientId().equals(v1.clientId()));
+        if (taken || bindings.containsKey(v1.bindingId())) {
+            throw new IllegalStateException("client already has a binding for the product");
+        }
+        bindings.put(v1.bindingId(), v1);
+        recordBinding(v1, source, changedBy);
+        return v1;
+    }
+
+    @Override
+    public synchronized Optional<MachineBinding> updateBinding(MachineBinding binding, long expectedVersion,
+                                                               ChangeSource source, String changedBy) {
+        requireBindingChange(source, changedBy);
+        MachineBinding stored = bindings.get(binding.bindingId());
+        if (stored == null || stored.version() != expectedVersion) return Optional.empty();
+        if (!stored.tenantId().equals(binding.tenantId()) || !stored.productCode().equals(binding.productCode())
+                || !stored.clientId().equals(binding.clientId())) {
+            throw new IllegalArgumentException("a client binding keeps its customer, product and client ID");
+        }
+        if (!entities.containsKey(binding.slotId())) throw new IllegalStateException("entity slot is not stored");
+        MachineBinding next = binding.withVersion(expectedVersion + 1);
+        bindings.put(next.bindingId(), next);
+        recordBinding(next, source, changedBy);
+        return Optional.of(next);
+    }
+
+    @Override
+    public synchronized List<MachineBindingChange> bindingHistory(UUID bindingId) {
+        return List.copyOf(bindingHistory.getOrDefault(bindingId, List.of()));
+    }
+
+    private void recordBinding(MachineBinding b, ChangeSource source, String changedBy) {
+        bindingHistory.computeIfAbsent(b.bindingId(), k -> new ArrayList<>()).add(new MachineBindingChange(b.version(),
+                b.clientId(), b.slotId(), b.sourceKey(), b.description(), b.status(), source, changedBy,
+                clock.instant()));
+    }
+
+    private static void requireBindingChange(ChangeSource source, String changedBy) {
+        Objects.requireNonNull(source, "source");
+        if (changedBy == null || changedBy.isBlank()) throw new IllegalArgumentException("changedBy is required");
+    }
+
+    /**
+     * Machine bindings for one product over this store's own client bindings, with the same rules as
+     * {@code new PostgresMachineEntityBindings(ds, product)}.
+     */
+    public MachineEntityBindings machineBindings(String productCode) {
+        return machineBindings(productCode, client -> activeBinding(productCode, client)
+                .map(b -> Set.of(b.entityUuid())).orElse(Set.of()));
     }
 
     // ---- sign-in lookups

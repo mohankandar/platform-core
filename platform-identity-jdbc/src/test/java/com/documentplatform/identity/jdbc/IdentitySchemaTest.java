@@ -26,15 +26,16 @@ class IdentitySchemaTest {
         Pg empty = Pg.empty();
         IdentitySchemaException e = assertThrows(IdentitySchemaException.class, () -> IdentitySchema.verify(empty.owner));
         assertEquals(IDN_TABLES_MISSING, e.problem());
-        assertEquals("Identity tables missing (expected version 1): none of the idn_ tables exist in the database "
+        assertEquals("Identity tables missing (expected version 2): none of the idn_ tables exist in the database "
                 + "schema the app connects to; run the identity schema step (Flyway location db/platform/identity, "
                 + "history table idn_schema_history) before starting the app.", e.getMessage());
         assertEquals(List.of(), empty.tables(), "the startup check created nothing");
 
         Pg migrated = Pg.migrated();
         assertEquals(List.of("idn_customer", "idn_entity", "idn_group_grant", "idn_login_connection",
-                "idn_login_connection_history", "idn_schema_version"), migrated.tables());
-        assertEquals(1, migrated.count("select max(version) from idn_schema_version"));
+                "idn_login_connection_history", "idn_machine_binding", "idn_machine_binding_history", "idn_schema_version"),
+                migrated.tables());
+        assertEquals(2, migrated.count("select max(version) from idn_schema_version"));
         assertEquals(0, migrated.count("select count(*) from idn_customer"), "the schema run inserts no customer data");
         assertEquals("db/platform/identity", IdentitySchema.LOCATION);
         assertEquals("idn_schema_history", IdentitySchema.HISTORY_TABLE);
@@ -47,10 +48,10 @@ class IdentitySchemaTest {
         assertEquals(IDN_VERSION_OLDER, problem(older.owner));
 
         Pg newer = Pg.migrated();
-        newer.exec("update idn_schema_version set version = 2");
+        newer.exec("update idn_schema_version set version = 3");
         IdentitySchemaException n = assertThrows(IdentitySchemaException.class, () -> IdentitySchema.verify(newer.owner));
         assertEquals(IDN_VERSION_NEWER, n.problem());
-        assertTrue(n.getMessage().startsWith("Identity tables at version 2, newer than this app expects (version 1)"));
+        assertTrue(n.getMessage().startsWith("Identity tables at version 3, newer than this app expects (version 2)"));
 
         Pg noVersion = Pg.migrated();
         noVersion.exec("drop table idn_schema_version");
@@ -64,7 +65,7 @@ class IdentitySchemaTest {
         incomplete.exec("drop table idn_group_grant");
         IdentitySchemaException i = assertThrows(IdentitySchemaException.class, () -> IdentitySchema.verify(incomplete.owner));
         assertEquals(IDN_TABLES_INCOMPLETE, i.problem());
-        assertEquals("Identity tables incomplete at version 1, missing: idn_group_grant; run the identity schema step "
+        assertEquals("Identity tables incomplete at version 2, missing: idn_group_grant; run the identity schema step "
                 + "(Flyway location db/platform/identity, history table idn_schema_history) before starting the app.",
                 i.getMessage());
 

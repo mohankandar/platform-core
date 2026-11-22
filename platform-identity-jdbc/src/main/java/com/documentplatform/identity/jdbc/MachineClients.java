@@ -4,7 +4,8 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Implemented by the app over its own integration table: the entities that have an enabled machine integration bound
+ * The entities a machine client is bound to. Built in: {@link PostgresMachineClients} over {@code idn_machine_binding}
+ * (loaded by the setup command). Or implemented by the app over its own integration table: the entities that have an enabled machine integration bound
  * to this client principal, whose authentication proves a bearer-token client (the app decides which integration kinds
  * qualify). {@link PostgresMachineEntityBindings} keeps only those that are ACTIVE and have the customer's ACTIVE login
  * connection for the key.

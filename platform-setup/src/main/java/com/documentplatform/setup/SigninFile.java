@@ -3,6 +3,7 @@ package com.documentplatform.setup;
 import com.documentplatform.identity.EntityUuid;
 import com.documentplatform.identity.store.EntityTimeZones;
 import com.documentplatform.identity.store.LoginConnection;
+import com.documentplatform.identity.store.MachineBinding;
 import com.documentplatform.licensing.json.Fields;
 import com.documentplatform.licensing.json.Json;
 import com.documentplatform.licensing.json.JsonException;
@@ -10,7 +11,9 @@ import com.documentplatform.licensing.json.JsonException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -29,14 +32,18 @@ import java.util.TreeMap;
  *   "mode": "direct",
  *   "loginSystem": {"type": "OIDC", "issuer": "https://login.example/oauth2/default", "providerId": "okta"},
  *   "products": {
- *     "PRODUCT_A": {"browserClientId": "…", "apiAudience": "api://product-a", "roleMappingFile": "roles-a.csv"}
+ *     "PRODUCT_A": {"browserClientId": "…", "apiAudience": "api://product-a", "roleMappingFile": "roles-a.csv",
+ *                   "clientBindingsFile": "client-bindings-product-a.csv",
+ *                   "sources": [{"key": "loan-system", "name": "Loan servicing system"}]}
  *   },
  *   "timeZone": "America/New_York",
  *   "entityTimeZones": {"ENT-…": "America/Chicago"}
  * }
  * </pre>
  *
- * {@code roleMappingFile} is relative to the sign-in file's folder (or absolute). Only mode {@code direct} is
+ * {@code roleMappingFile} and {@code clientBindingsFile} are relative to the sign-in file's folder (or absolute).
+ * {@code clientBindingsFile} and {@code sources} are optional (no file: the product has no machine callers); older
+ * files without them load as before. Only mode {@code direct} is
  * supported in this version.
  *
  * <p>{@code timeZone} (the customer's) and {@code entityTimeZones} (per entity slot) are optional defaults, IANA
@@ -49,9 +56,33 @@ public record SigninFile(String tenantId, String mode, String loginType, URI iss
     public static final String FORMAT = "platform-signin/1";
     public static final String DIRECT = "direct";
 
-    /** One product's part of the sign-in file. */
-    public record Product(String browserClientId, String apiAudience, String roleMappingFile) {
+    /**
+     * One product's part of the sign-in file.
+     *
+     * @param clientBindingsFile the integration client-binding file ({@code client-bindings-<product>.csv}), relative
+     *                           to the sign-in file's folder; null when the product has no machine callers
+     * @param sources            the product's sending systems (key and name), for the binding file's {@code source}
+     *                           column; empty when none are listed
+     */
+    public record Product(String browserClientId, String apiAudience, String roleMappingFile,
+                          String clientBindingsFile, List<Source> sources) {
+        public Product {
+            sources = List.copyOf(sources);
+        }
+
+        public Set<String> sourceKeys() {
+            Set<String> out = new java.util.LinkedHashSet<>();
+            for (Source s : sources) out.add(s.key());
+            return out;
+        }
     }
+
+    /** A sending system of a product: its key ({@code [a-z0-9][a-z0-9._-]{0,63}}) and a name for people. */
+    public record Source(String key, String name) {
+    }
+
+    /** Most sources listed for one product. */
+    public static final int MAX_SOURCES = 200;
 
     public SigninFile {
         products = Map.copyOf(products);
@@ -96,10 +127,15 @@ public record SigninFile(String tenantId, String mode, String loginType, URI iss
                 } catch (IllegalArgumentException e) {
                     throw invalid("products: a key is not a product code (2 to 32 of A-Z 0-9 _)");
                 }
-                Fields p = products.object(code).only(Set.of("browserClientId", "apiAudience", "roleMappingFile"));
+                Fields p = products.object(code).only(Set.of("browserClientId", "apiAudience", "roleMappingFile",
+                        "clientBindingsFile", "sources"));
+                String bindings = p.has("clientBindingsFile")
+                        ? text(p.string("clientBindingsFile"), "products." + code + ".clientBindingsFile", 500) : null;
                 out.put(code, new Product(text(p.string("browserClientId"), "products." + code + ".browserClientId", 200),
                         text(p.string("apiAudience"), "products." + code + ".apiAudience", 200),
-                        text(p.string("roleMappingFile"), "products." + code + ".roleMappingFile", 500)));
+                        text(p.string("roleMappingFile"), "products." + code + ".roleMappingFile", 500),
+                        bindings, p.has("sources") ? sources(p.list("sources"), "products." + code + ".sources")
+                        : List.of()));
             }
             ZoneId customerZone = f.has("timeZone") ? zone(f.string("timeZone"), "timeZone") : null;
             Map<String, ZoneId> entityZones = new TreeMap<>();
@@ -117,6 +153,23 @@ public record SigninFile(String tenantId, String mode, String loginType, URI iss
         } catch (JsonException e) {
             throw invalid(e.getMessage());
         }
+    }
+
+    private static List<Source> sources(List<Object> raw, String field) {
+        if (raw.size() > MAX_SOURCES) throw invalid(field + " lists more than " + MAX_SOURCES + " sources");
+        List<Source> out = new ArrayList<>();
+        Set<String> keys = new java.util.HashSet<>();
+        for (int i = 0; i < raw.size(); i++) {
+            String at = field + "[" + i + "]";
+            Fields s = Fields.of(raw.get(i), at).only(Set.of("key", "name"));
+            String key = s.string("key");
+            if (!MachineBinding.SOURCE_KEY.matcher(key).matches()) {
+                throw invalid(at + ".key must be 1 to 64 of a-z 0-9 . _ - starting with a letter or digit");
+            }
+            if (!keys.add(key)) throw invalid(at + ".key \"" + key + "\" is listed twice");
+            out.add(new Source(key, text(s.string("name"), at + ".name", 200)));
+        }
+        return out;
     }
 
     private static URI issuer(String value) {

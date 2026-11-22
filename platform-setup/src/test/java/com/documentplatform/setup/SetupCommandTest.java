@@ -179,7 +179,7 @@ class SetupCommandTest {
         List<String> log = Files.readAllLines(dir.resolve("setup-runs.log"));
         assertEquals(4, log.size(), log.toString());
         assertTrue(log.get(1).contains("setup apply product=PRODUCT_A tenant=TEN-DEMO-0001 licence=LIC-DEMO-0001/v1 "
-                + "result=DONE exit=0 create=10"), log.get(1));
+                + "result=DONE exit=0 create=12"), log.get(1)); // 10, plus the 2 demo client bindings
         assertTrue(log.get(0).contains("result=PLANNED"), log.get(0));
     }
 
@@ -437,6 +437,9 @@ class SetupCommandTest {
 
         write("licence-demo.json", keys.sign(licence("LIC-TEST-0101", 2, List.of(S1))));
         write("role-mapping-product-a.csv", "entity_id,entity_name,group,role\nENT-DEMO-0001,,Demo Finance Readers,READER\n");
+        // A binding for the dropped slot would be refused (SLOT_UNKNOWN): its line goes too.
+        write("client-bindings-product-a.csv", "client_id,entity_slot,source,description\n"
+                + "0oaDEMOloan0001,ENT-DEMO-0001,demo-loan-system,\n");
         Result r = run(db, "apply", A, "--keys", dir.resolve("test-trusted-keys.json").toString(),
                 "--remove-unlisted-grants");
         assertEquals(0, r.exit(), r.all());

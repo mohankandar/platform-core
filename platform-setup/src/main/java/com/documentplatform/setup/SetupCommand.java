@@ -262,7 +262,8 @@ public final class SetupCommand {
         }
         Map<Plan.Action, Integer> n = plan.counts();
         String summary = n.get(Plan.Action.CREATE) + " created, " + n.get(Plan.Action.UPDATE) + " updated, "
-                + n.get(Plan.Action.REMOVE) + " removed, " + n.get(Plan.Action.UNCHANGED) + " unchanged";
+                + n.get(Plan.Action.REMOVE) + " removed, " + n.get(Plan.Action.SWITCH_OFF) + " switched off, "
+                + n.get(Plan.Action.UNCHANGED) + " unchanged";
         if (plan.needsFlag()) {
             o.result = "DONE_EXCEPT_FLAGGED";
             out.println("Setup done except " + (n.get(Plan.Action.CONFLICT) + n.get(Plan.Action.NOT_REMOVED))

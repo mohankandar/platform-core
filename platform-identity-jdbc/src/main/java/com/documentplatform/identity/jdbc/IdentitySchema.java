@@ -31,16 +31,16 @@ public final class IdentitySchema {
     public static final String HISTORY_TABLE = "idn_schema_history";
 
     /** The table version this code needs: the number of the last migration file. */
-    public static final int VERSION = 1;
+    public static final int VERSION = 2;
 
     /** The tables the code reads and writes at runtime. */
     public static final List<String> TABLES = List.of("idn_customer", "idn_entity", "idn_login_connection",
-            "idn_login_connection_history", "idn_group_grant");
+            "idn_login_connection_history", "idn_group_grant", "idn_machine_binding", "idn_machine_binding_history");
 
     /** Holds the version of the files that were run. */
     public static final String VERSION_TABLE = "idn_schema_version";
 
-    private static final List<String> SCRIPTS = List.of("V1__identity.sql");
+    private static final List<String> SCRIPTS = List.of("V1__identity.sql", "V2__machine_binding.sql");
     private static final List<String> RIGHTS = List.of("SELECT", "INSERT", "UPDATE", "DELETE");
     private static final String RUN_STEP = "run the identity schema step (Flyway location " + LOCATION
             + ", history table " + HISTORY_TABLE + ") before starting the app";

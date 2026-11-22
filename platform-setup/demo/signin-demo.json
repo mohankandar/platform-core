@@ -11,7 +11,12 @@
     "PRODUCT_A": {
       "browserClientId": "demo-product-a-web",
       "apiAudience": "api://demo-product-a",
-      "roleMappingFile": "role-mapping-product-a.csv"
+      "roleMappingFile": "role-mapping-product-a.csv",
+      "clientBindingsFile": "client-bindings-product-a.csv",
+      "sources": [
+        {"key": "demo-loan-system", "name": "Demo loan servicing system"},
+        {"key": "demo-scanner", "name": "Demo scanning station"}
+      ]
     },
     "PRODUCT_B": {
       "browserClientId": "demo-product-b-web",
