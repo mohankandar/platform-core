@@ -154,3 +154,38 @@ Built in P019 in `platform-fields` (package `com.documentplatform.fields.values`
   (`FieldSchema.verify`); the runtime user needs DML only. `PostgresValueStore`; the store is also the app's
   `FieldValuesCheck`, so a field's type locks once a record holds a value. Testkit: `InMemoryValueStore` with the
   same rules (partial search can be switched off).
+
+## Owner answers to P019 (2026-11-22, task P020)
+
+1. **`sensitive` is locked once values exist**, like the type: `FieldDefinitions.change` refuses switching it on or
+   off with `FIELD_SENSITIVE_LOCKED` once the app's `FieldValuesCheck` says a value exists. To keep such values the
+   other way, add a new field. (Old plain-text values can then never sit under a sensitive field, and sealed values
+   never under a plain one.)
+2. **`primary` is locked once values exist**: `FIELD_PRIMARY_LOCKED`. Stored identities therefore always match the
+   field list. Switching a field off still takes its primary flag away (a switched-off field is never primary, and
+   removing a field must always be possible, rule 5); switching it back on does not make it primary again, and
+   `change` cannot either while values exist. If both the type and a flag change, `FIELD_TYPE_LOCKED` is given.
+3. **Erasing a record** (before Vero retention and LexaVault deletion): `FieldValues.erase(ref)`. See "Erasing a
+   record" below.
+4. **Concurrent arrivals get the existing record**: kept as built in P019.
+5. **Setup against a real Vault**: later.
+
+## Erasing a record (P020)
+
+- `FieldValues.erase(ref)` deletes the record's value rows, its envelope (the record's wrapped data key) and the
+  `fld_record` row itself, in one transaction, if the record has not changed meanwhile (otherwise it reads again and
+  retries). Afterwards `read`, `readSensitive`, `search` and `findByPrimary` no longer find it; the same primary
+  value(s) arriving later make a new record. No key service call.
+- **Explicit and audited by the caller:** never automatic. The result `Erased` (record, number of values, whether it
+  had sealed values, when) holds no value, for the caller's audit entry with who and why.
+- **Legal hold:** the app supplies `LegalHolds` (`FieldValues(…, holds)`; without it no record is held). A held record
+  is refused with `VALUES_LEGAL_HOLD`; if the check throws, the erase is refused with `VALUES_LEGAL_HOLD_UNKNOWN`.
+  Nothing is erased in either case. Another customer's record: `VALUES_WRONG_CUSTOMER`.
+- **The runtime user** now also needs DELETE on `fld_record` (the install guide already grants it; `FieldSchema`
+  checks it).
+- **Not crypto-shredding (open, P020 report question 1):** the envelope lives in `fld_record`, so a database backup
+  taken before the erase still holds it, and the customer's wrapping key, which lives on, still opens it. Deleting the
+  rows makes the values unreadable in the live database only. Making backups unreadable needs a per-record secret
+  kept outside the database (in the key service) that erase destroys. `PostgresValueStoreTest
+  .aRestoredBackupOfAnErasedRecordStillOpensWhileTheCustomersKeyLives` pins today's behaviour so it is not mistaken
+  for crypto-shredding.

@@ -32,6 +32,10 @@ public enum FieldValuesError {
     VALUES_SEARCH_MODE_NOT_ALLOWED,
     /** A lookup by primary value named a field that is not primary, or gave no primary value. */
     VALUES_NOT_PRIMARY,
+    /** The app's legal hold check says the record is held, so its values may not be erased. */
+    VALUES_LEGAL_HOLD,
+    /** The app's legal hold check could not answer, so the erase was refused (nothing was erased). */
+    VALUES_LEGAL_HOLD_UNKNOWN,
     /** The database refused or failed the call (the message has the SQL state only). */
     VALUES_STORE_FAILED
 }

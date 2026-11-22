@@ -93,6 +93,19 @@ public final class InMemoryValueStore implements ValueStore {
     }
 
     @Override
+    public synchronized void delete(StoredRecord record) {
+        StoredRecord current = records.get(record.id());
+        if (current == null) {
+            throw new FieldValuesException(FieldValuesError.VALUES_RECORD_UNKNOWN, "No record " + record.ref());
+        }
+        if (current.version() != record.version()) {
+            throw new FieldValuesException(FieldValuesError.VALUES_CHANGED_MEANWHILE, "Record " + record.ref()
+                    + " was changed meanwhile");
+        }
+        records.remove(record.id());
+    }
+
+    @Override
     public synchronized List<RecordRef> search(UUID customer, FieldScope scope, String recordType, FieldKey key,
                                                SearchMatch match, int limit) {
         List<RecordRef> out = new ArrayList<>();

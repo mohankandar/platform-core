@@ -21,8 +21,9 @@ import java.util.regex.Pattern;
  * <ul>
  *   <li>A key is used once per entity and product (ignoring capitals) and never changes.</li>
  *   <li>The label, rules and flags may change at any time.</li>
- *   <li>The type (and a MONEY field's currency) may change only while no value exists, as the app's
- *       {@link FieldValuesCheck} answers; after that, add a new field instead.</li>
+ *   <li>The type (and a MONEY field's currency), the sensitive flag and the primary flag may change only while
+ *       no value exists, as the app's {@link FieldValuesCheck} answers; after that, add a new field instead.
+ *       Switching a field off still takes away its primary flag (a switched-off field is never primary).</li>
  *   <li>Removing a field switches it off; nothing is ever deleted. Its existing values stay.</li>
  *   <li>Every version is kept in the history, with who made it.</li>
  * </ul>
@@ -103,10 +104,23 @@ public final class FieldDefinitions {
         if (effective.equals(current.spec())) {
             return current;
         }
-        if (!effective.sameValueKind(current.spec()) && values.valuesExist(scope, current.key())) {
-            throw new FieldDefinitionException(Code.FIELD_TYPE_LOCKED, "Field " + current.key()
-                    + " already has values, so its type stays " + describe(current.spec())
-                    + "; add a new field for the other type");
+        boolean kindChanges = !effective.sameValueKind(current.spec());
+        boolean sensitiveChanges = effective.sensitive() != current.spec().sensitive();
+        boolean primaryChanges = effective.primary() != current.spec().primary();
+        if ((kindChanges || sensitiveChanges || primaryChanges) && values.valuesExist(scope, current.key())) {
+            if (kindChanges) {
+                throw new FieldDefinitionException(Code.FIELD_TYPE_LOCKED, "Field " + current.key()
+                        + " already has values, so its type stays " + describe(current.spec())
+                        + "; add a new field for the other type");
+            }
+            if (sensitiveChanges) {
+                throw new FieldDefinitionException(Code.FIELD_SENSITIVE_LOCKED, "Field " + current.key()
+                        + " already has values, so it stays " + (current.spec().sensitive() ? "sensitive"
+                        : "not sensitive") + "; add a new field to store such values the other way");
+            }
+            throw new FieldDefinitionException(Code.FIELD_PRIMARY_LOCKED, "Field " + current.key()
+                    + " already has values, so it stays " + (current.spec().primary() ? "a primary identifier"
+                    : "not a primary identifier") + "; add a new field instead");
         }
         FieldDefinition changed = store.update(current, effective, FieldStore.Change.CHANGED, actor, now());
         log(changed, FieldStore.Change.CHANGED, actor);

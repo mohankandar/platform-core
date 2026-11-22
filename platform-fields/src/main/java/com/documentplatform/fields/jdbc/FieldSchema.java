@@ -66,7 +66,7 @@ public final class FieldSchema {
         m.put("fld_field_definition", List.of("SELECT", "INSERT", "UPDATE"));
         m.put("fld_field_definition_history", List.of("SELECT", "INSERT"));
         m.put("fld_field_extension", List.of("SELECT", "INSERT", "UPDATE", "DELETE"));
-        m.put("fld_record", List.of("SELECT", "INSERT", "UPDATE"));
+        m.put("fld_record", List.of("SELECT", "INSERT", "UPDATE", "DELETE"));
         m.put("fld_value", List.of("SELECT", "INSERT", "DELETE"));
         return m;
     }

@@ -48,6 +48,14 @@ public interface ValueStore extends FieldValuesCheck {
     StoredRecord replace(StoredRecord next);
 
     /**
+     * Deletes the record, its envelope and every value row, if the record is still at {@code version}.
+     *
+     * @throws FieldValuesException {@code VALUES_CHANGED_MEANWHILE} if another write came first,
+     *                              {@code VALUES_RECORD_UNKNOWN} if there is no such record
+     */
+    void delete(StoredRecord record);
+
+    /**
      * The records of the customer, entity, product and record type with a value of the field that matches, ordered by
      * record ID, at most {@code limit}.
      */

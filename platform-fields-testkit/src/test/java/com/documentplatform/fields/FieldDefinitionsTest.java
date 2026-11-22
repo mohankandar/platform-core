@@ -65,6 +65,60 @@ class FieldDefinitionsTest {
     }
 
     @Test
+    void theSensitiveFlagIsLockedOnceValuesExist() {
+        FieldKey name = FieldKey.of("borrower_name");
+        FieldDefinition plain = fields.create(ENTITY, builder("borrower_name", "Borrower", FieldType.TEXT)
+                .sensitive(false).build(), "u-admin");
+        FieldDefinition sealed = fields.create(ENTITY, builder("borrower_address", "Address", FieldType.TEXT)
+                .sensitive(true).build(), "u-admin");
+        values.valuesExistFor(ENTITY, name);
+        values.valuesExistFor(ENTITY, FieldKey.of("borrower_address"));
+        FieldDefinitionException on = refused(Code.FIELD_SENSITIVE_LOCKED, () -> fields.change(ENTITY,
+                plain.spec().toBuilder().sensitive(true).build(), plain.version(), "u-admin"));
+        assertEquals("Field borrower_name already has values, so it stays not sensitive; add a new field to store "
+                + "such values the other way", on.getMessage());
+        refused(Code.FIELD_SENSITIVE_LOCKED, () -> fields.change(ENTITY,
+                sealed.spec().toBuilder().sensitive(false).build(), sealed.version(), "u-admin"));
+        assertFalse(fields.find(ENTITY, name).orElseThrow().spec().sensitive(), "nothing changed");
+        assertEquals(1, fields.find(ENTITY, name).orElseThrow().version());
+        assertEquals("Name", fields.relabel(ENTITY, name, "Name", "u-admin").spec().label(),
+                "other changes still go through");
+    }
+
+    @Test
+    void thePrimaryFlagIsLockedOnceValuesExist() {
+        FieldKey contract = FieldKey.of("contract_number");
+        FieldDefinition d = fields.create(ENTITY, builder("contract_number", "Contract", FieldType.TEXT)
+                .primary(true).build(), "u-admin");
+        FieldDefinition secondary = fields.create(ENTITY, builder("member_number", "Member", FieldType.TEXT)
+                .build(), "u-admin");
+        values.valuesExistFor(ENTITY, contract);
+        values.valuesExistFor(ENTITY, FieldKey.of("member_number"));
+        FieldDefinitionException off = refused(Code.FIELD_PRIMARY_LOCKED, () -> fields.change(ENTITY,
+                d.spec().toBuilder().primary(false).build(), d.version(), "u-admin"));
+        assertEquals("Field contract_number already has values, so it stays a primary identifier; add a new field "
+                + "instead", off.getMessage());
+        refused(Code.FIELD_PRIMARY_LOCKED, () -> fields.change(ENTITY,
+                secondary.spec().toBuilder().primary(true).build(), secondary.version(), "u-admin"));
+        assertTrue(fields.find(ENTITY, contract).orElseThrow().spec().primary(), "nothing changed");
+        FieldDefinition type = fields.create(ENTITY, builder("loan_number", "Loan", FieldType.TEXT).build(),
+                "u-admin");
+        values.valuesExistFor(ENTITY, FieldKey.of("loan_number"));
+        refused(Code.FIELD_TYPE_LOCKED, () -> fields.change(ENTITY, type.spec().toBuilder().type(FieldType.NUMBER)
+                .primary(true).build(), type.version(), "u-admin"));
+    }
+
+    @Test
+    void beforeValuesExistSensitiveAndPrimaryMayChange() {
+        FieldDefinition d = fields.create(ENTITY, builder("contract_number", "Contract", FieldType.TEXT).build(),
+                "u-admin");
+        FieldDefinition changed = fields.change(ENTITY, d.spec().toBuilder().primary(true).sensitive(true).build(),
+                d.version(), "u-admin");
+        assertTrue(changed.spec().primary());
+        assertTrue(changed.spec().sensitive());
+    }
+
+    @Test
     void beforeValuesExistTheTypeMayChange() {
         FieldDefinition d = loanAmount();
         FieldDefinition n = fields.change(ENTITY, builder("loan_amount", "Loan amount", FieldType.NUMBER).build(),

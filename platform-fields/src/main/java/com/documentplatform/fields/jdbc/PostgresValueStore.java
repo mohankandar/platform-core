@@ -142,6 +142,36 @@ public final class PostgresValueStore implements ValueStore {
     }
 
     @Override
+    public void delete(StoredRecord record) {
+        inTransaction("erase a record", c -> {
+            try (PreparedStatement ps = c.prepareStatement(
+                    "select 1 from fld_record where record_uuid = ? and version = ? for update")) {
+                ps.setObject(1, record.id());
+                ps.setInt(2, record.version());
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) {
+                        boolean exists = find(c, record.ref()).isPresent();
+                        throw exists
+                                ? new FieldValuesException(FieldValuesError.VALUES_CHANGED_MEANWHILE, "Record "
+                                + record.ref() + " was changed meanwhile")
+                                : new FieldValuesException(FieldValuesError.VALUES_RECORD_UNKNOWN, "No record "
+                                + record.ref());
+                    }
+                }
+            }
+            try (PreparedStatement ps = c.prepareStatement("delete from fld_value where record_uuid = ?")) {
+                ps.setObject(1, record.id());
+                ps.executeUpdate();
+            }
+            try (PreparedStatement ps = c.prepareStatement("delete from fld_record where record_uuid = ?")) {
+                ps.setObject(1, record.id());
+                ps.executeUpdate();
+            }
+            return null;
+        });
+    }
+
+    @Override
     public List<RecordRef> search(UUID customer, FieldScope scope, String recordType, FieldKey key, SearchMatch match,
                                   int limit) {
         String condition;

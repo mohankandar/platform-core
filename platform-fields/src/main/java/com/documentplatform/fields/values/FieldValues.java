@@ -74,8 +74,16 @@ public final class FieldValues {
     private final RecordCipher cipher;
     private final Fingerprinter fingerprinter;
     private final Clock clock;
+    private final LegalHolds holds;
 
+    /** Without legal holds: {@link #erase} is refused for no record. */
     public FieldValues(CustomerId customer, FieldStore definitions, ValueStore store, KeyService keys, Clock clock) {
+        this(customer, definitions, store, keys, clock, LegalHolds.NONE);
+    }
+
+    /** With the app's legal hold check, asked by {@link #erase}. */
+    public FieldValues(CustomerId customer, FieldStore definitions, ValueStore store, KeyService keys, Clock clock,
+                       LegalHolds holds) {
         this.customer = Objects.requireNonNull(customer, "customer");
         this.definitions = Objects.requireNonNull(definitions, "definitions");
         this.store = Objects.requireNonNull(store, "store");
@@ -83,6 +91,14 @@ public final class FieldValues {
         this.cipher = new RecordCipher(keys);
         this.fingerprinter = new Fingerprinter(keys);
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.holds = Objects.requireNonNull(holds, "legal holds");
+    }
+
+    /**
+     * What {@link #erase} removed, for the caller's audit entry: the record, how many values, whether it had sealed
+     * (sensitive) values, and when. Holds no value.
+     */
+    public record Erased(RecordRef record, int values, boolean hadSensitiveValues, Instant at) {
     }
 
     /** What {@link #claim} did: the record the values belong to, whether it is new, whether anything was written. */
@@ -210,6 +226,45 @@ public final class FieldValues {
         String again = cipher.rewrap(customer, current.envelope());
         store.replace(current.with(current.identity(), again, clock.instant(), current.values()));
         return true;
+    }
+
+    /**
+     * Erases the record: deletes its value rows, its envelope (the wrapped record key) and the record itself, so it
+     * is no longer read, found by search or by its primary value(s); the same primary value(s) arriving later make a
+     * new record. Explicit only, never automatic; the caller writes the audit entry (who, why) from the result.
+     *
+     * <p>Refused for a record the app's {@link LegalHolds} says is held ({@code VALUES_LEGAL_HOLD}), and when the
+     * check cannot answer ({@code VALUES_LEGAL_HOLD_UNKNOWN}); nothing is erased then. Calls no key service.
+     *
+     * <p>What this does <b>not</b> do: copies of the rows in database backups keep the envelope, and the customer's
+     * wrapping key still opens it. See {@code docs/design/case-fields.md}, "Erasing a record".
+     */
+    public Erased erase(RecordRef ref) {
+        Objects.requireNonNull(ref, "ref");
+        for (int attempt = 0; attempt < ATTEMPTS; attempt++) {
+            StoredRecord current = mine(store.find(ref).orElseThrow(() -> unknown(ref)));
+            boolean held;
+            try {
+                held = holds.held(ref);
+            } catch (RuntimeException e) {
+                throw new FieldValuesException(FieldValuesError.VALUES_LEGAL_HOLD_UNKNOWN, "Record " + ref
+                        + " was not erased: the legal hold check could not answer");
+            }
+            if (held) {
+                throw new FieldValuesException(FieldValuesError.VALUES_LEGAL_HOLD, "Record " + ref
+                        + " is under legal hold, so its values may not be erased");
+            }
+            try {
+                store.delete(current);
+                return new Erased(ref, current.values().size(), current.envelope() != null, clock.instant());
+            } catch (FieldValuesException e) {
+                if (e.code() != FieldValuesError.VALUES_CHANGED_MEANWHILE) {
+                    throw e;
+                }
+            }
+        }
+        throw new FieldValuesException(FieldValuesError.VALUES_CHANGED_MEANWHILE, "Record " + ref
+                + " kept changing while it was erased; try again");
     }
 
     // ---- reading ----

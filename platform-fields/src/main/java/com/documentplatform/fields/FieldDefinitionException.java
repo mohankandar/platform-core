@@ -60,6 +60,10 @@ public final class FieldDefinitionException extends IllegalArgumentException {
         FIELD_KEY_LOCKED,
         /** Values exist for the field, so its type (and, for MONEY, its currency) cannot change: add a new field. */
         FIELD_TYPE_LOCKED,
+        /** Values exist for the field, so it cannot become sensitive or stop being sensitive: add a new field. */
+        FIELD_SENSITIVE_LOCKED,
+        /** Values exist for the field, so it cannot become a primary identifier or stop being one: add a new field. */
+        FIELD_PRIMARY_LOCKED,
         /** Someone else changed the field since it was read: read it again. */
         FIELD_CHANGED_MEANWHILE
     }

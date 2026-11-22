@@ -420,6 +420,115 @@ class PostgresValueStoreTest {
     }
 
     @Test
+    void sensitiveAndPrimaryLockOnceARecordHoldsAValueAndFreeAgainWhenAllAreErased() {
+        values.claim(ref(A, "c1"), vals("contract_number", "AB-1001", "notes", "n"));
+        var notes = definitions.find(A, com.documentplatform.fields.FieldKey.of("notes")).orElseThrow();
+        var contract = definitions.find(A, com.documentplatform.fields.FieldKey.of("contract_number")).orElseThrow();
+        assertEquals(FieldDefinitionException.Code.FIELD_SENSITIVE_LOCKED, assertThrows(
+                FieldDefinitionException.class, () -> definitions.change(A, notes.spec().toBuilder().sensitive(true)
+                        .build(), notes.version(), "u-admin")).code());
+        assertEquals(FieldDefinitionException.Code.FIELD_PRIMARY_LOCKED, assertThrows(
+                FieldDefinitionException.class, () -> definitions.change(A, contract.spec().toBuilder().primary(false)
+                        .build(), contract.version(), "u-admin")).code());
+        values.erase(ref(A, "c1"));
+        assertTrue(definitions.change(A, notes.spec().toBuilder().sensitive(true).build(), notes.version(),
+                "u-admin").spec().sensitive(), "no value left, so the flag may change again");
+    }
+
+    // ---- erasing a record (P020) ----
+
+    @Test
+    void erasingARecordRemovesItsValuesAndEnvelopeAndSearchNoLongerFindsIt() {
+        values.claim(ref(A, "c1"), fullCase("AB-1001"));
+        values.claim(ref(A, "c2"), vals("contract_number", "AB-1002", "borrower_name", "Alice Smith"));
+        values.claim(ref(B, "m1"), vals("member_number", "M-778812", "plan_code", "P1"));
+        long otherRows = db.count("select count(*) from fld_value where record_uuid <> (select record_uuid from "
+                + "fld_record where record_id = 'c1')");
+        int calls = keys.calls();
+
+        FieldValues.Erased erased = values.erase(ref(A, "c1"));
+
+        assertEquals(keys.calls(), calls, "erase calls no key service");
+        assertEquals(ref(A, "c1"), erased.record());
+        assertEquals(14, erased.values());
+        assertTrue(erased.hadSensitiveValues());
+        assertEquals(CLOCK.instant(), erased.at());
+        assertFalse(erased.toString().toLowerCase(Locale.ROOT).contains("alice"));
+        assertEquals(0, db.count("select count(*) from fld_record where record_id = 'c1'"), "record and envelope gone");
+        assertEquals(otherRows, db.count("select count(*) from fld_value"), "only c1's value rows were deleted");
+        refused(FieldValuesError.VALUES_RECORD_UNKNOWN, () -> values.read(ref(A, "c1")));
+        refused(FieldValuesError.VALUES_RECORD_UNKNOWN, () -> values.readSensitive(ref(A, "c1")));
+        assertEquals(List.of(ref(A, "c2")), values.search(A, CASE, "contract_number", SearchMode.PREFIX,
+                FieldValue.text("AB")).records());
+        assertEquals(List.of(ref(A, "c2")), values.search(A, CASE, "borrower_name", SearchMode.EXACT,
+                FieldValue.text("alice smith")).records(), "sensitive exact search no longer finds it");
+        assertTrue(values.findByPrimary(A, CASE, Map.of("contract_number", FieldValue.text("AB-1001"))).isEmpty());
+        refused(FieldValuesError.VALUES_RECORD_UNKNOWN, () -> values.erase(ref(A, "c1")));
+
+        FieldValues.Claim again = values.claim(ref(A, "c9"), vals("contract_number", "AB-1001"));
+        assertTrue(again.created(), "the same primary value later makes a new record");
+        assertEquals(ref(A, "c9"), again.record());
+
+        FieldValues.Erased member = values.erase(ref(B, "m1"));
+        assertTrue(member.hadSensitiveValues());
+        assertTrue(values.findByPrimary(B, CASE, Map.of("member_number", FieldValue.text("m-778812"),
+                "plan_code", FieldValue.text("P1"))).isEmpty(), "a sensitive primary value no longer finds it");
+    }
+
+    @Test
+    void aRecordUnderLegalHoldIsNotErased() {
+        Set<String> held = new HashSet<>(Set.of("c1"));
+        FieldValues guarded = new FieldValues(CUSTOMER, definitionStore, store, keys, CLOCK,
+                r -> held.contains(r.recordId()));
+        guarded.claim(ref(A, "c1"), vals("contract_number", "AB-1001", "borrower_name", "Alice Smith"));
+        guarded.claim(ref(A, "c2"), vals("contract_number", "AB-1002"));
+
+        FieldValuesException e = assertThrows(FieldValuesException.class, () -> guarded.erase(ref(A, "c1")));
+        assertEquals(FieldValuesError.VALUES_LEGAL_HOLD, e.code());
+        assertFalse(e.getMessage().toLowerCase(Locale.ROOT).contains("alice"));
+        assertEquals("Alice Smith", ((FieldValue.Text) guarded.readSensitive(ref(A, "c1")).values("borrower_name")
+                .get(0).display()).value(), "nothing was erased");
+        guarded.erase(ref(A, "c2"));
+
+        FieldValues unsure = new FieldValues(CUSTOMER, definitionStore, store, keys, CLOCK, r -> {
+            throw new IllegalStateException("hold register down");
+        });
+        refused(FieldValuesError.VALUES_LEGAL_HOLD_UNKNOWN, () -> unsure.erase(ref(A, "c1")));
+        assertEquals(1, db.count("select count(*) from fld_record where record_id = 'c1'"));
+
+        held.clear();
+        guarded.erase(ref(A, "c1"));
+        assertEquals(0, db.count("select count(*) from fld_record"));
+    }
+
+    @Test
+    void anotherCustomersRecordIsNotErased() {
+        values.claim(ref(A, "c1"), vals("contract_number", "AB-1001"));
+        refused(FieldValuesError.VALUES_WRONG_CUSTOMER,
+                () -> new FieldValues(OTHER, definitionStore, store, keys, CLOCK).erase(ref(A, "c1")));
+        assertEquals(1, db.count("select count(*) from fld_record"));
+    }
+
+    /**
+     * What erase does NOT do today, pinned so that it is not mistaken for crypto-shredding: a backup taken before the
+     * erase still holds the record's envelope, and the customer's wrapping key still opens it. Making backups
+     * unreadable needs a per-record key kept outside the database (P020 report, question 1). When that is built, this
+     * test must be turned round.
+     */
+    @Test
+    void aRestoredBackupOfAnErasedRecordStillOpensWhileTheCustomersKeyLives() {
+        values.claim(ref(A, "c1"), vals("contract_number", "AB-1001", "borrower_name", "Alice Smith"));
+        db.exec("create table backup_record as select * from fld_record",
+                "create table backup_value as select * from fld_value");
+        values.erase(ref(A, "c1"));
+        assertEquals(0, db.count("select count(*) from fld_value"));
+
+        db.exec("insert into fld_record select * from backup_record", "insert into fld_value select * from backup_value");
+        assertEquals("Alice Smith", ((FieldValue.Text) values.readSensitive(ref(A, "c1")).values("borrower_name")
+                .get(0).display()).value(), "the backup copy opens: erase is not crypto-shredding");
+    }
+
+    @Test
     void anotherCustomersRecordIsRefused() {
         values.claim(ref(A, "c1"), vals("contract_number", "AB-1001", "borrower_name", "Alice Smith"));
         FieldValues other = new FieldValues(OTHER, definitionStore, store, keys, CLOCK);
