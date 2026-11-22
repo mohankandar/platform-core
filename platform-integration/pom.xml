@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.documentplatform.platform</groupId>
+        <artifactId>platform-core</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>platform-integration</artifactId>
+    <description>Shared, configurable integrations (plain Java, no Spring): versioned configuration of destinations and
+        sources with history for the app's audit (Postgres store, SQL in db/platform/integration, run only by the app's
+        schema step); the call engine for API push (steps, templates from fixed building blocks, response mapping);
+        the sign-in bundle (none on-prem only, basic, API key header, fixed bearer, OAuth 2.0 client credentials through
+        a generic token client); safety (cloud-metadata address guard, outbound proxy, private certificate authority,
+        no redirects, limits and timeouts); one attempt with a classified result (classification rules are data);
+        health check per destination and a Test action with fake data. The engine never retries.</description>
+    <dependencies>
+        <!-- Only for SecretRef / Secret / SecretResolver (com.documentplatform.notifications.secret); the notification
+             engine itself is not used. The mail library is not needed here. -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-notifications</artifactId>
+            <version>${project.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.eclipse.angus</groupId>
+                    <artifactId>angus-mail</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-notifications-testkit</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-postgresql</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>${postgresql.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>
