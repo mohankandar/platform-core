@@ -8,7 +8,8 @@
     </parent>
     <artifactId>platform-identity-testkit</artifactId>
     <description>Test support for identity storage: an in-memory version of the idn_ stores (customers, entity slots,
-        login connections, group grants) and of the sign-in lookups, with the same rules as platform-identity-jdbc. For
+        login connections with drafts and rollback, group grants with their history) and of the sign-in lookups, with the
+        same rules as platform-identity-jdbc; and a mock OIDC issuer (discovery document, key set, test tokens). For
         the apps' tests only (test scope); never on a production classpath.</description>
     <dependencies>
         <dependency>

@@ -37,9 +37,24 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- Only for the IssuerFetch interface (com.documentplatform.identity.signin): the login-connection test
+             sign-in reads the issuer's discovery document and keys through the outbound rules here
+             (http.OutboundIssuerFetch). platform-identity-core has no dependencies. -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-identity-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <dependency>
             <groupId>com.documentplatform.platform</groupId>
             <artifactId>platform-notifications-testkit</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-identity-testkit</artifactId>
             <version>${project.version}</version>
             <scope>test</scope>
         </dependency>

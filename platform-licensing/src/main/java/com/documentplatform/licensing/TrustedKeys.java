@@ -7,11 +7,13 @@ import com.documentplatform.licensing.json.JsonException;
 import java.security.PublicKey;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 /**
  * The public keys an app trusts, by key ID. Apps ship this set; a new signing key is added beside the old ones, so
@@ -21,18 +23,29 @@ import java.util.TreeMap;
  * <pre>
  * {"format":"platform-licence-keys/1","keys":[{"algorithm":"Ed25519","keyId":"lic-2026-01","publicKey":"&lt;Base64 X.509&gt;"}]}
  * </pre>
+ *
+ * A key may carry {@code "development": true}: a development key (demo and local test licences only), which no
+ * production release lists. Some local test features (an {@code http} login issuer on this machine) are allowed only
+ * for a licence signed by such a key ({@link #isDevelopmentKey}). Files without the field load as before.
  */
 public final class TrustedKeys {
 
     public static final String FORMAT = "platform-licence-keys/1";
 
     private final Map<String, PublicKey> keys;
+    private final Set<String> development;
 
-    private TrustedKeys(Map<String, PublicKey> keys) {
+    private TrustedKeys(Map<String, PublicKey> keys, Set<String> development) {
         this.keys = Collections.unmodifiableMap(new TreeMap<>(keys));
+        this.development = Set.copyOf(development);
     }
 
     public static TrustedKeys of(Map<String, PublicKey> keys) {
+        return of(keys, Set.of());
+    }
+
+    /** @param developmentKeyIds the IDs of {@code keys} that are development keys */
+    public static TrustedKeys of(Map<String, PublicKey> keys, Set<String> developmentKeyIds) {
         Map<String, PublicKey> copy = new TreeMap<>();
         keys.forEach((id, key) -> {
             Licence.requireKeyId(id);
@@ -41,7 +54,10 @@ public final class TrustedKeys {
             }
             copy.put(id, key);
         });
-        return new TrustedKeys(copy);
+        for (String id : developmentKeyIds) {
+            if (!copy.containsKey(id)) throw new IllegalArgumentException("development key " + id + " is not listed");
+        }
+        return new TrustedKeys(copy, developmentKeyIds);
     }
 
     /** @throws IllegalArgumentException naming the field that is wrong */
@@ -52,8 +68,9 @@ public final class TrustedKeys {
                 throw new IllegalArgumentException("keys file format is not " + FORMAT);
             }
             Map<String, PublicKey> keys = new TreeMap<>();
+            Set<String> development = new TreeSet<>();
             for (Object o : f.list("keys")) {
-                Fields k = Fields.of(o, "keys[]").only(Set.of("algorithm", "keyId", "publicKey"));
+                Fields k = Fields.of(o, "keys[]").only(Set.of("algorithm", "keyId", "publicKey", "development"));
                 if (!Ed25519.ALGORITHM.equals(k.string("algorithm"))) {
                     throw new IllegalArgumentException("keys[].algorithm must be Ed25519");
                 }
@@ -61,8 +78,14 @@ public final class TrustedKeys {
                 if (keys.put(id, Ed25519.decodePublic(k.string("publicKey"))) != null) {
                     throw new IllegalArgumentException("key ID " + id + " is listed twice");
                 }
+                if (k.has("development")) {
+                    if (!(k.map().get("development") instanceof Boolean flag)) {
+                        throw new IllegalArgumentException("keys[].development must be true or false");
+                    }
+                    if (flag) development.add(id);
+                }
             }
-            return of(keys);
+            return of(keys, development);
         } catch (JsonException e) {
             throw new IllegalArgumentException("keys file is not valid: " + e.getMessage());
         }
@@ -70,8 +93,14 @@ public final class TrustedKeys {
 
     public String toJson() {
         List<Object> list = new ArrayList<>();
-        keys.forEach((id, key) -> list.add(Map.of("algorithm", Ed25519.ALGORITHM, "keyId", id,
-                "publicKey", Ed25519.encodePublic(key))));
+        keys.forEach((id, key) -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("algorithm", Ed25519.ALGORITHM);
+            m.put("keyId", id);
+            m.put("publicKey", Ed25519.encodePublic(key));
+            if (development.contains(id)) m.put("development", true);
+            list.add(m);
+        });
         return Json.pretty(Map.of("format", FORMAT, "keys", list));
     }
 
@@ -81,5 +110,10 @@ public final class TrustedKeys {
 
     public Set<String> keyIds() {
         return keys.keySet();
+    }
+
+    /** Whether the key is listed here as a development key ({@code "development": true}). */
+    public boolean isDevelopmentKey(String keyId) {
+        return development.contains(keyId);
     }
 }

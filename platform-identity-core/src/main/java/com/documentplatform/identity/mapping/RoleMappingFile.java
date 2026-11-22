@@ -197,6 +197,12 @@ public final class RoleMappingFile {
             }
             nameLines.putIfAbsent(entity, line);
 
+            String alias = null;
+            Optional<String> aliased = roles.aliasTarget(role);
+            if (aliased.isPresent()) {
+                alias = role;
+                role = aliased.get();
+            }
             Optional<String> canonical = roles.canonicalEntityRole(role);
             if (canonical.isEmpty()) {
                 errors.add(new MappingError(line, MappingError.Code.UNKNOWN_ROLE, "unknown role \"" + role + "\""));
@@ -225,7 +231,7 @@ public final class RoleMappingFile {
             }
             if (rowOk) {
                 rows.add(new MappingRow(line, entity, name.isEmpty() ? null : name, group, role,
-                        slotRow ? rawId : null, productCode));
+                        slotRow ? rawId : null, productCode, alias));
             }
         }
         if (records.size() == 1 && errors.isEmpty()) {

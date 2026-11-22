@@ -50,6 +50,6 @@ class DemoFilesGenerator {
         Files.writeString(demo.resolve("licence-demo.json"), LicenceSigner.sign(licence, dev.getPrivate()),
                 StandardCharsets.UTF_8);
         Files.writeString(demo.resolve("development-trusted-keys.json"),
-                TrustedKeys.of(Map.of(DEV_KEY_ID, dev.getPublic())).toJson(), StandardCharsets.UTF_8);
+                TrustedKeys.of(Map.of(DEV_KEY_ID, dev.getPublic()), java.util.Set.of(DEV_KEY_ID)).toJson(), StandardCharsets.UTF_8);
     }
 }

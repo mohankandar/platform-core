@@ -17,6 +17,11 @@ import com.documentplatform.identity.store.EntityRecord;
 import com.documentplatform.identity.store.EntityStatus;
 import com.documentplatform.identity.store.EntityStore;
 import com.documentplatform.identity.store.EntityTimeZone;
+import com.documentplatform.identity.store.ConnectionValues;
+import com.documentplatform.identity.store.GrantAuthor;
+import com.documentplatform.identity.store.GrantChange;
+import com.documentplatform.identity.store.GrantHistory;
+import com.documentplatform.identity.store.GrantStep;
 import com.documentplatform.identity.store.GroupGrantStore;
 import com.documentplatform.identity.store.LoginConnection;
 import com.documentplatform.identity.store.LoginConnectionStore;
@@ -53,7 +58,7 @@ import static com.documentplatform.identity.store.ActivationOutcome.Result.*;
  * Thread safe (one lock).
  */
 public final class InMemoryIdentityStore implements EntityStore, LoginConnectionStore, GroupGrantStore,
-        MachineBindingStore {
+        MachineBindingStore, GrantHistory {
 
     private record GrantKey(String slotId, String productCode, String issuer) {
     }
@@ -66,6 +71,9 @@ public final class InMemoryIdentityStore implements EntityStore, LoginConnection
     private final Map<String, EntityStatus> statusBeforeRemoval = new TreeMap<>();
     private final Map<UUID, LoginConnection> connections = new LinkedHashMap<>();
     private final Map<UUID, List<ConnectionChange>> history = new LinkedHashMap<>();
+    /** Every stored state of every connection, in the order written (the history table's full rows). */
+    private final List<LoginConnection> connectionLog = new ArrayList<>();
+    private final List<GrantChange> grantHistory = new ArrayList<>();
     private final Map<GrantKey, Set<Grant>> grants = new LinkedHashMap<>();
     private final Map<UUID, MachineBinding> bindings = new LinkedHashMap<>();
     private final Map<UUID, List<MachineBindingChange>> bindingHistory = new LinkedHashMap<>();
@@ -280,8 +288,79 @@ public final class InMemoryIdentityStore implements EntityStore, LoginConnection
         }
         requireNoOtherActive(v1);
         connections.put(v1.connectionId(), v1);
-        history.computeIfAbsent(v1.connectionId(), id -> new ArrayList<>()).add(change(v1, source, changedBy));
+        record(v1, source, changedBy);
         return v1;
+    }
+
+    @Override
+    public synchronized List<LoginConnection> connections(String tenantId, String productCode) {
+        return connections.values().stream().filter(c -> c.tenantId().equals(tenantId)
+                && c.productCode().equals(productCode)).toList();
+    }
+
+    @Override
+    public synchronized Optional<LoginConnection> activate(UUID connectionId, long expectedVersion, ChangeSource source,
+                                                           String changedBy) {
+        requireChange(source, changedBy);
+        LoginConnection t = connections.get(connectionId);
+        if (t == null) throw new IllegalStateException("login connection " + connectionId + " is not stored");
+        if (t.configurationVersion() != expectedVersion) return Optional.empty();
+        if (t.status() == IdentityConnectionStatus.ACTIVE) {
+            throw new IllegalStateException("login connection " + connectionId + " is already ACTIVE");
+        }
+        active(t.tenantId(), t.productCode()).ifPresent(old -> put(with(old, IdentityConnectionStatus.DISABLED,
+                old.configurationVersion() + 1), source, changedBy));
+        LoginConnection on = with(t, IdentityConnectionStatus.ACTIVE, t.configurationVersion() + 1);
+        put(on, source, changedBy);
+        return Optional.of(on);
+    }
+
+    @Override
+    public synchronized Optional<LoginConnection> rollbackCandidate(String tenantId, String productCode) {
+        Optional<LoginConnection> current = active(tenantId, productCode);
+        for (int i = connectionLog.size() - 1; i >= 0; i--) {
+            LoginConnection h = connectionLog.get(i);
+            if (!h.tenantId().equals(tenantId) || !h.productCode().equals(productCode)
+                    || h.status() != IdentityConnectionStatus.ACTIVE) {
+                continue;
+            }
+            if (current.isPresent() && ConnectionValues.same(h, current.get())) continue;
+            LoginConnection now = connections.get(h.connectionId());
+            return Optional.of(new LoginConnection(now.connectionId(), now.tenantId(), now.productCode(), h.providerId(),
+                    h.providerType(), h.issuer(), h.browserClientId(), h.apiAudience(), h.secretReference(),
+                    now.status(), now.configurationVersion()));
+        }
+        return Optional.empty();
+    }
+
+    @Override
+    public synchronized Optional<LoginConnection> rollback(String tenantId, String productCode, ChangeSource source,
+                                                           String changedBy) {
+        requireChange(source, changedBy);
+        Optional<LoginConnection> pick = rollbackCandidate(tenantId, productCode);
+        if (pick.isEmpty()) return Optional.empty();
+        LoginConnection restore = pick.get();
+        active(tenantId, productCode).filter(c -> !c.connectionId().equals(restore.connectionId()))
+                .ifPresent(old -> put(with(old, IdentityConnectionStatus.DISABLED, old.configurationVersion() + 1),
+                        source, changedBy));
+        LoginConnection on = with(restore, IdentityConnectionStatus.ACTIVE, restore.configurationVersion() + 1);
+        put(on, source, changedBy);
+        return Optional.of(on);
+    }
+
+    private void put(LoginConnection c, ChangeSource source, String changedBy) {
+        connections.put(c.connectionId(), c);
+        record(c, source, changedBy);
+    }
+
+    private void record(LoginConnection c, ChangeSource source, String changedBy) {
+        history.computeIfAbsent(c.connectionId(), id -> new ArrayList<>()).add(change(c, source, changedBy));
+        connectionLog.add(c);
+    }
+
+    private static LoginConnection with(LoginConnection c, IdentityConnectionStatus status, long version) {
+        return new LoginConnection(c.connectionId(), c.tenantId(), c.productCode(), c.providerId(), c.providerType(),
+                c.issuer(), c.browserClientId(), c.apiAudience(), c.secretReference(), status, version);
     }
 
     @Override
@@ -295,8 +374,7 @@ public final class InMemoryIdentityStore implements EntityStore, LoginConnection
         }
         LoginConnection next = connection.withVersion(expectedVersion + 1);
         requireNoOtherActive(next);
-        connections.put(next.connectionId(), next);
-        history.get(next.connectionId()).add(change(next, source, changedBy));
+        put(next, source, changedBy);
         return Optional.of(next);
     }
 
@@ -327,27 +405,54 @@ public final class InMemoryIdentityStore implements EntityStore, LoginConnection
 
     @Override
     public synchronized int add(String slotId, String productCode, URI issuer, Collection<Grant> add) {
-        EntityUuid.requireSlotId(slotId);
-        LoginConnection.requireProductCode(productCode);
-        if (!entities.containsKey(slotId)) throw new IllegalStateException("slot " + slotId + " is not stored");
-        Set<Grant> set = grants.computeIfAbsent(new GrantKey(slotId, productCode, issuer.toString()),
-                k -> new LinkedHashSet<>());
-        int added = 0;
-        for (Grant g : add) {
-            if (set.add(g)) added++;
-        }
-        return added;
+        return change(slotId, productCode, issuer, add, List.of(), GrantAuthor.app(GrantAuthor.UNNAMED_APP_USER));
     }
 
     @Override
     public synchronized int remove(String slotId, String productCode, URI issuer, Collection<Grant> remove) {
-        Set<Grant> set = grants.get(new GrantKey(slotId, productCode, issuer.toString()));
-        if (set == null) return 0;
-        int removed = 0;
-        for (Grant g : remove) {
-            if (set.remove(g)) removed++;
+        return change(slotId, productCode, issuer, List.of(), remove, GrantAuthor.app(GrantAuthor.UNNAMED_APP_USER));
+    }
+
+    @Override
+    public synchronized int change(String slotId, String productCode, URI issuer, Collection<Grant> add,
+                                   Collection<Grant> remove, GrantAuthor author) {
+        EntityUuid.requireSlotId(slotId);
+        LoginConnection.requireProductCode(productCode);
+        Objects.requireNonNull(issuer, "issuer");
+        Objects.requireNonNull(author, "author");
+        if (add.isEmpty() && remove.isEmpty()) return 0;
+        EntityRecord entity = entities.get(slotId);
+        if (entity == null) throw new IllegalStateException("slot " + slotId + " is not stored");
+        Set<Grant> set = grants.computeIfAbsent(new GrantKey(slotId, productCode, issuer.toString()),
+                k -> new LinkedHashSet<>());
+        List<Grant> removed = new ArrayList<>();
+        for (Grant g : new LinkedHashSet<>(remove)) {
+            if (set.remove(g)) removed.add(g);
         }
-        return removed;
+        List<Grant> added = new ArrayList<>();
+        for (Grant g : new LinkedHashSet<>(add)) {
+            if (set.add(g)) added.add(g);
+        }
+        Instant at = clock.instant();
+        for (GrantStep step : GrantStep.of(added, removed)) {
+            grantHistory.add(new GrantChange(entity.tenantId(), productCode, slotId, entity.entityUuid(), issuer,
+                    step.group(), step.roleBefore(), step.roleAfter(), step.kind(), author.source(), author.changedBy(),
+                    at, author.setupRunId()));
+        }
+        return added.size() + removed.size();
+    }
+
+    // ---- grant history
+
+    @Override
+    public synchronized List<GrantChange> forEntity(UUID entityUuid, Instant from, Instant to) {
+        return grantHistory.stream().filter(g -> g.entityUuid().equals(entityUuid) && !g.changedAt().isBefore(from)
+                && g.changedAt().isBefore(to)).toList();
+    }
+
+    /** Test helper: the whole grant history, oldest first (the table refuses updates and deletes; so does this). */
+    public synchronized List<GrantChange> grantHistory() {
+        return List.copyOf(grantHistory);
     }
 
     // ---- integration client bindings
@@ -533,15 +638,21 @@ public final class InMemoryIdentityStore implements EntityStore, LoginConnection
         if (!customers.containsKey(tenantId)) throw new IllegalStateException("customer " + tenantId + " is not stored");
     }
 
+    /** At most one ACTIVE, and at most one DRAFT or VALIDATED, per customer and product (as the database). */
     private void requireNoOtherActive(LoginConnection conn) {
-        if (conn.status() != IdentityConnectionStatus.ACTIVE) return;
+        if (conn.status() == IdentityConnectionStatus.DISABLED) return;
+        boolean active = conn.status() == IdentityConnectionStatus.ACTIVE;
         boolean other = connections.values().stream().anyMatch(c -> !c.connectionId().equals(conn.connectionId())
                 && c.tenantId().equals(conn.tenantId()) && c.productCode().equals(conn.productCode())
-                && c.status() == IdentityConnectionStatus.ACTIVE);
+                && (active ? c.status() == IdentityConnectionStatus.ACTIVE : pending(c.status())));
         if (other) {
-            throw new IllegalStateException("customer " + conn.tenantId() + " already has an ACTIVE login connection for "
-                    + conn.productCode());
+            throw new IllegalStateException("customer " + conn.tenantId() + " already has "
+                    + (active ? "an ACTIVE" : "a DRAFT or VALIDATED") + " login connection for " + conn.productCode());
         }
+    }
+
+    private static boolean pending(IdentityConnectionStatus s) {
+        return s == IdentityConnectionStatus.DRAFT || s == IdentityConnectionStatus.VALIDATED;
     }
 
     private static void requireChange(ChangeSource source, String changedBy) {

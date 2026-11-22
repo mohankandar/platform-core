@@ -30,6 +30,12 @@
             <version>${project.version}</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-identity-testkit</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
         <!-- Test only: proves PostgresEntityStore::activated fits licensing's ActivatedSlots. -->
         <dependency>
             <groupId>com.documentplatform.platform</groupId>

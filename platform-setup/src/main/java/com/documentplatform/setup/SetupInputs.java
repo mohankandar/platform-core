@@ -1,6 +1,7 @@
 package com.documentplatform.setup;
 
 import com.documentplatform.identity.mapping.ClientBindingsFile;
+import com.documentplatform.identity.signin.LocalTestIssuers;
 import com.documentplatform.licensing.Licence;
 import com.documentplatform.licensing.LicenceException;
 import com.documentplatform.licensing.LicenceVerifier;
@@ -51,6 +52,13 @@ record SetupInputs(String product, byte[] licenceFile, Licence licence, TrustedK
         if (!licence.products().contains(product)) {
             throw new SetupException(SetupRefusal.SETUP_PRODUCT_NOT_IN_LICENCE, "The licence " + licence.licenceId()
                     + " does not list product " + product + "; it lists " + licence.products() + ".");
+        }
+        boolean development = keys.isDevelopmentKey(licence.keyId());
+        if (LocalTestIssuers.check(signin.issuer(), development).isPresent()) {
+            throw new SetupException(SetupRefusal.SETUP_HTTP_ISSUER_NOT_ALLOWED, "The sign-in file's loginSystem.issuer "
+                    + "is an http address" + (LocalTestIssuers.isLocalHttp(signin.issuer())
+                    ? ", and the licence " + licence.licenceId() + " is not signed by a development key."
+                    : " that is not on this machine (localhost, 127.0.0.1 or [::1])."));
         }
         SigninFile.Product productSignin = signin.product(product).orElseThrow(() -> new SetupException(
                 SetupRefusal.SETUP_PRODUCT_NOT_IN_SIGNIN, "The sign-in file has no entry for product " + product + "."));

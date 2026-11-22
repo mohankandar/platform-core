@@ -17,4 +17,13 @@ public interface EntityRoleCatalog {
     Optional<String> canonicalEntityRole(String configuredName);
 
     boolean isPlatformRole(String canonicalRole);
+
+    /**
+     * The role an alias stands for, when the product's role list gives aliases (for example a role name as the
+     * customer's identity system calls it). Exact spelling; empty when the name is not an alias. A role mapping file
+     * may use an alias: it is resolved when the file is read and stored as the role.
+     */
+    default Optional<String> aliasTarget(String name) {
+        return Optional.empty();
+    }
 }

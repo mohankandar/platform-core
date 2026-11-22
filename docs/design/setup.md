@@ -133,3 +133,22 @@ Fixed now because Vero task 0041 builds its own loader to the same format (on En
 - **Decided on the P029 report (2026-11-22):** no `clientBindingsFile` switches every binding of the product off (the plan lists each `switch off` first; nothing deleted). Moving a client to another entity or source takes two runs (remove, run; add, run); a `--move-bound-clients` flag only if customers find it clumsy. The table is added by identity **V2** (`V2__machine_binding.sql`); a database with only V1 is refused with `IDN_VERSION_OLDER` until the schema step runs V2.
 
 **Interface check (2026-11-22):** `MachineEntityBindings`, `EntityId` and `ConnectionKey` are identical between Enterprise Identity 0.3.0 (tag `v0.3.0`) and platform-core (only line endings differ); the Java package `com.documentplatform.identity.admission` is unchanged. Only the Maven coordinates differ (`com.documentplatform.identity:enterprise-identity-core` → `com.documentplatform.platform:platform-identity-core`).
+
+## 7. P031 (2026-11-22): drafts, test sign-in, local test issuers, aliases, grant history, keys guard
+
+Decided by the LexaVault design chat (board LV-6, LV-14); built in P031 (`docs/work/P031-report.md`).
+
+- **Login-connection drafts** (`LoginConnections`, identity-core): draft (copy of the ACTIVE connection, or the
+  first one), test sign-in (`OidcTestSignIn` over an `IssuerFetch`; production: `OutboundIssuerFetch` in
+  platform-integration, the integrations' outbound rules), activate (VALIDATED only; old ACTIVE → DISABLED in one
+  transaction), rollback (previous ACTIVE values as a new version). At most one DRAFT or VALIDATED per customer and
+  product (index in identity V3). Setup reads only ACTIVE/DISABLED connections; drafts are the app's.
+- **Local test issuers:** `http` only on `localhost`, `127.0.0.1`, `[::1]` and only under a licence signed by a key
+  marked `"development": true` in `trusted-keys.json` (`platform-licence-keys/1` gains that optional field).
+  `SETUP_HTTP_ISSUER_NOT_ALLOWED` / `IDN_HTTP_ISSUER_NOT_ALLOWED`.
+- **Role aliases** in `platform-product-roles/1` (`"aliases"`), resolved when the mapping file is read; stored as the
+  role.
+- **Grant history** `idn_grant_history` (identity V3), insert only (triggers), written by setup (with its run ID) and
+  by `GroupGrantStore`; read with `GrantHistory.forEntity`.
+- **Customer-keys guard:** `"customerKeys": "required"` in `product-roles.json` refuses `--no-customer-keys`
+  (`SETUP_CUSTOMER_KEYS_REQUIRED`).

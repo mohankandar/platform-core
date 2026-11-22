@@ -19,6 +19,17 @@ public enum SetupRefusal {
     /** The sign-in file gives a time zone for an entity slot the licence does not list. */
     SETUP_TIME_ZONE_SLOT_NOT_IN_LICENCE(SetupCommand.EXIT_REFUSED, "Give time zones in entityTimeZones only for "
             + "entity slots the licence lists."),
+    /**
+     * The sign-in file's issuer is http: allowed only on localhost, 127.0.0.1 or [::1] with a licence signed by a
+     * development key.
+     */
+    SETUP_HTTP_ISSUER_NOT_ALLOWED(SetupCommand.EXIT_REFUSED, "Use the login system's https issuer address. An http "
+            + "issuer is accepted only for a local test login server (localhost, 127.0.0.1 or [::1]) with a demo or "
+            + "test licence signed by a development key."),
+    /** The product's product-roles.json says customerKeys "required", and --no-customer-keys was given. */
+    SETUP_CUSTOMER_KEYS_REQUIRED(SetupCommand.EXIT_REFUSED, "This product keeps sensitive values and needs the "
+            + "customer's keys: run setup without --no-customer-keys, with the key service settings in the "
+            + "environment."),
     SETUP_MODE_NOT_SUPPORTED(SetupCommand.EXIT_REFUSED, "This version sets up direct sign-in only (mode \"direct\")."),
     SETUP_WRONG_TENANT(SetupCommand.EXIT_REFUSED, "The sign-in file must name the customer (tenantId) of the licence; "
             + "use the sign-in file made for this customer."),

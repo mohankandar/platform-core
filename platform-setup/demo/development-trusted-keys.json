@@ -3,6 +3,7 @@
   "keys": [
     {
       "algorithm": "Ed25519",
+      "development": true,
       "keyId": "dev-demo-1",
       "publicKey": "MCowBQYDK2VwAyEAS8c03yEYs8dMbq/yD7sNGkxm0xd4Gs+hNGEeI7iZr88="
     }
