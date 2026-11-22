@@ -52,7 +52,7 @@ A **Test** action with fake data on every integration; **contract tests** agains
 
 1. **Pinned contract.** On merging Vero 0040, Vero tags the merge commit `sdv-ingestion-v1.0.0`. Platform-core keeps its own copy of `sdv-ingestion-v1.openapi.json` (source: `secure-document-vault` `docs/api/`, error codes in `docs/api/error-codes.md`), with the version and source commit noted. Contract tests run against that copy, updated deliberately with each Vero release that changes the API.
 2. **The claim Vero calls "tenant" means the entity (`ENT-…`)**, not the customer; Vero renames it "entity" at its switch-over.
-3. **Lookup, not custom claims.** Vero finds the entity and source from the verified client ID via `MachineEntityBindings` (one credential per integration per entity). Tokens need only the standard audience and subject; any entity or source claims present must match the binding or the call is refused. **The Vero profile assumes standard tokens only.**
+3. **Lookup, not custom claims.** Vero finds the entity and source from the verified client ID via `MachineEntityBindings` (one credential per integration per entity). Tokens need only the standard audience and subject; any entity or source claims present must match the binding or the call is refused. *(Target state. Updated 2026-11-22: R7 still requires custom claims; the profile supports both until Vero builds the lookup before the first install — see "Decisions on the P022 proposal", item 1.)*
 4. Sign-in: OAuth2 client credentials. Health: `/actuator/health/readiness`. Build the profile once Vero 0040 is merged.
 
 ## Registering integration client IDs (LexaVault thread decision, 2026-11-21)
@@ -81,3 +81,12 @@ Applies to Vero's and LexaVault's own push-API callers.
 | P023+ | Integration build in the order P022 proposes: core (config model, audit and versioning, sign-in bundle, safety, classified result, health, Test) → outbound API push + packagings + field mapping + **Vero R7 profile and contract tests** → folder export with manifest → intake (API polling, watched folder with trigger file, virus scan hook) → callback and push-API sign-in check |
 
 LexaVault moves intake and export onto it as **part 3 of its switch-over**; the 0031 live run is re-run jointly when both sides are ready.
+
+## Decisions on the P022 proposal (LexaVault thread, master, 2026-11-22)
+
+1. **Vero sign-in:** Vero builds the client-ID lookup (`MachineEntityBindings`) **before the first install**. The `sdv-ingestion-v1` profile supports R7's custom claims (`sdv_tenant_id`, `sdv_source_id`) now and the lookup later (configuration switch, no code change).
+2. **Busy vs outage:** **busy** = Vero's 503 with its busy code (plus Retry-After when sent): wait, send fewer, **no attempt used**. A 503 **without** that code is an **outage** (health check, then pause or the case's own retries). AUT-004 is a **sign-in fault**, not busy. The generic engine expresses this as profile rules (status + code → result class), not Vero code.
+3. **Trigger file:** requirement committed in LexaVault at `docs/work/watched-folder-trigger-file.md` (branch `feature/0037-switchover-1a`, merging soon). Split: **platform-core watches, reads and waits** (folder stability, trigger file last, timeout for incomplete drops); **LexaVault interprets** the trigger file's content.
+4. LexaVault's `staged-pipeline-design.md` text about Vero's 409 is corrected (Vero answers 200 for "already received"; 409 = same key, different content).
+5. Profiles ship as **data** named after the published API (`sdv-ingestion-v1`); the spec copy is pinned to the current Vero commit until the `sdv-ingestion-v1.0.0` tag, then re-pinned.
+6. **Order approved:** P023 core + mock server → P024 packagings, field mapping, integrity, `sdv-ingestion-v1` profile, pinned spec, contract tests → P025 Spring + folder export with manifest → P026 mTLS + callbacks → P027 intake (polling, watched folder, virus scan hook) → P028 push-API sign-in check + client-ID bindings in setup. **LexaVault's part 3 starts after P023 + P024.** Full proposal: `docs/work/P022-report.md` sections B1–B8.
