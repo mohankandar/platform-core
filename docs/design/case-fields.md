@@ -189,3 +189,12 @@ Built in P019 in `platform-fields` (package `com.documentplatform.fields.values`
   kept outside the database (in the key service) that erase destroys. `PostgresValueStoreTest
   .aRestoredBackupOfAnErasedRecordStillOpensWhileTheCustomersKeyLives` pins today's behaviour so it is not mistaken
   for crypto-shredding.
+
+## Erase and backups (owner, 2026-11-22)
+
+P020 found that erase removes a record from the live database, but a backup taken earlier can still be opened while the customer's key lives (the record key is stored in the database, wrapped by the customer's key). Decision: **(b) + (c)**.
+
+- **(b) Everyday erase and retention:** erase removes the record live. Backups are kept only for a set retention period; if a backup is ever restored, the erasures are re-applied from an erase log kept outside the restored database. Standard practice (e.g. GDPR).
+- **(c) Customer exit:** destroying the customer's keys makes all of that customer's data unreadable everywhere, backups included. This backs the offboarding certificate.
+- **(a) Per-record keys in the key service:** not now; only if a customer contract requires single-record shredding of backups.
+- Both go into the retention design of each app (Vero retention, LexaVault deletion). To be confirmed by the LexaVault thread (master).

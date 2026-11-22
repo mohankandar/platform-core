@@ -31,6 +31,8 @@ Fixed building blocks, no free scripting; secrets only in the secret store; no d
 
 A **Test** action with fake data on every integration; **contract tests** against each published API (Vero R7 first) in every build; live-system integration tests marked to run only on request.
 
+**Mock destination server (from `LV-Test-Strategy.md`, owned by platform-core, built with P022/P023):** built from the pinned Vero spec so it can't drift; switches per test or by a small admin call: working, down, slow, busy (429 + Retry-After), unavailable (503), refuses with a code (e.g. `SDV-SEN-006`, `SDV-INT-011`), already received (200 replay, `DUPLICATE_ALREADY_STORED`), sign-in refused (`SDV-AUT-*`), health failing while uploads work and the reverse. Records what it received (headers, fields, checksums; never document text). Also a mock folder/share (can be unwritable or slow) and a mock source API for polling intake. LexaVault uses them from switch-over part 3.
+
 ## What platform-core already has (checked 2026-11-21)
 
 | Need | Already there |
@@ -73,8 +75,9 @@ Applies to Vero's and LexaVault's own push-API callers.
 |---|---|
 | P018 | **platform-crypto**: move Vero's `sdv-crypto` (read-only source) — Vault client, AES-256-GCM envelope encryption, keyed fingerprint (HMAC) for exact-match search, key-service plug-in point |
 | P019 | Case field **values**: encrypted sensitive values, fingerprint search, primary uniqueness |
-| P020 | **Per-entity time zone** (before LexaVault P5) |
-| P021 | Integration: **read-only investigation and proposal** — LexaVault intake/export code, 0031 findings, **Vero R7's real ingestion API** (from the SDV repo), integration-standards.md; module layout and task split |
-| P022+ | Integration build in the order P021 proposes: core (config model, audit and versioning, sign-in bundle, safety, classified result, health, Test) → outbound API push + packagings + field mapping + **Vero R7 profile and contract tests** → folder export with manifest → intake (API polling, watched folder with trigger file, virus scan hook) → callback and push-API sign-in check |
+| P020 | **Per-entity time zone** (before LexaVault P5) — done |
+| P021 | **Erase log** (shared) and **customer key destruction** — needed for LexaVault switch-over part 1 (`docs/design/erase-log.md`) |
+| P022 | Integration: **read-only investigation and proposal** — LexaVault intake/export code, 0031 findings, **Vero R7's real ingestion API** (from the SDV repo), integration-standards.md; module layout and task split |
+| P023+ | Integration build in the order P022 proposes: core (config model, audit and versioning, sign-in bundle, safety, classified result, health, Test) → outbound API push + packagings + field mapping + **Vero R7 profile and contract tests** → folder export with manifest → intake (API polling, watched folder with trigger file, virus scan hook) → callback and push-API sign-in check |
 
 LexaVault moves intake and export onto it as **part 3 of its switch-over**; the 0031 live run is re-run jointly when both sides are ready.
