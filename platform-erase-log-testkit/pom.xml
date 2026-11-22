@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.documentplatform.platform</groupId>
         <artifactId>platform-core</artifactId>
-        <version>0.2.0-SNAPSHOT</version>
+        <version>0.2.0</version>
     </parent>
     <artifactId>platform-erase-log-testkit</artifactId>
     <description>Test support for the erase log: an in-memory log store and applied position with the same rules as
