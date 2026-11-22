@@ -9,7 +9,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-/** Ported case for case from LexaVault TenantGroupAuthorizationTest. */
+/** Ported case for case from the original TenantGroupAuthorizationTest. */
 class EntityGroupAuthorizationTest {
     private static final EntityId A = EntityId.of(UUID.fromString("00000000-0000-0000-0000-000000000001"));
     private static final EntityId B = EntityId.of(UUID.fromString("00000000-0000-0000-0000-000000000002"));

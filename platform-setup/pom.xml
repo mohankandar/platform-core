@@ -24,6 +24,12 @@
             <artifactId>platform-licensing</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- Integration profiles named in the sign-in file are checked (ProfileValidator), never stored. -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-integration</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <!-- The customer's keys in the key service (Vault Transit), created by setup apply. -->
         <dependency>
             <groupId>com.documentplatform.platform</groupId>

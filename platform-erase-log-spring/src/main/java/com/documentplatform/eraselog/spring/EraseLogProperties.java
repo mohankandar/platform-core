@@ -8,7 +8,7 @@ import java.time.Duration;
  * The install's erase log settings ({@code platform.erase-log.*}), checked at startup by {@link EraseLogConfig#from}.
  *
  * <pre>
- * platform.erase-log.location=/mnt/erase-log/lexavault     # required: a directory outside the database's storage
+ * platform.erase-log.location=/mnt/erase-log/<app>         # required: a directory outside the database's storage
  * platform.erase-log.backup-retention-days=35              # 30-90, the installation's backup retention
  * platform.erase-log.recheck=PT1M                          # how often a blocked guard looks again
  * platform.erase-log.exit-after-replay=true                # --erase-replay runs the replay, then the app exits

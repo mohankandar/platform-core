@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RequiredAudienceValidatorTest {
 
-    private static final String API = "lexavault-api";
+    private static final String API = "product-a-api";
     private final RequiredAudienceValidator validator = new RequiredAudienceValidator(API);
 
     private static Jwt.Builder token() {

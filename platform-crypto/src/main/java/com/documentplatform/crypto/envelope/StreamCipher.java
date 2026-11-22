@@ -24,8 +24,7 @@ import java.util.Objects;
 /**
  * Envelope encryption of a stream of any size (a document), format {@value #FORMAT} version {@value #VERSION}:
  * AES-256-GCM in chunks of 64 KiB, with one new data key per stream, wrapped by the customer's wrapping key in the
- * key service. Moved from Vero's streaming envelope (same framing, product-neutral names, see
- * {@code docs/design/crypto.md}).
+ * key service. The format is described in {@code docs/design/crypto.md}.
  *
  * <pre>
  * header:  magic "PCSTRM01" | version (int) | chunk size (int) | nonce prefix (8)

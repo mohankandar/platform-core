@@ -63,11 +63,14 @@ public record SigninFile(String tenantId, String mode, String loginType, URI iss
      *                           to the sign-in file's folder; null when the product has no machine callers
      * @param sources            the product's sending systems (key and name), for the binding file's {@code source}
      *                           column; empty when none are listed
+     * @param integrationProfiles the integration profiles the product's integrations use (checked by setup, stored
+     *                           nowhere; the app's integration screens read the files later); empty when none
      */
     public record Product(String browserClientId, String apiAudience, String roleMappingFile,
-                          String clientBindingsFile, List<Source> sources) {
+                          String clientBindingsFile, List<Source> sources, List<ProfileEntry> integrationProfiles) {
         public Product {
             sources = List.copyOf(sources);
+            integrationProfiles = List.copyOf(integrationProfiles);
         }
 
         public Set<String> sourceKeys() {
@@ -75,6 +78,14 @@ public record SigninFile(String tenantId, String mode, String loginType, URI iss
             for (Source s : sources) out.add(s.key());
             return out;
         }
+    }
+
+    /**
+     * An integration profile named in the sign-in file: its name, its file (relative to the sign-in file's folder) and
+     * the API owner's release tag it came from (which ends with the profile's version). {@code tag} is null when the
+     * entry has none (refused by setup: SETUP_PROFILE_TAG_MISSING).
+     */
+    public record ProfileEntry(String name, String file, String tag) {
     }
 
     /** A sending system of a product: its key ({@code [a-z0-9][a-z0-9._-]{0,63}}) and a name for people. */
@@ -128,14 +139,15 @@ public record SigninFile(String tenantId, String mode, String loginType, URI iss
                     throw invalid("products: a key is not a product code (2 to 32 of A-Z 0-9 _)");
                 }
                 Fields p = products.object(code).only(Set.of("browserClientId", "apiAudience", "roleMappingFile",
-                        "clientBindingsFile", "sources"));
+                        "clientBindingsFile", "sources", "integrationProfiles"));
                 String bindings = p.has("clientBindingsFile")
                         ? text(p.string("clientBindingsFile"), "products." + code + ".clientBindingsFile", 500) : null;
                 out.put(code, new Product(text(p.string("browserClientId"), "products." + code + ".browserClientId", 200),
                         text(p.string("apiAudience"), "products." + code + ".apiAudience", 200),
                         text(p.string("roleMappingFile"), "products." + code + ".roleMappingFile", 500),
                         bindings, p.has("sources") ? sources(p.list("sources"), "products." + code + ".sources")
-                        : List.of()));
+                        : List.of(), p.has("integrationProfiles") ? profiles(p.list("integrationProfiles"),
+                        "products." + code + ".integrationProfiles") : List.of()));
             }
             ZoneId customerZone = f.has("timeZone") ? zone(f.string("timeZone"), "timeZone") : null;
             Map<String, ZoneId> entityZones = new TreeMap<>();
@@ -153,6 +165,22 @@ public record SigninFile(String tenantId, String mode, String loginType, URI iss
         } catch (JsonException e) {
             throw invalid(e.getMessage());
         }
+    }
+
+    private static List<ProfileEntry> profiles(List<Object> raw, String field) {
+        List<ProfileEntry> out = new ArrayList<>();
+        Set<String> names = new java.util.HashSet<>();
+        for (int i = 0; i < raw.size(); i++) {
+            String at = field + "[" + i + "]";
+            Fields e = Fields.of(raw.get(i), at).only(Set.of("name", "file", "tag"));
+            String name = e.string("name");
+            if (!name.matches("[a-z0-9][a-z0-9._-]{0,63}")) throw invalid(at + ".name is not a profile name");
+            if (!names.add(name)) throw invalid(at + ".name \"" + name + "\" is listed twice");
+            String tag = e.has("tag") ? e.string("tag") : null;
+            out.add(new ProfileEntry(name, text(e.string("file"), at + ".file", 500),
+                    tag == null || tag.isBlank() ? null : text(tag, at + ".tag", 200)));
+        }
+        return out;
     }
 
     private static List<Source> sources(List<Object> raw, String field) {

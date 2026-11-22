@@ -1,6 +1,6 @@
 # Encryption and keys — install guide for IT
 
-The app encrypts sensitive case field values (and, in Vero, documents) with keys that stay in your key service,
+The app encrypts sensitive case field values (and, in apps that also encrypt documents, the documents) with keys that stay in your key service,
 HashiCorp Vault (Transit engine). Each customer has its own two keys there; nothing secret is ever stored in the
 app's database, files or logs. This page lists what the app needs (module `platform-crypto-spring`).
 

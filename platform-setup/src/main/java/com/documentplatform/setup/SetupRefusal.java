@@ -35,6 +35,13 @@ public enum SetupRefusal {
             + "(header client_id,entity_slot,source,description; client IDs only, never secrets; each client ID once; "
             + "entity slots of the licence; sources listed in the sign-in file). To move a client to another entity "
             + "or source, remove its line, run setup, then add the new line. Nothing was written."),
+    /** An integration profile named in the sign-in file is not valid, or is not the profile the entry names. */
+    SETUP_PROFILE_INVALID(SetupCommand.EXIT_REFUSED, "Use the integration profile file as its API's owner published it, "
+            + "for the name and release tag given in the sign-in file (the problems name the file and the place in it). "
+            + "Nothing was written."),
+    /** An integration profile entry in the sign-in file has no release tag. */
+    SETUP_PROFILE_TAG_MISSING(SetupCommand.EXIT_REFUSED, "Give each integration profile in the sign-in file the API "
+            + "owner's release tag it came from (\"tag\"), so the installation records which release it uses."),
     SETUP_DB_SETTINGS_MISSING(SetupCommand.EXIT_REFUSED, "Set " + SetupCommand.DB_URL + ", " + SetupCommand.DB_USER
             + " and " + SetupCommand.DB_PASSWORD + " in the environment (the app's everyday database user is enough)."),
     SETUP_DB_UNREACHABLE(SetupCommand.EXIT_REFUSED, "Check the database address, user and password in the "

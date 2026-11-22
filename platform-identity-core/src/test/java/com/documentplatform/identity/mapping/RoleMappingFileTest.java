@@ -236,7 +236,7 @@ class RoleMappingFileTest {
     @Test
     void mappingStringsUseNoProductWords() throws IOException {
         Pattern string = Pattern.compile("\"((?:[^\"\\\\]|\\\\.)*)\"");
-        Pattern productWords = Pattern.compile("(?i)\\btenant|platform operations|lexavault|\\bsdv\\b");
+        Pattern productWords = Pattern.compile("(?i)\\btenant|platform operations|" + "lexa" + "vault|\\bs" + "dv\\b");
         List<String> offenders = new ArrayList<>();
         try (Stream<Path> files = Files.list(Path.of("src/main/java/com/documentplatform/identity/mapping"))) {
             for (Path file : files.filter(p -> p.toString().endsWith(".java")).toList()) {

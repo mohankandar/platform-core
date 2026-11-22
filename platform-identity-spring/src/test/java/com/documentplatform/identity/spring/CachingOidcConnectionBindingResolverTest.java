@@ -57,7 +57,7 @@ class CachingOidcConnectionBindingResolverTest {
 
     @Test
     void knownFinding_trailingSlashIsStrippedHereButNotInTheProductsSharedIssuerLookups() {
-        // This resolver (and LexaVault's legacy findActive) strip one trailing slash; LexaVault's shared-issuer
+        // This resolver (and the earlier product lookup it replaces) strip one trailing slash; the earlier shared-issuer
         // candidate, grant and machine lookups compare the raw iss. To be unified in Phase 2.
         resolver.findActive(" p ", URI.create("https://idp.test/realms/a/"), " aud ");
         assertEquals(List.of("p|https://idp.test/realms/a|aud"), calls);

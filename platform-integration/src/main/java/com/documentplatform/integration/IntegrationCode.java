@@ -137,6 +137,36 @@ public enum IntegrationCode {
     INT_CONFIG_RULE_INVALID,
     INT_CONFIG_STEPS_INVALID,
     INT_CONFIG_VERSION_CONFLICT,
+
+    // ---- Profiles (platform-integration-profile/1), from ProfileValidator; each with a JSON pointer ----
+    /** The profile file cannot be read. */
+    INT_PROFILE_UNREADABLE,
+    /** The profile is not JSON (or not one object). */
+    INT_PROFILE_NOT_JSON,
+    /** The profile's format is not one this version knows (only platform-integration-profile/1). */
+    INT_PROFILE_FORMAT_UNKNOWN,
+    /** The profile does not fit the format's JSON Schema (a field missing, unknown, of another type or shape). */
+    INT_PROFILE_SCHEMA,
+    /** Steps: neither steps nor a packaging preset (or both), a preset missing its parts, or steps that cannot run. */
+    INT_PROFILE_STEPS,
+    /** A template: an unknown or forbidden placeholder, one in the query string, a body that is not JSON. */
+    INT_PROFILE_TEMPLATE,
+    /** A header only the sign-in bundle or HTTP may set, or a header name that is not valid. */
+    INT_PROFILE_HEADER,
+    /** A classification rule that is not valid. */
+    INT_PROFILE_RULE,
+    /** A template uses {value.<name>} that the profile's values do not declare. */
+    INT_PROFILE_VALUE_UNDECLARED,
+    /** A template uses {doc.attr.<name>} not declared, or an attribute's default is not among its values. */
+    INT_PROFILE_ATTRIBUTE,
+    /** The fields target names no step, or that step's body has no "<object>":{} to fill. */
+    INT_PROFILE_FIELDS,
+    /** A setting's default is not one of its values, or a value stands for an engine setting that does not exist. */
+    INT_PROFILE_SETTING,
+    /** Sign-in: an API key without its header name. */
+    INT_PROFILE_SIGN_IN,
+    /** Installation data in a profile: an address, something that looks like a secret, or a case field key. */
+    INT_PROFILE_INSTALLATION_DATA,
     INT_CONFIG_NOT_FOUND,
     INT_CONFIG_EXISTS
 }

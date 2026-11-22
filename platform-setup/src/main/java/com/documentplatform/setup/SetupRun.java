@@ -112,6 +112,10 @@ final class SetupRun {
         planConnection(p);
         planGrants(p, rows);
         planClientBindings(p, licensed);
+        for (SetupInputs.CheckedProfile cp : in.profiles()) {
+            p.add(CHECKED, "integration profile " + cp.name() + " " + cp.version() + " (tag " + cp.tag() + ", file "
+                    + cp.file() + "; stored nowhere, the app reads the file)");
+        }
         planConfig(p);
         return p;
     }

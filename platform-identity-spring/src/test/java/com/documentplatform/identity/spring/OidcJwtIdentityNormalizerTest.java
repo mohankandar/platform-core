@@ -37,7 +37,7 @@ class OidcJwtIdentityNormalizerTest {
 
     @Test
     void knownFinding_tokenWithoutSubjectThrowsIllegalArgumentException() {
-        // Callers must map this to a refusal (LexaVault: 403, SDV: 401). Unmapped, it would be a 500.
+        // Callers must map this to a refusal (one product answers 403, another 401). Unmapped, it would be a 500.
         assertThrows(IllegalArgumentException.class, () -> normalizer.normalize(token().claim("preferred_username", "alice").build()));
     }
 

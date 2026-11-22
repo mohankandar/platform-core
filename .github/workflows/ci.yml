@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # Compile and all tests, including the PostgreSQL tests (Testcontainers, Docker on the runner), the end-to-end
+      # TLS tests and the product-name guard.
+      - name: mvn -B verify
+        run: mvn -B verify
+
+      # On this runner nothing may be skipped: the TLS tests skip only where TLS to 127.0.0.1 is intercepted.
+      - name: No test skipped
+        if: always()
+        run: scripts/ci-no-skipped-tests.sh
