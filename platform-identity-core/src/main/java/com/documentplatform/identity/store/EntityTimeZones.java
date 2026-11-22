@@ -49,6 +49,14 @@ public final class EntityTimeZones {
         return store.timeZone(Objects.requireNonNull(entityUuid, "entityUuid"));
     }
 
+    /**
+     * The customer's zone ({@code idn_customer.time_zone}); empty when none is set, the customer is not stored, or the
+     * text is not a tenant ID. Identity is the one source of the customer's zone: notifications reads it from here.
+     */
+    public Optional<ZoneId> customerZone(String tenantId) {
+        return EntityUuid.isTenantId(tenantId) ? store.customerTimeZone(tenantId) : Optional.empty();
+    }
+
     /** The zone that applies to the entity: its own, else the customer's; empty when neither is set or unknown. */
     public Optional<ZoneId> effective(UUID entityUuid) {
         return zone(entityUuid).flatMap(EntityTimeZone::effective);

@@ -66,6 +66,7 @@ public final class Notifier {
     private final Runnable whenQueued;
     private final ActionLinks actionLinks;
     private final EntityZones entityZones;
+    private final CustomerZones customerZones;
 
     private Notifier(Builder b) {
         this.settings = Objects.requireNonNull(b.settings, "settings");
@@ -88,6 +89,7 @@ public final class Notifier {
         this.whenQueued = b.whenQueued;
         this.actionLinks = b.actionLinks;
         this.entityZones = b.entityZones;
+        this.customerZones = b.customerZones;
     }
 
     public static Builder builder(NotificationSettings settings, RecipientResolver recipients) {
@@ -395,19 +397,27 @@ public final class Notifier {
     }
 
     /**
-     * The tenant's settings with the entity's own time zone, when the event belongs to an entity that has one; the
-     * tenant's zone otherwise. If the app's {@link EntityZones} fails, the tenant's zone, with a warning.
+     * The tenant's settings with the zone that applies: the entity's own zone, when the event belongs to an entity
+     * that has one; else the customer's zone from identity ({@link CustomerZones}), when identity has one; else the
+     * tenant zone of the notification settings. A failing lookup falls back to the next one, with a warning.
      */
     private TenantSettings zoned(TenantSettings t, TenantId tenant, EntityId entity) {
+        TenantSettings customer = t;
+        try {
+            customer = customerZones.zoneOf(tenant).map(t::withZone).orElse(t);
+        } catch (RuntimeException e) {
+            LOG.log(Level.WARNING, "Time zone of tenant {0} not available from identity ({1}); the tenant zone of the "
+                    + "notification settings is used", tenant.value(), e.getClass().getSimpleName());
+        }
         if (entity == null) {
-            return t;
+            return customer;
         }
         try {
-            return entityZones.zoneOf(tenant, entity).map(t::withZone).orElse(t);
+            return entityZones.zoneOf(tenant, entity).map(t::withZone).orElse(customer);
         } catch (RuntimeException e) {
-            LOG.log(Level.WARNING, "Time zone of entity {0} of tenant {1} not available ({2}); the tenant''s zone is "
+            LOG.log(Level.WARNING, "Time zone of entity {0} of tenant {1} not available ({2}); the customer''s zone is "
                     + "used", entity.value(), tenant.value(), e.getClass().getSimpleName());
-            return t;
+            return customer;
         }
     }
 
@@ -626,6 +636,7 @@ public final class Notifier {
         private Runnable whenQueued = () -> { };
         private ActionLinks actionLinks;
         private EntityZones entityZones = EntityZones.NONE;
+        private CustomerZones customerZones = CustomerZones.NONE;
 
         private Builder(NotificationSettings settings, RecipientResolver recipients) {
             this.settings = settings;
@@ -721,6 +732,16 @@ public final class Notifier {
          */
         public Builder entityZones(EntityZones zones) {
             this.entityZones = Objects.requireNonNull(zones, "zones");
+            return this;
+        }
+
+        /**
+         * The customer's time zone from identity, the one source of it: when it gives a zone, that zone replaces the
+         * tenant zone of the notification settings for every event and summary of the tenant (an entity's own zone
+         * still wins). Without it, or when it gives none, the tenant zone of the notification settings.
+         */
+        public Builder customerZones(CustomerZones zones) {
+            this.customerZones = Objects.requireNonNull(zones, "zones");
             return this;
         }
 

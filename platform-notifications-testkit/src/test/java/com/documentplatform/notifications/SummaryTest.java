@@ -148,6 +148,56 @@ class SummaryTest {
                 "08:00 in the tenant's zone");
     }
 
+    /** Identity is the one source of the customer's zone; the notification settings' tenant zone is only the fallback. */
+    @Test
+    void theCustomersZoneFromIdentityReplacesTheTenantZoneAndAnEntitysOwnZoneStillWins() {
+        ZoneId amsterdam = ZoneId.of("Europe/Amsterdam");
+        CustomerZones identity = tenant -> tenant.equals(TENANT) ? java.util.Optional.of(NEW_YORK)
+                : java.util.Optional.empty();
+        Notifier n = Notifier.builder(f.settings, f.resolver).channels(List.of(f.email, f.teams, f.slack))
+                .clock(f.clock).outbox(f.outbox).summaries(f.summaries).conditions(f.conditions)
+                .customerZones(identity)
+                .entityZones((tenant, entity) -> entity.equals(E1) ? java.util.Optional.of(amsterdam)
+                        : java.util.Optional.empty())
+                .build();
+        // The tenant zone of the notification settings is UTC; identity says New York (EST in November, UTC-5).
+        f.via(n).publish(rejected("b-1", 2));
+        f.via(n).publish(event(QUOTA).entity(E2).count("percent", 85).build());
+        f.via(n).publish(event(QUOTA).entity(E1).count("percent", 85).build());
+
+        List<DeliveryReport> hourly = n.tick(Instant.parse("2026-11-20T11:00:00Z"));
+        assertEquals(1, hourly.size());
+        assertTrue(f.email.sent().get(0).message().text().contains("- b-1, 2026-11-20 05:05 EST"),
+                "a tenant-level event shows the customer's zone from identity");
+
+        // E2 has no zone of its own: it follows the customer, 08:00 New York = 13:00 UTC.
+        assertTrue(n.tick(Instant.parse("2026-11-20T12:59:00Z")).isEmpty());
+        assertEquals(1, n.tick(Instant.parse("2026-11-20T13:00:00Z")).size(), "E2 follows the customer: 08:00 New York");
+        assertTrue(f.email.sent().get(1).message().text().contains("Period: 2026-11-20 05:05 EST"));
+        // E1's own zone wins: 08:00 Amsterdam = 07:00 UTC the next day.
+        assertTrue(n.tick(Instant.parse("2026-11-21T06:59:00Z")).isEmpty());
+        assertEquals(1, n.tick(Instant.parse("2026-11-21T07:00:00Z")).size(), "E1's own zone wins: 08:00 Amsterdam");
+        assertTrue(f.email.sent().get(2).message().text().contains("Period: 2026-11-20 11:05 CET"));
+        assertTrue(n.tick(Instant.parse("2026-11-21T08:00:00Z")).isEmpty(), "nothing at 08:00 UTC (the settings' zone)");
+    }
+
+    @Test
+    void withoutAZoneInIdentityOrWhenIdentityFailsTheTenantZoneOfTheSettingsIsUsed() {
+        for (CustomerZones identity : List.<CustomerZones>of(CustomerZones.NONE, tenant -> {
+            throw new IllegalStateException("identity store down");
+        })) {
+            Fixture g = new Fixture();
+            Notifier n = Notifier.builder(g.settings, g.resolver).channels(List.of(g.email, g.teams, g.slack))
+                    .clock(g.clock).outbox(g.outbox).summaries(g.summaries).conditions(g.conditions)
+                    .customerZones(identity).build();
+            g.via(n).publish(rejected("b-1", 2));
+            g.via(n).publish(event(QUOTA).entity(E1).count("percent", 85).build());
+            n.tick(Instant.parse("2026-11-20T11:00:00Z"));
+            assertTrue(g.email.sent().get(0).message().text().contains("- b-1, 2026-11-20 10:05 Z"));
+            assertEquals(1, n.tick(Instant.parse("2026-11-21T08:00:00Z")).size(), "08:00 in the settings' zone (UTC)");
+        }
+    }
+
     @Test
     void eachDestinationGetsItsOwnSummary() {
         f.settings.setTechnicalEvent(TENANT, FILES_REJECTED,

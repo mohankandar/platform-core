@@ -2,6 +2,7 @@ package com.documentplatform.notifications.spring;
 
 import com.documentplatform.notifications.ActionLinks;
 import com.documentplatform.notifications.ConditionStore;
+import com.documentplatform.notifications.CustomerZones;
 import com.documentplatform.notifications.EntityZones;
 import com.documentplatform.notifications.EventCatalogue;
 import com.documentplatform.notifications.NotificationSettings;
@@ -28,6 +29,7 @@ import com.documentplatform.notifications.email.MicrosoftTokens;
 import com.documentplatform.notifications.secret.SecretResolver;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -145,7 +147,8 @@ public class NotificationsAutoConfiguration {
     Notifier notifier(NotificationSettings settings, ObjectProvider<RecipientResolver> recipients,
                       NotificationChannels channels, OutboxStore outbox, SummaryStore summaries,
                       ConditionStore conditions, NotificationsConfig config, SenderSignal signal,
-                      ObjectProvider<ActionLinks> actionLinks, ObjectProvider<EntityZones> entityZones) {
+                      ObjectProvider<ActionLinks> actionLinks, ObjectProvider<EntityZones> entityZones,
+                      ObjectProvider<CustomerZones> customerZones) {
         Notifier.Builder b = Notifier.builder(settings, required(recipients, RecipientResolver.class,
                         "the app's recipient resolver (role → people)"))
                 .channels(channels.channels())
@@ -157,7 +160,25 @@ public class NotificationsAutoConfiguration {
                 .whenQueued(signal::raise);
         actionLinks.ifUnique(b::actionLinks);
         entityZones.ifUnique(b::entityZones);
+        customerZones.ifUnique(b::customerZones);
         return b.build();
+    }
+
+    /**
+     * The customer's zone from identity, the one source of it, when the app has platform-identity's
+     * {@code EntityTimeZones} as a bean: notifications then uses {@code idn_customer.time_zone} and falls back to its
+     * own tenant zone only when identity has none. Backs off for an app-defined {@link CustomerZones}.
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(name = "com.documentplatform.identity.store.EntityTimeZones")
+    static class IdentityZoneConfiguration {
+
+        @Bean
+        @ConditionalOnBean(type = "com.documentplatform.identity.store.EntityTimeZones")
+        @ConditionalOnMissingBean
+        CustomerZones identityCustomerZones(com.documentplatform.identity.store.EntityTimeZones zones) {
+            return tenant -> zones.customerZone(tenant.value());
+        }
     }
 
     /**

@@ -22,6 +22,13 @@
             <artifactId>spring-boot-autoconfigure</artifactId>
             <version>${spring.boot.version}</version>
         </dependency>
+        <!-- The customer's time zone from identity (idn_customer.time_zone) when the app has EntityTimeZones. -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-identity-core</artifactId>
+            <version>${project.version}</version>
+            <optional>true</optional>
+        </dependency>
         <!-- Health indicator only when the app uses Actuator. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -30,6 +37,12 @@
             <optional>true</optional>
         </dependency>
 
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-identity-testkit</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
