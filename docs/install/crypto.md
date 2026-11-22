@@ -11,9 +11,21 @@ policies:
 
 - `platform-crypto-app` for the **running app**: make data keys, unwrap, rewrap, fingerprints, read key versions.
   It cannot create, rotate, export or delete keys.
-- `platform-crypto-setup` for the **setup command** only (`docs/install/setup.md`), which creates the customer's keys,
-  and for `crypto destroy-customer-keys` at customer exit (section 5). It has `create`, `update`, `read` and `delete`
-  on `transit/keys/customer-*`.
+- `platform-crypto-setup` for the **setup command** only (`docs/install/setup.md`), which creates the customer's keys.
+  It has `create`, `update` and `read` on `transit/keys/customer-*`, **no** `delete`.
+- `platform-crypto-offboard` for `crypto destroy-customer-keys` at customer exit only (section 5). It has `delete`
+  and nothing else, on the same paths. The offboarding run gets a login with both `platform-crypto-setup` and
+  `platform-crypto-offboard`; no other login ever gets the offboard policy.
+
+  ```hcl
+  # platform-crypto-setup
+  path "transit/keys/customer-*" { capabilities = ["create", "update", "read"] }
+  # platform-crypto-offboard
+  path "transit/keys/customer-*" { capabilities = ["delete"] }
+  ```
+
+  An installation set up before P022 removes `delete` from its `platform-crypto-setup` policy and adds
+  `platform-crypto-offboard`.
 
 ## 2. App settings (`platform.crypto.*`)
 
@@ -60,21 +72,42 @@ of the app's database. **This cannot be undone.** It is a step of the offboardin
 the offboarding certificate.
 
 1. Agree the date with the customer, and that their data will not be needed again.
-2. Get a Vault login with the `platform-crypto-setup` policy, for this run only. Set it in the environment, as for the
+2. Get a Vault login with the `platform-crypto-setup` **and** `platform-crypto-offboard` policies, for this run
+   only. A login with the set-up policy alone is refused with `CRYPTO_PERMISSION_DENIED` and nothing is changed. Set it in the environment, as for the
    setup command: `PLATFORM_SETUP_VAULT_ADDR` and one of `PLATFORM_SETUP_VAULT_TOKEN`,
    `PLATFORM_SETUP_VAULT_TOKEN_FILE` or `PLATFORM_SETUP_VAULT_ROLE_ID` + `PLATFORM_SETUP_VAULT_SECRET_ID`
    (`PLATFORM_SETUP_VAULT_KEY_PREFIX` if the installation does not use `customer-`).
 3. Run, from the product's distribution:
 
    ```
-   crypto destroy-customer-keys --tenant-id TEN-… --operator "Your Name"
+   crypto destroy-customer-keys --tenant-id TEN-… --operator "Your Name" --backup-retention-days 35
    ```
+
+   `--backup-retention-days` is the installation's backup retention (30 to 90, default 35; the same number as
+   `platform.erase-log.backup-retention-days`).
 
    It asks you to type the tenant ID again. If it is missing or different, nothing is destroyed.
 4. Keep the result file (`customer-keys-destroyed-<tenant>-<time>.json`; or give `--result-out`) with the offboarding
    records. It lists the customer, the two keys with their versions, the date and time, and who ran it. No secrets.
+   It carries the two dates for the certificate: **live data destroyed on** (`liveDataDestroyedOn`) and
+   **unreadable everywhere, including backups, from** (`unreadableEverywhereFrom` = that day + the backup
+   retention). The command prints both.
 5. Revoke the Vault login.
-6. **Vault backups:** Vault snapshots taken before the run still hold the keys until they expire. Make sure snapshot
-   retention is within the agreed period; the certificate names the date when the last snapshot with the keys expires.
+6. **Vault backups:** Vault snapshots taken before the run still hold the keys until they expire. The second date
+   holds only if snapshot retention is at most the backup retention (section 6).
 
 The running app's login cannot do this (its policy has only `read` on the keys).
+
+## 6. Key service backups (Vault snapshots)
+
+Keep Vault's snapshots (and any other backup of Vault's storage) for **at most the backup retention** of the app's
+database: 35 days by default, the same number as `platform.erase-log.backup-retention-days` and the
+`--backup-retention-days` of `crypto destroy-customer-keys`.
+
+- A snapshot taken before a customer's keys were destroyed still holds those keys. Restoring it would make that
+  customer's database backups readable again.
+- With snapshot retention at most the backup retention, the last snapshot holding the keys expires no later than the
+  last database backup taken before the destruction. That day is the certificate's "unreadable everywhere, including
+  backups, from" date.
+- If snapshots must be kept longer, pass that longer number as `--backup-retention-days` (up to 90), so the date on
+  the certificate is true.

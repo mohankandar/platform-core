@@ -37,6 +37,26 @@ Source: owner decision (b) + (c), confirmed by the LexaVault thread (master), 20
 3. `timeZone` becomes required in the sign-in file at the next format change (`platform-signin/2`); not now
    (`docs/design/setup.md`, "Time zones").
 
+## Owner answers to P021 (2026-11-22, task P022)
+
+1. **Erase only through the log, now.** `FieldValues.erase` refuses every caller except the built-in
+   `CaseFieldsEraseHandler` with `VALUES_ERASE_OUTSIDE_LOG`, before anything is read or erased (built in P022; see
+   "Built-in handler" below). Apps erase case fields with `Eraser.erase`, kind `case-fields`.
+2. **Separate offboarding policy:** `platform-crypto-offboard` (`delete` only, the same paths), given only to the
+   offboarding run; `platform-crypto-setup` keeps `create`, `update`, `read` and lost `delete`
+   (`docs/design/crypto.md` sections 7 and 11).
+3. **A failing logged entry blocks later erasures: kept.** Erasures are applied strictly in order, which is what makes
+   the applied position exact. An entry that was logged but keeps failing (its handler's code, for example
+   `DOC_STORE_DOWN`) stops every later erasure with that same code until it is resolved; nothing later is logged
+   meanwhile. **Each app's admin screen shows the pending entry and its code**: entry number, kind, record type and
+   ID, and the handler's code, from the `eraseLog` health details (`pending`, `code`) or `EraseGuard`'s state. No
+   value is shown, as there is none in the entry. Handlers keep this rare by refusing in `check` (legal hold)
+   before anything is logged.
+4. **Key service backups:** Vault snapshot retention at most the backup retention (35 days by default,
+   `docs/install/crypto.md` section 6). The offboarding certificate data carries two dates: live data destroyed on
+   …, and unreadable everywhere including backups from … (destruction day + backup retention)
+   (`docs/design/crypto.md` section 11).
+
 ## Built (P021): modules `platform-erase-log`, `-testkit`, `-spring`
 
 Package `com.documentplatform.eraselog`. Plain Java, no Spring; the only dependency is platform-fields, optional, for
@@ -141,7 +161,10 @@ Running it twice is safe. The report holds counts, codes and entry numbers only.
 Built-in handler `fields.CaseFieldsEraseHandler` (`case-fields`):
 
 - `check` asks the app's `LegalHolds`.
-- `apply` is `FieldValues.erase`; an unknown record counts as already gone.
+- `apply` is `FieldValues.erase`; an unknown record counts as already gone. Since P022 this handler is the only
+  class `FieldValues.erase` accepts as its caller (`FieldValues.ERASE_LOG_HANDLER`, checked with `StackWalker`);
+  any other caller gets `VALUES_ERASE_OUTSIDE_LOG` and nothing is erased. The check is a guard against mistakes,
+  not against code that deliberately imitates the handler's class name.
 - `verify` reads the value store. No record, or a record made after the erasure under the same ID, is `GONE`.
 
 ### Retention and pruning

@@ -36,7 +36,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Customer key destruction through a real Vault: the set-up policy destroys the customer's keys; afterwards nothing
+ * Customer key destruction through a real Vault: the set-up and offboard policies together destroy the customer's keys;
+ * the set-up policy alone cannot; afterwards nothing
  * of that customer opens or fingerprints; the app's runtime policy cannot destroy; the command refuses without the
  * typed-back tenant ID and writes a result without key material.
  */
@@ -48,11 +49,17 @@ class KeyDestructionVaultTest {
     static VaultKeyService setup;
     static VaultClient appClient;
     static VaultKeyService app;
+    /** The offboarding run's login: the set-up and offboard policies. */
+    static VaultClient offboardClient;
+    static VaultKeyService offboard;
 
     @BeforeAll
     static void start() {
         setupClient = new VaultClient(VaultDev.address(), VaultAuth.token(VaultDev.token("platform-crypto-setup")));
         setup = new VaultKeyService(setupClient);
+        offboardClient = new VaultClient(VaultDev.address(), VaultAuth.token(VaultDev.token("platform-crypto-setup",
+                "platform-crypto-offboard")));
+        offboard = new VaultKeyService(offboardClient);
         appClient = new VaultClient(VaultDev.address(), null,
                 VaultAuth.appRole("approle", VaultDev.roleId(), VaultDev.newSecretId()), Duration.ofSeconds(10));
         app = new VaultKeyService(appClient);
@@ -62,6 +69,39 @@ class KeyDestructionVaultTest {
     static void stop() {
         appClient.close();
         setupClient.close();
+        offboardClient.close();
+    }
+
+    @Test
+    void theSetupLoginAloneCannotDestroyAndChangesNothing() {
+        CustomerId c = CustomerId.of(UUID.randomUUID());
+        setup.createKeys(c);
+        String sealed = new ValueCipher(app).seal(c, "f", PLAIN);
+        CryptoException e = assertThrows(CryptoException.class, () -> setup.destroyCustomerKeys(c));
+        assertEquals(CryptoError.CRYPTO_PERMISSION_DENIED, e.code(), e.getMessage());
+        assertTrue(e.getMessage().contains("platform-crypto-offboard"), e.getMessage());
+        assertEquals(PLAIN, new ValueCipher(app).openText(c, "f", sealed), "nothing was destroyed");
+        Map<String, Object> key = VaultJson.object(VaultDev.root("GET", "/v1/transit/keys/" + setup.wrappingKeyName(c),
+                null), "data").orElseThrow();
+        assertEquals(Boolean.FALSE, key.get("deletion_allowed"), "the key was not even marked for deletion");
+        // The same customer with the offboarding login: destroyed.
+        assertTrue(offboard.destroyCustomerKeys(c).destroyedAny());
+        assertCode(CryptoError.CRYPTO_KEY_MISSING, () -> new ValueCipher(app).openText(c, "f", sealed));
+    }
+
+    @Test
+    void theCommandWithTheSetupLoginAloneFailsAndDestroysNothing(@TempDir Path dir) {
+        String tenant = "TEN-SETUP-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        CustomerId c = CustomerId.fromTenantId(tenant);
+        setup.createKeys(c);
+        Map<String, String> env = Map.of("PLATFORM_SETUP_VAULT_ADDR", VaultDev.address().toString(),
+                "PLATFORM_SETUP_VAULT_TOKEN", VaultDev.token("platform-crypto-setup"));
+        Run r = run(new CryptoCommand(env, Clock.systemUTC()), List.of("destroy-customer-keys", "--tenant-id", tenant,
+                "--operator", "Kim", "--confirm", tenant, "--result-out", dir.resolve("r.json").toString()), "");
+        assertEquals(CryptoCommand.EXIT_FAILED, r.exit);
+        assertTrue(r.err.startsWith("CRYPTO_PERMISSION_DENIED"), r.err);
+        assertFalse(Files.exists(dir.resolve("r.json")));
+        assertEquals(1, setup.wrappingKey(c).latest(), "the keys are still there");
     }
 
     @Test
@@ -86,7 +126,7 @@ class KeyDestructionVaultTest {
         // "A backup": the stored ciphertexts, kept aside.
         List<String> backup = List.of(sealed, envelope);
 
-        KeyDestruction d = setup.destroyCustomerKeys(c);
+        KeyDestruction d = offboard.destroyCustomerKeys(c);
         assertEquals(c, d.customer());
         assertEquals("vault-transit", d.keyService());
         assertEquals(List.of(
@@ -103,7 +143,7 @@ class KeyDestructionVaultTest {
         assertCode(CryptoError.CRYPTO_KEY_MISSING, () -> app.wrappingKey(c));
         assertEquals(PLAIN, values.openText(other, "case:1:field:name", otherSealed), "other customers are untouched");
 
-        KeyDestruction again = setup.destroyCustomerKeys(c);
+        KeyDestruction again = offboard.destroyCustomerKeys(c);
         assertFalse(again.destroyedAny(), "a rerun finds both keys gone");
         assertTrue(again.keys().stream().allMatch(k -> k.state() == KeyDestruction.State.ABSENT));
     }
@@ -124,7 +164,7 @@ class KeyDestructionVaultTest {
         CustomerId c = CustomerId.fromTenantId(tenant);
         setup.createKeys(c);
         String sealed = new ValueCipher(app).seal(c, "f", PLAIN);
-        String token = VaultDev.token("platform-crypto-setup");
+        String token = VaultDev.token("platform-crypto-setup", "platform-crypto-offboard");
         Map<String, String> env = new HashMap<>();
         env.put("PLATFORM_SETUP_VAULT_ADDR", VaultDev.address().toString());
         env.put("PLATFORM_SETUP_VAULT_TOKEN", token);

@@ -134,6 +134,67 @@ class KeyDestructionInMemoryTest {
     }
 
     @Test
+    void theSecondDateIsTheDestructionDayPlusTheBackupRetention() {
+        KeyDestruction late = new KeyDestruction(C, "in-memory", List.of(), Instant.parse("2026-11-22T23:59:59Z"));
+        assertEquals(java.time.LocalDate.parse("2026-11-22"), CryptoCommand.liveDataDestroyedOn(late), "UTC day");
+        assertEquals(java.time.LocalDate.parse("2026-12-27"), CryptoCommand.unreadableEverywhereFrom(late, 35));
+        assertEquals(java.time.LocalDate.parse("2026-12-22"), CryptoCommand.unreadableEverywhereFrom(late, 30));
+        assertEquals(java.time.LocalDate.parse("2027-02-20"), CryptoCommand.unreadableEverywhereFrom(late, 90));
+        KeyDestruction leap = new KeyDestruction(C, "in-memory", List.of(), Instant.parse("2028-02-01T00:00:00Z"));
+        assertEquals(java.time.LocalDate.parse("2028-03-07"), CryptoCommand.unreadableEverywhereFrom(leap, 35));
+    }
+
+    @Test
+    void theCertificateDataCarriesBothDatesWithTheDefaultOrTheGivenRetention(@TempDir Path dir) throws Exception {
+        for (String days : new String[] {null, "60"}) {
+            InMemoryKeyService keys = new InMemoryKeyService();
+            keys.createKeys(C);
+            CryptoCommand command = new CryptoCommand(Map.of(), Clock.systemUTC(),
+                    env -> new CryptoCommand.Connection(keys, () -> { }));
+            Path result = dir.resolve("r-" + days + ".json");
+            List<String> args = new java.util.ArrayList<>(List.of("destroy-customer-keys", "--tenant-id", TENANT,
+                    "--operator", "Kim", "--confirm", TENANT, "--result-out", result.toString()));
+            if (days != null) {
+                args.addAll(List.of("--backup-retention-days", days));
+            }
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            int exit = command.run(args, null, new PrintStream(out, true, StandardCharsets.UTF_8),
+                    new PrintStream(new ByteArrayOutputStream()));
+            assertEquals(CryptoCommand.EXIT_DONE, exit);
+            String json = Files.readString(result);
+            java.util.regex.Matcher at = java.util.regex.Pattern.compile("\"destroyedAt\": \"([^\"]+)\"").matcher(json);
+            assertTrue(at.find(), json);
+            java.time.LocalDate day = java.time.LocalDate.ofInstant(Instant.parse(at.group(1)), ZoneOffset.UTC);
+            int retention = days == null ? 35 : 60;
+            java.time.LocalDate from = day.plusDays(retention);
+            assertTrue(json.contains("\"liveDataDestroyedOn\": \"" + day + "\",\n  \"backupRetentionDays\": "
+                    + retention + ",\n  \"unreadableEverywhereFrom\": \"" + from + "\",\n  \"operator\": \"Kim\""), json);
+            assertTrue(out.toString(StandardCharsets.UTF_8).contains("Live data destroyed on " + day
+                    + "; unreadable everywhere, backups included, from " + from + " (backup retention " + retention
+                    + " days)."), out.toString(StandardCharsets.UTF_8));
+        }
+    }
+
+    @Test
+    void aBackupRetentionOutsideThirtyToNinetyDaysIsRefusedBeforeTheKeyServiceIsCalled(@TempDir Path dir) {
+        InMemoryKeyService keys = new InMemoryKeyService();
+        keys.createKeys(C);
+        AtomicInteger connects = new AtomicInteger();
+        CryptoCommand command = new CryptoCommand(Map.of(), Clock.systemUTC(), env -> {
+            connects.incrementAndGet();
+            return new CryptoCommand.Connection(keys, () -> { });
+        });
+        for (String days : List.of("29", "91", "0", "-35", "35.5", "abc")) {
+            assertRefused(command, List.of("destroy-customer-keys", "--tenant-id", TENANT, "--operator", "Kim",
+                    "--confirm", TENANT, "--result-out", dir.resolve("r.json").toString(), "--backup-retention-days",
+                    days), "", "CRYPTO_COMMAND_USAGE");
+        }
+        assertEquals(0, connects.get(), "the key service was never called");
+        assertFalse(Files.exists(dir.resolve("r.json")));
+        assertEquals(1, keys.wrappingKey(C).latest(), "nothing destroyed");
+    }
+
+    @Test
     void aFailingKeyServiceIsReportedAndTheEmptyResultFileRemoved(@TempDir Path dir) {
         InMemoryKeyService keys = new InMemoryKeyService();
         keys.createKeys(C);

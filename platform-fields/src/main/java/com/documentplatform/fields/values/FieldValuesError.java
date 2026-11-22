@@ -36,6 +36,11 @@ public enum FieldValuesError {
     VALUES_LEGAL_HOLD,
     /** The app's legal hold check could not answer, so the erase was refused (nothing was erased). */
     VALUES_LEGAL_HOLD_UNKNOWN,
+    /**
+     * {@link FieldValues#erase} was called from outside the erase log: a record is erased only through the erase
+     * log's case-fields handler, so that every erasure is logged (nothing was erased).
+     */
+    VALUES_ERASE_OUTSIDE_LOG,
     /** The database refused or failed the call (the message has the SQL state only). */
     VALUES_STORE_FAILED
 }

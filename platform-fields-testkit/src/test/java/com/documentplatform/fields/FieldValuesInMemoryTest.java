@@ -11,6 +11,7 @@ import com.documentplatform.fields.values.RecordRef;
 import com.documentplatform.fields.values.SearchResult;
 import com.documentplatform.fields.values.StoredRecord;
 import com.documentplatform.fields.values.StoredValue;
+import com.documentplatform.fields.values.TestErase;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 
@@ -72,15 +73,15 @@ class FieldValuesInMemoryTest {
         values.claim(ref("c2"), vals("LN-200", null));
         FieldValues guarded = new FieldValues(CUSTOMER, fieldStore, store, keys, CLOCK,
                 r -> r.recordId().equals("c2"));
-        refused(FieldValuesError.VALUES_LEGAL_HOLD, () -> guarded.erase(ref("c2")));
-        FieldValues.Erased erased = guarded.erase(ref("c1"));
+        refused(FieldValuesError.VALUES_LEGAL_HOLD, () -> TestErase.erase(guarded, ref("c2")));
+        FieldValues.Erased erased = TestErase.erase(guarded, ref("c1"));
         assertEquals(2, erased.values());
         assertTrue(erased.hadSensitiveValues());
         assertEquals(List.of(ref("c2")), store.all().stream().map(StoredRecord::ref).toList());
         assertTrue(values.search(A, CASE, "borrower_name", SearchMode.EXACT, FieldValue.text("alice smith"))
                 .records().isEmpty());
         assertTrue(values.findByPrimary(A, CASE, Map.of("loan_number", FieldValue.text("LN-100"))).isEmpty());
-        refused(FieldValuesError.VALUES_RECORD_UNKNOWN, () -> values.erase(ref("c1")));
+        refused(FieldValuesError.VALUES_RECORD_UNKNOWN, () -> TestErase.erase(values, ref("c1")));
         assertTrue(values.claim(ref("c3"), vals("LN-100", null)).created());
     }
 

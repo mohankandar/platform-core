@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Clock;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
@@ -33,9 +34,11 @@ import java.util.regex.Pattern;
  * <pre>
  * crypto destroy-customer-keys --tenant-id TEN-… --operator "&lt;who runs it&gt;"
  *                              [--confirm TEN-…] [--result-out customer-keys-destroyed.json]
+ *                              [--backup-retention-days 35]
  *
  * Key service: PLATFORM_SETUP_VAULT_ADDR and one login (see VaultEnvironment) from the environment only, with the
- * platform-crypto-setup policy, given to this run only. The app's runtime policy cannot destroy keys.
+ * platform-crypto-setup and platform-crypto-offboard policies, given to this offboarding run only. The set-up policy
+ * alone, and the app's runtime policy, cannot destroy keys.
  * </pre>
  *
  * <p>Destroys the customer's wrapping key and fingerprint key ({@link KeyService#destroyCustomerKeys}). This is
@@ -43,7 +46,11 @@ import java.util.regex.Pattern;
  * command asks for the tenant ID to be typed back ({@code --confirm}, or on the console when it is not given) and
  * refuses, before calling the key service, when it is missing or different. The result ({@value #FORMAT}: customer,
  * the keys destroyed with names and versions, date and time, who ran it; no key material) is written to a new file
- * and printed: it is the data for the offboarding certificate.
+ * and printed: it is the data for the offboarding certificate. It carries two dates: the day the live data was
+ * destroyed ({@code liveDataDestroyedOn}, UTC), and the day from which it is unreadable everywhere, backups included
+ * ({@code unreadableEverywhereFrom}: that day plus the backup retention, {@code --backup-retention-days}, 30 to 90,
+ * default 35, the same as the erase log's). The second date holds only when the key service's own snapshots are kept
+ * no longer than the backup retention ({@code docs/install/crypto.md}).
  *
  * <p>Exit codes: 0 destroyed; 1 failed (the key service refused or failed: rerun; keys already gone are then
  * reported as absent); 2 refused (usage, confirmation missing or wrong, settings, result file exists, no keys found).
@@ -84,7 +91,13 @@ public final class CryptoCommand {
         }
     }
 
-    private static final Set<String> OPTIONS = Set.of("--tenant-id", "--operator", "--confirm", "--result-out");
+    /** Backup retention in days when {@code --backup-retention-days} is not given; the erase log's default. */
+    public static final int DEFAULT_BACKUP_RETENTION_DAYS = 35;
+    public static final int MIN_BACKUP_RETENTION_DAYS = 30;
+    public static final int MAX_BACKUP_RETENTION_DAYS = 90;
+
+    private static final Set<String> OPTIONS = Set.of("--tenant-id", "--operator", "--confirm", "--result-out",
+            "--backup-retention-days");
     private static final Pattern OPERATOR = Pattern.compile("[\\p{L}\\p{N} .,'@_()/-]{1,120}");
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
             .withZone(ZoneOffset.UTC);
@@ -133,7 +146,8 @@ public final class CryptoCommand {
         try {
             if (args.isEmpty() || !ACTION.equals(args.get(0))) {
                 throw new Refused(Code.CRYPTO_COMMAND_USAGE, "usage: crypto " + ACTION
-                        + " --tenant-id TEN-... --operator <who> [--confirm TEN-...] [--result-out <file>]");
+                        + " --tenant-id TEN-... --operator <who> [--confirm TEN-...] [--result-out <file>]"
+                        + " [--backup-retention-days " + DEFAULT_BACKUP_RETENTION_DAYS + "]");
             }
             Map<String, String> o = parse(args.subList(1, args.size()));
             String tenantId = required(o, "--tenant-id");
@@ -148,6 +162,7 @@ public final class CryptoCommand {
                 throw new Refused(Code.CRYPTO_COMMAND_USAGE, "--operator is 1 to 120 letters, digits, spaces and "
                         + ". , ' @ _ ( ) / -");
             }
+            int retentionDays = retentionDays(o.get("--backup-retention-days"));
             String confirmation = o.get("--confirm");
             if (confirmation == null) {
                 out.println("This destroys the keys of customer " + tenantId + " (" + customer + ") in the key "
@@ -190,7 +205,7 @@ public final class CryptoCommand {
                         + " (" + names(done) + "): wrong tenant ID or key prefix, or already destroyed. Nothing was "
                         + "destroyed now.");
             }
-            String json = json(tenantId, done, operator);
+            String json = json(tenantId, done, operator, retentionDays);
             Files.writeString(result, json, StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING,
                     StandardOpenOption.WRITE, StandardOpenOption.SYNC);
             out.println("Destroyed the keys of customer " + tenantId + " (" + customer + ") at " + done.at() + ":");
@@ -199,6 +214,9 @@ public final class CryptoCommand {
                         + (k.state() == KeyDestruction.State.DESTROYED
                         ? "destroyed, versions 1 to " + k.latestVersion() : "absent (already gone)"));
             }
+            out.println("Live data destroyed on " + liveDataDestroyedOn(done) + "; unreadable everywhere, backups "
+                    + "included, from " + unreadableEverywhereFrom(done, retentionDays) + " (backup retention "
+                    + retentionDays + " days).");
             out.println("Result for the offboarding certificate: " + result.toAbsolutePath());
             out.print(json);
             return EXIT_DONE;
@@ -219,7 +237,7 @@ public final class CryptoCommand {
     }
 
     /** The result as JSON (format {@value #FORMAT}): ids, names, versions, times; no key material. */
-    static String json(String tenantId, KeyDestruction d, String operator) {
+    static String json(String tenantId, KeyDestruction d, String operator, int retentionDays) {
         StringBuilder b = new StringBuilder("{\n");
         field(b, "format", FORMAT).append(",\n");
         field(b, "tenantId", tenantId).append(",\n");
@@ -236,8 +254,42 @@ public final class CryptoCommand {
         }
         b.append("\n  ],\n");
         field(b, "destroyedAt", d.at().toString()).append(",\n");
+        field(b, "liveDataDestroyedOn", liveDataDestroyedOn(d).toString()).append(",\n");
+        b.append("  \"backupRetentionDays\": ").append(retentionDays).append(",\n");
+        field(b, "unreadableEverywhereFrom", unreadableEverywhereFrom(d, retentionDays).toString()).append(",\n");
         field(b, "operator", operator).append('\n');
         return b.append("}\n").toString();
+    }
+
+    /** The day (UTC) the customer's keys, and so the live data, were destroyed. */
+    public static LocalDate liveDataDestroyedOn(KeyDestruction d) {
+        return LocalDate.ofInstant(d.at(), ZoneOffset.UTC);
+    }
+
+    /**
+     * The day from which the customer's data is unreadable everywhere, backups included: the destruction day plus the
+     * backup retention. By then every backup made before the destruction has expired, and with it every copy of the
+     * keys in the key service's snapshots, provided those are kept no longer than the backup retention.
+     */
+    public static LocalDate unreadableEverywhereFrom(KeyDestruction d, int retentionDays) {
+        return liveDataDestroyedOn(d).plusDays(retentionDays);
+    }
+
+    private static int retentionDays(String given) {
+        if (given == null) {
+            return DEFAULT_BACKUP_RETENTION_DAYS;
+        }
+        int days;
+        try {
+            days = Integer.parseInt(given.strip());
+        } catch (NumberFormatException e) {
+            days = -1;
+        }
+        if (days < MIN_BACKUP_RETENTION_DAYS || days > MAX_BACKUP_RETENTION_DAYS) {
+            throw new Refused(Code.CRYPTO_COMMAND_USAGE, "--backup-retention-days is a whole number of days from "
+                    + MIN_BACKUP_RETENTION_DAYS + " to " + MAX_BACKUP_RETENTION_DAYS);
+        }
+        return days;
     }
 
     private static StringBuilder field(StringBuilder b, String name, String value) {

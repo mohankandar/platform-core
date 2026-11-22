@@ -64,6 +64,9 @@ import java.util.UUID;
  */
 public final class FieldValues {
 
+    /** The one class that may call {@link #erase}: the erase log's built-in case-fields handler. */
+    public static final String ERASE_LOG_HANDLER = "com.documentplatform.eraselog.fields.CaseFieldsEraseHandler";
+
     private static final int ATTEMPTS = 5;
     private static final int MAX_LIMIT = 1000;
 
@@ -238,8 +241,24 @@ public final class FieldValues {
      *
      * <p>What this does <b>not</b> do: copies of the rows in database backups keep the envelope, and the customer's
      * wrapping key still opens it. See {@code docs/design/case-fields.md}, "Erasing a record".
+     *
+     * <p><b>Only through the erase log.</b> Apps never call this: they erase with the erase log's {@code Eraser}
+     * (kind {@code case-fields}), which logs the erasure outside the database first, so a restored backup can be
+     * erased again. The only caller allowed is the erase log's built-in handler ({@value #ERASE_LOG_HANDLER}); any
+     * other caller is refused with {@code VALUES_ERASE_OUTSIDE_LOG} before anything is read or erased.
      */
     public Erased erase(RecordRef ref) {
+        Objects.requireNonNull(ref, "ref");
+        Class<?> caller = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE).getCallerClass();
+        if (!ERASE_LOG_HANDLER.equals(caller.getName())) {
+            throw new FieldValuesException(FieldValuesError.VALUES_ERASE_OUTSIDE_LOG, "Record " + ref + " was not "
+                    + "erased: case field values are erased only through the erase log (Eraser, kind case-fields)");
+        }
+        return eraseRecord(ref);
+    }
+
+    /** The erase itself, without the caller check; for this package's tests. */
+    Erased eraseRecord(RecordRef ref) {
         Objects.requireNonNull(ref, "ref");
         for (int attempt = 0; attempt < ATTEMPTS; attempt++) {
             StoredRecord current = mine(store.find(ref).orElseThrow(() -> unknown(ref)));

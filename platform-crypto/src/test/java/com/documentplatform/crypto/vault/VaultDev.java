@@ -15,7 +15,7 @@ import java.util.Map;
 /**
  * One Vault server in dev mode for the test run (image {@code hashicorp/vault}), set up as
  * {@code docs/design/crypto.md} describes: Transit enabled, the {@code platform-crypto-app} and
- * {@code platform-crypto-setup} policies, the AppRole method with a role for the app. Dev mode has KV version 2 at
+ * {@code platform-crypto-setup} and {@code platform-crypto-offboard} policies, the AppRole method with a role for the app. Dev mode has KV version 2 at
  * {@code secret/}. Set-up calls use the root token; the code under test never does.
  */
 final class VaultDev {
@@ -40,6 +40,8 @@ final class VaultDev {
                 resource("/vault/crypto-app.hcl"))));
         root("PUT", "/v1/sys/policies/acl/platform-crypto-setup", VaultJson.write(Map.of("policy",
                 resource("/vault/crypto-setup.hcl"))));
+        root("PUT", "/v1/sys/policies/acl/platform-crypto-offboard", VaultJson.write(Map.of("policy",
+                resource("/vault/crypto-offboard.hcl"))));
         root("POST", "/v1/sys/auth/approle", "{\"type\":\"approle\"}");
         root("POST", "/v1/auth/approle/role/" + ROLE, "{\"token_policies\":\"platform-crypto-app\","
                 + "\"token_ttl\":\"15m\",\"secret_id_ttl\":\"1h\"}");

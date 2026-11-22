@@ -236,8 +236,12 @@ public final class VaultKeyService implements KeyService {
     /**
      * For each of the customer's two keys: reads its versions, allows its deletion
      * ({@code keys/<name>/config deletion_allowed=true}), deletes it ({@code DELETE keys/<name>}), then checks it is
-     * gone. Needs {@code update} and {@code delete} on {@code transit/keys/customer-*} (the set-up policy); the runtime
-     * policy has only {@code read}, so the first write is refused and nothing is destroyed.
+     * gone. Needs {@code read} and {@code update} on {@code transit/keys/customer-*} (the set-up policy) and
+     * {@code delete} on the same paths (the offboard policy, given to the offboarding run only). Before changing a key,
+     * the login's own rights on it are asked ({@code sys/capabilities-self}, allowed by Vault's default policy): a
+     * login without {@code delete} (the set-up policy alone, the runtime policy) is refused with
+     * {@code CRYPTO_PERMISSION_DENIED} and nothing is changed. When Vault cannot answer that question, the steps run
+     * and Vault refuses the one the login may not do.
      */
     @Override
     public KeyDestruction destroyCustomerKeys(CustomerId customer) {
@@ -257,6 +261,7 @@ public final class VaultKeyService implements KeyService {
             }
             throw e;
         }
+        requireDelete(name);
         VaultClient.Reply r = vault.call("POST", "/v1/" + mount + "/keys/" + name + "/config",
                 VaultJson.write(Map.of("deletion_allowed", true)));
         check(r, name, "allowing deletion of key " + name);
@@ -268,6 +273,25 @@ public final class VaultKeyService implements KeyService {
                     + " was deleted (HTTP " + r.status() + ")");
         }
         return KeyDestruction.Key.destroyed(role, name, v.latest());
+    }
+
+    /** Refuses, before anything changes, a login that may not delete the key (see {@link #destroyCustomerKeys}). */
+    private void requireDelete(String name) {
+        String path = mount + "/keys/" + name;
+        VaultClient.Reply r = vault.call("POST", "/v1/sys/capabilities-self",
+                VaultJson.write(Map.of("paths", List.of(path))));
+        if (!r.ok()) {
+            return;
+        }
+        Object caps = r.body().get(path);
+        if (!(caps instanceof List<?>)) {
+            caps = r.body().get("capabilities");
+        }
+        if (caps instanceof List<?> list && !list.contains("delete") && !list.contains("root")) {
+            throw new CryptoException(CryptoError.CRYPTO_PERMISSION_DENIED, vault.where() + ": this login may not "
+                    + "delete key " + name + "; destroying a customer's keys needs the platform-crypto-offboard "
+                    + "policy as well as platform-crypto-setup. Nothing was changed.");
+        }
     }
 
     @Override

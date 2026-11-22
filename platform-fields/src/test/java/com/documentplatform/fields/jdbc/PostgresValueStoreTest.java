@@ -19,6 +19,7 @@ import com.documentplatform.fields.values.FieldValues;
 import com.documentplatform.fields.values.FieldValuesError;
 import com.documentplatform.fields.values.FieldValuesException;
 import com.documentplatform.fields.values.RecordRef;
+import com.documentplatform.fields.values.TestErase;
 import com.documentplatform.fields.values.RecordValues;
 import com.documentplatform.fields.values.SearchResult;
 import org.junit.jupiter.api.Test;
@@ -430,7 +431,7 @@ class PostgresValueStoreTest {
         assertEquals(FieldDefinitionException.Code.FIELD_PRIMARY_LOCKED, assertThrows(
                 FieldDefinitionException.class, () -> definitions.change(A, contract.spec().toBuilder().primary(false)
                         .build(), contract.version(), "u-admin")).code());
-        values.erase(ref(A, "c1"));
+        TestErase.erase(values, ref(A, "c1"));
         assertTrue(definitions.change(A, notes.spec().toBuilder().sensitive(true).build(), notes.version(),
                 "u-admin").spec().sensitive(), "no value left, so the flag may change again");
     }
@@ -446,7 +447,7 @@ class PostgresValueStoreTest {
                 + "fld_record where record_id = 'c1')");
         int calls = keys.calls();
 
-        FieldValues.Erased erased = values.erase(ref(A, "c1"));
+        FieldValues.Erased erased = TestErase.erase(values, ref(A, "c1"));
 
         assertEquals(keys.calls(), calls, "erase calls no key service");
         assertEquals(ref(A, "c1"), erased.record());
@@ -463,13 +464,13 @@ class PostgresValueStoreTest {
         assertEquals(List.of(ref(A, "c2")), values.search(A, CASE, "borrower_name", SearchMode.EXACT,
                 FieldValue.text("alice smith")).records(), "sensitive exact search no longer finds it");
         assertTrue(values.findByPrimary(A, CASE, Map.of("contract_number", FieldValue.text("AB-1001"))).isEmpty());
-        refused(FieldValuesError.VALUES_RECORD_UNKNOWN, () -> values.erase(ref(A, "c1")));
+        refused(FieldValuesError.VALUES_RECORD_UNKNOWN, () -> TestErase.erase(values, ref(A, "c1")));
 
         FieldValues.Claim again = values.claim(ref(A, "c9"), vals("contract_number", "AB-1001"));
         assertTrue(again.created(), "the same primary value later makes a new record");
         assertEquals(ref(A, "c9"), again.record());
 
-        FieldValues.Erased member = values.erase(ref(B, "m1"));
+        FieldValues.Erased member = TestErase.erase(values, ref(B, "m1"));
         assertTrue(member.hadSensitiveValues());
         assertTrue(values.findByPrimary(B, CASE, Map.of("member_number", FieldValue.text("m-778812"),
                 "plan_code", FieldValue.text("P1"))).isEmpty(), "a sensitive primary value no longer finds it");
@@ -483,21 +484,21 @@ class PostgresValueStoreTest {
         guarded.claim(ref(A, "c1"), vals("contract_number", "AB-1001", "borrower_name", "Alice Smith"));
         guarded.claim(ref(A, "c2"), vals("contract_number", "AB-1002"));
 
-        FieldValuesException e = assertThrows(FieldValuesException.class, () -> guarded.erase(ref(A, "c1")));
+        FieldValuesException e = assertThrows(FieldValuesException.class, () -> TestErase.erase(guarded, ref(A, "c1")));
         assertEquals(FieldValuesError.VALUES_LEGAL_HOLD, e.code());
         assertFalse(e.getMessage().toLowerCase(Locale.ROOT).contains("alice"));
         assertEquals("Alice Smith", ((FieldValue.Text) guarded.readSensitive(ref(A, "c1")).values("borrower_name")
                 .get(0).display()).value(), "nothing was erased");
-        guarded.erase(ref(A, "c2"));
+        TestErase.erase(guarded, ref(A, "c2"));
 
         FieldValues unsure = new FieldValues(CUSTOMER, definitionStore, store, keys, CLOCK, r -> {
             throw new IllegalStateException("hold register down");
         });
-        refused(FieldValuesError.VALUES_LEGAL_HOLD_UNKNOWN, () -> unsure.erase(ref(A, "c1")));
+        refused(FieldValuesError.VALUES_LEGAL_HOLD_UNKNOWN, () -> TestErase.erase(unsure, ref(A, "c1")));
         assertEquals(1, db.count("select count(*) from fld_record where record_id = 'c1'"));
 
         held.clear();
-        guarded.erase(ref(A, "c1"));
+        TestErase.erase(guarded, ref(A, "c1"));
         assertEquals(0, db.count("select count(*) from fld_record"));
     }
 
@@ -505,7 +506,7 @@ class PostgresValueStoreTest {
     void anotherCustomersRecordIsNotErased() {
         values.claim(ref(A, "c1"), vals("contract_number", "AB-1001"));
         refused(FieldValuesError.VALUES_WRONG_CUSTOMER,
-                () -> new FieldValues(OTHER, definitionStore, store, keys, CLOCK).erase(ref(A, "c1")));
+                () -> TestErase.erase(new FieldValues(OTHER, definitionStore, store, keys, CLOCK), ref(A, "c1")));
         assertEquals(1, db.count("select count(*) from fld_record"));
     }
 
@@ -520,7 +521,7 @@ class PostgresValueStoreTest {
         values.claim(ref(A, "c1"), vals("contract_number", "AB-1001", "borrower_name", "Alice Smith"));
         db.exec("create table backup_record as select * from fld_record",
                 "create table backup_value as select * from fld_value");
-        values.erase(ref(A, "c1"));
+        TestErase.erase(values, ref(A, "c1"));
         assertEquals(0, db.count("select count(*) from fld_value"));
 
         db.exec("insert into fld_record select * from backup_record", "insert into fld_value select * from backup_value");

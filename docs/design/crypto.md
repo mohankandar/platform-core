@@ -154,9 +154,12 @@ path "transit/hmac/customer-*"              { capabilities = ["update"] }
 path "transit/keys/customer-*"              { capabilities = ["read"] }
 path "secret/data/platform/*"               { capabilities = ["read"] }
 
-# platform-crypto-setup: the set-up step. Creates the customer's keys and rotates the wrapping key; at customer
-# exit destroys them (section 11).
-path "transit/keys/customer-*"              { capabilities = ["create", "update", "read", "delete"] }
+# platform-crypto-setup: the set-up step. Creates the customer's keys and rotates the wrapping key. No delete.
+path "transit/keys/customer-*"              { capabilities = ["create", "update", "read"] }
+
+# platform-crypto-offboard: customer exit only (section 11). Delete, nothing else, on the same paths. Given together
+# with platform-crypto-setup to the offboarding run only; never to the set-up step or the app.
+path "transit/keys/customer-*"              { capabilities = ["delete"] }
 ```
 
 Retiring a version (`transit/keys/<name>/config`, `min_decryption_version`) is an operator action with an admin token.
@@ -256,17 +259,27 @@ record, value, document and backup of that customer unreadable. The offboarding 
 - **Afterwards:** `unwrap`, `rewrap`, `newDataKey` and fingerprints give `CRYPTO_KEY_MISSING`, so `ValueCipher.open`,
   `RecordCipher.openKey`, `StreamCipher.decrypt` and `Fingerprinter` fail with that code for this customer. Other
   customers are untouched. Creating keys again for the customer makes **new** keys: nothing old opens with them.
-- **Who may:** only the set-up policy (`platform-crypto-setup` now has `delete` on `transit/keys/customer-*`; its
-  `update` covers `config`). The runtime policy has only `read` there: the first write is refused with
-  `CRYPTO_PERMISSION_DENIED` and nothing is destroyed.
+- **Who may (P022):** only the offboarding run's login, which has **both** `platform-crypto-setup` (its `read` gives
+  the versions, its `update` covers `config` `deletion_allowed`) and `platform-crypto-offboard` (`delete` only, the
+  same paths). The set-up step's login no longer has `delete`, so no set-up run can destroy keys.
+  - Before changing a key, `VaultKeyService` asks Vault what the login may do on it (`sys/capabilities-self`, allowed
+    by Vault's default policy). Without `delete` (the set-up policy alone, the runtime policy) it refuses with
+    `CRYPTO_PERMISSION_DENIED`, naming the offboard policy, and nothing is changed: the key is not even marked
+    `deletion_allowed`.
+  - When Vault cannot answer that question (a login without the default policy), the steps run as before and Vault
+    refuses the one the login may not do.
 - **The command** (`command.CryptoCommand`, `crypto destroy-customer-keys`):
 
   ```
   crypto destroy-customer-keys --tenant-id TEN-… --operator "<who runs it>" [--confirm TEN-…] [--result-out <file>]
+                               [--backup-retention-days 35]
   ```
 
   - Key service login from the environment only, the same variables as the setup command
-    (`PLATFORM_SETUP_VAULT_*`, `vault.VaultEnvironment`, which `SetupKeys` now uses too).
+    (`PLATFORM_SETUP_VAULT_*`, `vault.VaultEnvironment`, which `SetupKeys` now uses too), but a login with the
+    set-up **and** offboard policies, given to this run only.
+  - `--backup-retention-days`: the backup retention of the installation, 30 to 90, default 35 (the erase log's).
+    Outside that range → `CRYPTO_COMMAND_USAGE`, before the key service is called.
   - The tenant ID must be **typed back**: `--confirm`, or on the console when it is not given. Missing →
     `CRYPTO_DESTROY_NOT_CONFIRMED`, different (also a different case, or the customer UUID instead) →
     `CRYPTO_DESTROY_CONFIRMATION_WRONG`. Both before the key service is called; nothing destroyed.
@@ -287,13 +300,22 @@ record, value, document and backup of that customer unreadable. The offboarding 
       {"role": "FINGERPRINT", "name": "customer-<hex>-fp", "versions": "1-1", "state": "DESTROYED"}
     ],
     "destroyedAt": "2026-11-22T10:15:30Z",
+    "liveDataDestroyedOn": "2026-11-22",
+    "backupRetentionDays": 35,
+    "unreadableEverywhereFrom": "2026-12-27",
     "operator": "<who ran it>"
   }
   ```
 
-  No key material, wrapped key, token or value.
+  No key material, wrapped key, token or value. **Two dates** (P022) for the certificate:
+  - `liveDataDestroyedOn`: the day (UTC) of `destroyedAt`. From then the live data is unreadable.
+  - `unreadableEverywhereFrom`: `liveDataDestroyedOn` + `backupRetentionDays`. From then it is unreadable everywhere,
+    backups included: every database backup and every key service snapshot taken before the destruction has expired.
+    This holds only if the key service's snapshot retention is **at most** the backup retention (below).
+
+  The fields were added to `platform-key-destruction/1` (nothing removed or renamed), so the format name stays.
 - **Key service backups.** Vault snapshots (and any backup of Vault's storage) still hold the keys until they expire.
-  A restored snapshot would bring the keys back. So the key service's backup retention must also be within the agreed
-  period, and the offboarding certificate states that the keys are gone from the live key service at `destroyedAt`
-  and from its backups once their retention has passed. AWS KMS (`ScheduleKeyDeletion`, 7–30 days) and Azure Key
+  A restored snapshot would bring the keys back. So the key service's snapshot retention must be **at most the backup
+  retention** (35 days by default; `docs/install/crypto.md` section 6), and the offboarding certificate gives both
+  dates: live data destroyed on `liveDataDestroyedOn`, unreadable everywhere from `unreadableEverywhereFrom`. AWS KMS (`ScheduleKeyDeletion`, 7–30 days) and Azure Key
   Vault (soft delete, then purge) have the same shape when they are added.

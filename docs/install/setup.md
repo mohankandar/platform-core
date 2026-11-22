@@ -26,7 +26,9 @@ This version sets up **direct sign-in**: your people sign in with your own login
   The app's everyday database user is enough.
 - Key service settings, in the environment only, for this run only: setup creates your customer's own keys in Vault
   (a wrapping key and a fingerprint key, which protect sensitive case field values). Its login needs the
-  `platform-crypto-setup` policy (`docs/design/crypto.md` section 7); the app itself never gets that policy.
+  `platform-crypto-setup` policy (`docs/design/crypto.md` section 7); the app itself never gets that policy. The
+  set-up policy cannot delete keys; never give the setup run the `platform-crypto-offboard` policy, which is for
+  customer exit only (`docs/install/crypto.md` section 5).
 
   | Variable | |
   |---|---|

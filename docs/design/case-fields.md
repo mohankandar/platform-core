@@ -165,13 +165,16 @@ Built in P019 in `platform-fields` (package `com.documentplatform.fields.values`
    field list. Switching a field off still takes its primary flag away (a switched-off field is never primary, and
    removing a field must always be possible, rule 5); switching it back on does not make it primary again, and
    `change` cannot either while values exist. If both the type and a flag change, `FIELD_TYPE_LOCKED` is given.
-3. **Erasing a record** (before Vero retention and LexaVault deletion): `FieldValues.erase(ref)`. See "Erasing a
-   record" below.
+3. **Erasing a record** (before Vero retention and LexaVault deletion): through the erase log (`Eraser.erase`, kind
+   `case-fields`), which calls `FieldValues.erase(ref)`. See "Erasing a record" below.
 4. **Concurrent arrivals get the existing record**: kept as built in P019.
 5. **Setup against a real Vault**: later.
 
 ## Erasing a record (P020)
 
+- **Only through the erase log (P022):** `FieldValues.erase` accepts only the erase log's `CaseFieldsEraseHandler`
+  as its caller; any other caller is refused with `VALUES_ERASE_OUTSIDE_LOG` and nothing is erased. Apps call
+  `Eraser.erase` with kind `case-fields` (`docs/design/erase-log.md`).
 - `FieldValues.erase(ref)` deletes the record's value rows, its envelope (the record's wrapped data key) and the
   `fld_record` row itself, in one transaction, if the record has not changed meanwhile (otherwise it reads again and
   retries). Afterwards `read`, `readSensitive`, `search` and `findByPrimary` no longer find it; the same primary
@@ -201,5 +204,5 @@ P020 found that erase removes a record from the live database, but a backup take
 - Built in P021: the erase log (`platform-erase-log`, `docs/design/erase-log.md`) with the built-in `case-fields`
   handler (`CaseFieldsEraseHandler`: legal hold checked before the entry is logged, `FieldValues.erase` as the erase,
   the value store read by the verify step), and customer key destruction (`docs/design/crypto.md` section 11). Apps
-  erase case fields through `Eraser.erase` with kind `case-fields`, not by calling `FieldValues.erase` directly, so
-  every erasure is in the log.
+  erase case fields through `Eraser.erase` with kind `case-fields`; since P022 a direct call of `FieldValues.erase`
+  is refused (`VALUES_ERASE_OUTSIDE_LOG`), so every erasure is in the log.

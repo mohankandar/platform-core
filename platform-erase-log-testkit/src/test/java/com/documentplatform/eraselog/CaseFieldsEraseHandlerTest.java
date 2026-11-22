@@ -76,6 +76,29 @@ class CaseFieldsEraseHandlerTest {
     }
 
     @Test
+    void caseFieldsAreErasedOnlyThroughTheEraseLog() {
+        claim("c1");
+        RecordRef ref = RecordRef.of(SCOPE, "business_record", "c1");
+        com.documentplatform.fields.values.FieldValuesException outside = assertThrows(
+                com.documentplatform.fields.values.FieldValuesException.class, () -> values.erase(ref));
+        assertEquals(com.documentplatform.fields.values.FieldValuesError.VALUES_ERASE_OUTSIDE_LOG, outside.code());
+        assertEquals(1, valueStore.all().size(), "a direct call erases nothing");
+        // Not through a helper of the app either: only the handler class itself may call.
+        java.util.function.Function<RecordRef, FieldValues.Erased> helper = values::erase;
+        assertEquals(com.documentplatform.fields.values.FieldValuesError.VALUES_ERASE_OUTSIDE_LOG, assertThrows(
+                com.documentplatform.fields.values.FieldValuesException.class, () -> helper.apply(ref)).code());
+
+        com.documentplatform.eraselog.testkit.InMemoryEraseLogStore store =
+                new com.documentplatform.eraselog.testkit.InMemoryEraseLogStore();
+        EraseLog log = new EraseLog(store, clock);
+        Eraser eraser = new Eraser(log, new com.documentplatform.eraselog.testkit.InMemoryErasePosition(),
+                EraseHandlers.of(new CaseFieldsEraseHandler(values, valueStore)));
+        eraser.erase(request("c1"));
+        assertEquals(0, valueStore.all().size(), "erased through the log");
+        assertEquals(1, log.head().seq(), "and logged");
+    }
+
+    @Test
     void aRecordUnderLegalHoldIsRefusedBeforeAnythingIsLogged() {
         claim("c1");
         LegalHolds holds = r -> r.recordId().equals("c1");

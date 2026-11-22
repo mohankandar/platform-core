@@ -104,6 +104,10 @@ final class VaultJson {
                     if (i > 0) {
                         b.append(',');
                     }
+                    if (list.get(i) instanceof String s) {
+                        quote(b, s);
+                        continue;
+                    }
                     if (!(list.get(i) instanceof Map<?, ?> item)) {
                         throw new IllegalArgumentException("unsupported list item type");
                     }
