@@ -88,3 +88,16 @@ Full proposal, table columns, input files and command steps: `docs/work/P012-rep
 5. **One customer per database:** keep for on-premises installs. Hosting later uses a shared database with row-level
    security (section 2a).
 6. **Exit code 1 for failures:** keep it.
+
+## 6. Integration client bindings (LexaVault thread decision, 2026-11-21)
+
+Registers which machine client may call which entity, for Vero's and LexaVault's own push-API callers (Vero finds the entity and source from the verified client ID via `MachineEntityBindings`; see `docs/design/integration-module.md`).
+
+- **Now:** the setup command loads an input file next to the role mapping: **client ID → entity (slot ID) → source**, safe to rerun, shown in the plan like every other item.
+- **Rules:**
+  1. The file holds client IDs only, never secrets.
+  2. Each client ID binds to exactly one entity and one source; a duplicate is refused.
+  3. Setup checks that the entity and source exist and stops with a clear message if not.
+  4. Removing a line switches the binding off, never deletes it.
+  5. Every change is audited.
+- **Later:** the IT Admin's integration page (integration module screens) edits the same bindings. No second store.
