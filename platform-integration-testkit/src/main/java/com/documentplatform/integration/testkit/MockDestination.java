@@ -1,6 +1,8 @@
 package com.documentplatform.integration.testkit;
 
 import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.testkit.openapi.OpenApiSpec;
+import com.documentplatform.integration.testkit.openapi.Schemas;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpsConfigurator;
@@ -31,6 +33,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -40,8 +43,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
 /**
- * A mock destination server for tests (JDK {@code HttpServer}, http or https), generic: it answers any path, and is
- * switched per test (methods) or by a small admin call on its own port ({@link #adminAddress()}):
+ * A mock destination server for tests (JDK {@code HttpServer}, http or https), switched per test (methods) or by a
+ * small admin call on its own port ({@link #adminAddress()}):
  * <ul>
  *   <li>{@link #working()}, {@link #down()} / {@link #up()}, {@link #slow(Duration)}</li>
  *   <li>{@link #busy(int, String, Duration)}: busy with or without a code and Retry-After</li>
@@ -49,15 +52,20 @@ import java.util.regex.Pattern;
  *   <li>{@link #refuse(int, String)}: refuses with a status and a code</li>
  *   <li>{@link #alreadyReceived(String)}: 200 replay answer</li>
  *   <li>{@link #signInRefused(String)}: 401 with a code</li>
- *   <li>{@link #healthFailing(boolean)}: health failing while uploads work (or, with another switch, the reverse)</li>
+ *   <li>health ({@link #healthPath(String)}): {@link #healthFailing(boolean)}, {@link #healthBusy(String, Duration)},
+ *       {@link #healthSlow(Duration)}, independent of the other switches</li>
  * </ul>
- * It checks the sign-in it is told to expect ({@link #expectBasic}, {@link #expectApiKey}, {@link #expectBearer},
- * {@link #expectOAuth2()}), has its own OAuth 2.0 token endpoint ({@link #tokenAddress()}; client secret in the form or
- * as Basic, or a certificate client assertion) and records what it received: method, path, headers (sign-in values
- * masked), the top-level fields of JSON bodies, and for other bodies only the SHA-256, size and media type —
- * <b>never a document's text</b>.
+ * Generic by default: it answers any path. {@link #specMode} makes it follow an OpenAPI document instead: only the
+ * document's operations exist, requests are checked against it (required headers and parameters, media type, JSON
+ * body schema) and refused with the code the {@link SpecBehaviour} names, and answers are built from the response
+ * schemas (and checked against them).
  *
- * <p>Errors are JSON {@code {"code": "...", "message": "..."}}; set {@code errorCodePointer} to {@code /code}.
+ * <p>It checks the sign-in it is told to expect ({@link #expectBasic}, {@link #expectApiKey}, {@link #expectBearer},
+ * {@link #expectOAuth2()}), has its own OAuth 2.0 token endpoint ({@link #tokenAddress()}; client secret in the form or
+ * as Basic, or a certificate client assertion; tokens can carry claims and the mock can require them), and records
+ * what it received: method, path, headers (sign-in values masked), the names of JSON body fields (their values only
+ * after {@link #recordValues(boolean)}), and for other bodies only the SHA-256, size and media type — <b>never a
+ * document's text</b>.
  */
 public final class MockDestination implements AutoCloseable {
 
@@ -65,12 +73,21 @@ public final class MockDestination implements AutoCloseable {
 
     public enum TokenMode { WORKING, REFUSE_CLIENT, REFUSE_REQUEST, DOWN, BAD_REPLY }
 
-    /** One request received. {@code fields}: top-level JSON fields; {@code sha256}/{@code size}: of the body. */
+    /**
+     * One request received. {@code fields}: top-level JSON field names, with their values only when
+     * {@link #recordValues(boolean)} is on ({@value #NOT_RECORDED} otherwise); {@code sha256}/{@code size}: of the
+     * body; {@code operation}: the OpenAPI operation in spec mode, else null.
+     */
     public record Received(String method, String path, String query, Map<String, String> headers, String signIn,
-                           Map<String, Object> fields, String sha256, long size, String contentType) {
+                           Map<String, Object> fields, String sha256, long size, String contentType,
+                           String operation, List<Part> parts) {
         public Optional<String> header(String name) {
             return Optional.ofNullable(headers.get(name.toLowerCase(Locale.ROOT)));
         }
+    }
+
+    /** One part of a multipart/form-data body: its name, file name and media type, its SHA-256 and size. */
+    public record Part(String name, String fileName, String contentType, String sha256, long size) {
     }
 
     /** One token request: who asked and how; never the secret. */
@@ -78,12 +95,60 @@ public final class MockDestination implements AutoCloseable {
                                boolean issued) {
     }
 
+    /** A request in spec mode, for {@link SpecBehaviour}: the parsed parts, never the document's bytes. */
+    public record SpecRequest(String operationId, String method, String path, Map<String, String> pathParams,
+                              Map<String, String> headers, Object json, String sha256, long size) {
+        public Optional<String> header(String name) {
+            return Optional.ofNullable(headers.get(name.toLowerCase(Locale.ROOT)));
+        }
+    }
+
+    /** What an API's mock does beyond its OpenAPI document: its refusal codes, error body and answer values. */
+    public interface SpecBehaviour {
+        /** The code a request the document refuses gets (missing header or parameter, body not matching). */
+        String badRequestCode();
+
+        /** The code for a body of another media type (415). */
+        default String unsupportedMediaCode() {
+            return badRequestCode();
+        }
+
+        /** The error body for a code; {@code reference} is the request's correlation ID or a new one. */
+        default Map<String, Object> error(String code, String reference) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            if (code != null) m.put("code", code);
+            m.put("message", "mock answer");
+            return m;
+        }
+
+        /** Values put into the success answer built from the schema (top-level fields). */
+        default Map<String, Object> answer(SpecRequest request) {
+            return Map.of();
+        }
+
+        /** Values put into the 200 "already received" answer built from the schema. */
+        default Map<String, Object> replay(SpecRequest request) {
+            return Map.of();
+        }
+
+        /** An error answer for this one request instead of the normal one (for example to fail one upload). */
+        default Optional<SpecError> refuse(SpecRequest request) {
+            return Optional.empty();
+        }
+    }
+
+    /** An error answer a {@link SpecBehaviour} chose: status, code (or null) and Retry-After (or null). */
+    public record SpecError(int status, String code, Duration retryAfter) {
+    }
+
     private record Route(String method, Pattern path, int status, String body) {
     }
 
     public static final String HEALTH_PATH = "/health";
     public static final String TOKEN_PATH = "/oauth2/token";
+    public static final String NOT_RECORDED = "[not recorded]";
     private static final Pattern SAFE = Pattern.compile("[A-Za-z0-9_.:-]{1,40}");
+    private static final Base64.Encoder B64URL = Base64.getUrlEncoder().withoutPadding();
 
     private final SSLContext ssl;
     private final ExecutorService pool = Executors.newCachedThreadPool(r -> {
@@ -102,8 +167,20 @@ public final class MockDestination implements AutoCloseable {
     private volatile String code;
     private volatile Duration retryAfter;
     private volatile String replayBody = "{\"alreadyReceived\":true}";
+    private volatile String healthPath = HEALTH_PATH;
     private volatile boolean healthFailing;
+    private volatile String healthBusyCode;
+    private volatile Duration healthBusyRetryAfter;
+    private volatile boolean healthBusy;
+    private volatile Duration healthDelay = Duration.ZERO;
+    private volatile boolean recordValues;
     private final List<Route> routes = new CopyOnWriteArrayList<>();
+
+    // spec mode
+    private volatile OpenApiSpec spec;
+    private volatile Schemas schemas;
+    private volatile SpecBehaviour behaviour;
+    private final List<String> specProblems = new CopyOnWriteArrayList<>();
 
     // sign-in
     private volatile String expectType = "NONE";
@@ -116,6 +193,9 @@ public final class MockDestination implements AutoCloseable {
     private volatile long tokenLifetimeSeconds = 3600;
     private volatile String requiredScope;
     private volatile String requiredAudience;
+    private volatile Map<String, String> tokenClaims = Map.of();
+    private volatile List<String> requiredClaims = List.of();
+    private volatile String missingClaimsCode;
 
     // records
     private final List<Received> received = new CopyOnWriteArrayList<>();
@@ -269,7 +349,10 @@ public final class MockDestination implements AutoCloseable {
         return this;
     }
 
-    /** 200 with {@code body} (JSON), for "already received". Null keeps the default {@code {"alreadyReceived":true}}. */
+    /**
+     * 200 "already received". Generic mode: {@code body} (JSON; null keeps {@code {"alreadyReceived":true}}). Spec
+     * mode: the answer built from the 200 schema with the behaviour's replay values ({@code body} is ignored).
+     */
     public MockDestination alreadyReceived(String body) {
         mode = Mode.ALREADY_RECEIVED;
         if (body != null) replayBody = body;
@@ -283,16 +366,46 @@ public final class MockDestination implements AutoCloseable {
         return this;
     }
 
+    /** The health check's path (default {@value #HEALTH_PATH}). */
+    public MockDestination healthPath(String path) {
+        healthPath = path;
+        return this;
+    }
+
     /** The health path answers 503 while this is on (independent of the other switches). */
     public MockDestination healthFailing(boolean failing) {
         healthFailing = failing;
+        if (failing) healthBusy = false;
+        return this;
+    }
+
+    /** The health path answers 503 busy: with {@code code} (null: none) and Retry-After {@code after} (null: none). */
+    public MockDestination healthBusy(String code, Duration after) {
+        healthBusy = true;
+        healthFailing = false;
+        healthBusyCode = code;
+        healthBusyRetryAfter = after;
+        return this;
+    }
+
+    /** The health path answers after {@code d}. */
+    public MockDestination healthSlow(Duration d) {
+        healthDelay = d;
+        return this;
+    }
+
+    /** Health answers 200 again, without delay. */
+    public MockDestination healthOk() {
+        healthFailing = false;
+        healthBusy = false;
+        healthDelay = Duration.ZERO;
         return this;
     }
 
     /**
      * In WORKING mode, a request matching {@code method} and {@code pathRegex} gets {@code status} and {@code body}.
      * The body may hold {@code ${id}} (a new ID), {@code ${n}} (a counter), {@code ${sha256}} and {@code ${size}} (of
-     * the request body). Routes are tried in the order added.
+     * the request body). Routes are tried in the order added, before spec mode.
      */
     public MockDestination route(String method, String pathRegex, int status, String body) {
         routes.add(new Route(method, Pattern.compile(pathRegex), status, body));
@@ -302,6 +415,25 @@ public final class MockDestination implements AutoCloseable {
     public MockDestination clearRoutes() {
         routes.clear();
         return this;
+    }
+
+    /** Records JSON body values too (for tests of non-sensitive values); off by default: field names only. */
+    public MockDestination recordValues(boolean on) {
+        recordValues = on;
+        return this;
+    }
+
+    /** Follows the OpenAPI document: its operations only, requests checked, answers from its schemas. */
+    public MockDestination specMode(OpenApiSpec document, SpecBehaviour b) {
+        spec = document;
+        schemas = new Schemas(document);
+        behaviour = b;
+        return this;
+    }
+
+    /** What spec mode refused and why (places and codes, never values), in order. */
+    public List<String> specProblems() {
+        return List.copyOf(specProblems);
     }
 
     public Mode mode() {
@@ -373,6 +505,22 @@ public final class MockDestination implements AutoCloseable {
         return this;
     }
 
+    /**
+     * Issued tokens become JWTs (unsigned, for tests) carrying {@code sub} (the client ID), {@code exp} and these
+     * claims (a login server set up to add them). Empty: no claims added.
+     */
+    public MockDestination tokenClaims(Map<String, String> claims) {
+        tokenClaims = Map.copyOf(claims);
+        return this;
+    }
+
+    /** Refuses (401 with {@code code}) a token without every one of these claims. Empty: no check. */
+    public MockDestination requireTokenClaims(String code, List<String> names) {
+        requiredClaims = List.copyOf(names);
+        missingClaimsCode = code;
+        return this;
+    }
+
     /** Forgets the tokens issued: the next call with an old token is refused (as after a key change). */
     public MockDestination revokeTokens() {
         tokens.clear();
@@ -387,7 +535,8 @@ public final class MockDestination implements AutoCloseable {
 
     /** Requests other than health checks. */
     public List<Received> calls() {
-        return received.stream().filter(r -> !r.path().equals(HEALTH_PATH)).toList();
+        String h = healthPath;
+        return received.stream().filter(r -> !r.path().equals(h)).toList();
     }
 
     public List<TokenRequest> tokenRequests() {
@@ -401,19 +550,23 @@ public final class MockDestination implements AutoCloseable {
     public MockDestination clearRecords() {
         received.clear();
         tokenRequests.clear();
+        specProblems.clear();
         return this;
     }
 
-    /** All switches back to working, sign-in and records cleared. */
+    /** All switches back to working, sign-in and records cleared (spec mode and health path kept). */
     public synchronized MockDestination reset() {
         up();
         working();
         routes.clear();
-        healthFailing = false;
+        healthOk();
         expectNone();
         tokenMode = TokenMode.WORKING;
         requiredScope = null;
         requiredAudience = null;
+        tokenClaims = Map.of();
+        requiredClaims = List.of();
+        recordValues = false;
         replayBody = "{\"alreadyReceived\":true}";
         return clearRecords();
     }
@@ -431,28 +584,34 @@ public final class MockDestination implements AutoCloseable {
                 token(ex, body);
                 return;
             }
+            String reference = Optional.ofNullable(ex.getRequestHeaders().getFirst("X-Correlation-Id"))
+                    .orElse(UUID.randomUUID().toString());
+            OpenApiSpec.Operation op = spec == null ? null : spec.find(ex.getRequestMethod(), path).orElse(null);
             String signIn = signIn(ex);
-            received.add(record(ex, path, body, signIn));
-            if (path.equals(HEALTH_PATH)) {
-                if (healthFailing) {
-                    send(ex, 503, "{\"status\":\"DOWN\"}", null);
-                } else {
-                    send(ex, 200, "{\"status\":\"UP\"}", null);
-                }
+            received.add(record(ex, path, body, signIn, op));
+            if (path.equals(healthPath)) {
+                health(ex);
                 return;
             }
             Mode m = mode;
             if (m == Mode.SLOW) pause(delay);
             if (signIn == null && m != Mode.SIGN_IN_REFUSED) {
-                send(ex, 401, error("MOCK-AUTH-REQUIRED"), null);
+                send(ex, 401, error("MOCK-AUTH-REQUIRED", reference), null);
+                return;
+            }
+            if (signIn != null && signIn.startsWith("MISSING-CLAIMS") && m != Mode.SIGN_IN_REFUSED) {
+                send(ex, 401, error(missingClaimsCode, reference), null);
                 return;
             }
             switch (m) {
-                case BUSY -> send(ex, status, code == null ? "{}" : error(code), retryAfter);
+                case BUSY -> send(ex, status, code == null ? "{}" : error(code, reference), retryAfter);
                 case OUTAGE -> send(ex, 503, "{\"message\":\"unavailable\"}", null);
-                case REFUSE -> send(ex, status, error(code), null);
-                case ALREADY_RECEIVED -> send(ex, 200, fill(replayBody, body), null);
-                case SIGN_IN_REFUSED -> send(ex, 401, error(code), null);
+                case REFUSE -> send(ex, status, error(code, reference), null);
+                case ALREADY_RECEIVED -> {
+                    if (spec != null) answerFromSpec(ex, path, body, op, true, reference);
+                    else send(ex, 200, fill(replayBody, body), null);
+                }
+                case SIGN_IN_REFUSED -> send(ex, 401, error(code, reference), null);
                 case WORKING, SLOW -> {
                     for (Route r : routes) {
                         if (r.method().equalsIgnoreCase(ex.getRequestMethod()) && r.path().matcher(path).matches()) {
@@ -463,20 +622,121 @@ public final class MockDestination implements AutoCloseable {
                             return;
                         }
                     }
+                    if (spec != null) {
+                        answerFromSpec(ex, path, body, op, false, reference);
+                        return;
+                    }
                     send(ex, 201, fill("{\"id\":\"${id}\",\"sha256\":\"${sha256}\",\"size\":${size}}", body), null);
                 }
             }
         } catch (RuntimeException e) {
             // A test server: answer 500 rather than hang the client.
             try {
-                send(ex, 500, error("MOCK-INTERNAL"), null);
+                send(ex, 500, error("MOCK-INTERNAL", null), null);
             } catch (IOException ignored) {
                 // the client went away
             }
         }
     }
 
-    /** The accepted sign-in's type, or null when it was not accepted. */
+    private void health(HttpExchange ex) throws IOException {
+        pause(healthDelay);
+        if (healthBusy) {
+            String b = healthBusyCode == null ? "{\"status\":\"NOT_READY\"}"
+                    : "{\"status\":\"NOT_READY\",\"code\":\"" + healthBusyCode + "\"}";
+            send(ex, 503, b, healthBusyRetryAfter);
+        } else if (healthFailing) {
+            send(ex, 503, "{\"status\":\"" + (spec != null ? "NOT_READY" : "DOWN") + "\"}", null);
+        } else {
+            send(ex, 200, "{\"status\":\"UP\"}", null);
+        }
+    }
+
+    /** Spec mode: check the request against the document, then answer from the response schema. */
+    private void answerFromSpec(HttpExchange ex, String path, byte[] body, OpenApiSpec.Operation op, boolean replay,
+                                String reference) throws IOException {
+        if (op == null) {
+            specProblems.add(ex.getRequestMethod() + " " + path + ": no such operation");
+            send(ex, 404, "{\"message\":\"not found\"}", null);
+            return;
+        }
+        Map<String, String> headers = new LinkedHashMap<>();
+        ex.getRequestHeaders().forEach((k, v) -> headers.put(k.toLowerCase(Locale.ROOT), String.join(",", v)));
+        Map<String, String> pathParams = OpenApiSpec.pathParams(op.pathTemplate(), path).orElse(Map.of());
+        Map<String, String> query = form(ex.getRequestURI().getRawQuery());
+        List<String> problems = new ArrayList<>();
+        for (OpenApiSpec.Param p : op.params()) {
+            String v = switch (p.in()) {
+                case "header" -> headers.get(p.name().toLowerCase(Locale.ROOT));
+                case "path" -> pathParams.get(p.name());
+                case "query" -> query.get(p.name());
+                default -> null;
+            };
+            if (v == null) {
+                if (p.required()) problems.add(p.in() + " " + p.name() + ": missing");
+                continue;
+            }
+            for (String s : schemas.check(v, p.schema())) problems.add(p.in() + " " + p.name() + s);
+        }
+        Object json = null;
+        if (!op.requestBodies().isEmpty()) {
+            String type = Optional.ofNullable(ex.getRequestHeaders().getFirst("Content-Type")).orElse("")
+                    .split(";")[0].trim().toLowerCase(Locale.ROOT);
+            if (!op.requestBodies().containsKey(type)) {
+                specProblems.add(op.id() + ": media type " + (type.isEmpty() ? "missing" : type) + " not accepted");
+                send(ex, 415, error(behaviour.unsupportedMediaCode(), reference), null);
+                return;
+            }
+            if (op.bodyRequired() && body.length == 0) problems.add("body: missing");
+            if (type.contains("json")) {
+                try {
+                    json = Json.parse(new String(body, StandardCharsets.UTF_8));
+                    for (String s : schemas.check(json, op.requestBodies().get(type))) problems.add("body" + s);
+                } catch (Json.Invalid e) {
+                    problems.add("body: not JSON");
+                }
+            }
+        }
+        if (!problems.isEmpty()) {
+            for (String p : problems) specProblems.add(op.id() + ": " + p);
+            send(ex, 400, error(behaviour.badRequestCode(), reference), null);
+            return;
+        }
+        SpecRequest request = new SpecRequest(op.id(), ex.getRequestMethod(), path, pathParams, headers, json,
+                sha256(body), body.length);
+        Optional<SpecError> refused = behaviour.refuse(request);
+        if (refused.isPresent()) {
+            SpecError e = refused.get();
+            send(ex, e.status(), e.code() == null ? "{\"message\":\"unavailable\"}" : error(e.code(), reference),
+                    e.retryAfter());
+            return;
+        }
+        String statusKey = replay ? "200" : op.answers().containsKey("201") ? "201" : op.answers().containsKey("200")
+                ? "200" : op.answers().keySet().stream().filter(k -> k.startsWith("2")).findFirst().orElse(null);
+        OpenApiSpec.Answer answer = statusKey == null ? null : op.answers().get(statusKey);
+        if (answer == null || answer.schema() == null) {
+            send(ex, statusKey == null ? 204 : Integer.parseInt(statusKey), "", null);
+            return;
+        }
+        Object sample = schemas.sample(answer.schema());
+        if (sample instanceof Map<?, ?> sm) {
+            @SuppressWarnings("unchecked") Map<String, Object> out = new LinkedHashMap<>((Map<String, Object>) sm);
+            out.putAll(replay ? behaviour.replay(request) : behaviour.answer(request));
+            sample = out;
+        }
+        List<String> own = schemas.check(sample, answer.schema());
+        if (!own.isEmpty()) {
+            for (String p : own) specProblems.add(op.id() + " answer " + statusKey + ": " + p);
+            send(ex, 500, error("MOCK-SPEC-ANSWER-INVALID", reference), null);
+            return;
+        }
+        send(ex, Integer.parseInt(statusKey), Json.write(sample), null);
+    }
+
+    /**
+     * The accepted sign-in's type, or null when it was not accepted. An OAuth 2.0 token without a required claim
+     * gives {@code MISSING-CLAIMS}.
+     */
     private String signIn(HttpExchange ex) {
         String auth = ex.getRequestHeaders().getFirst("Authorization");
         switch (expectType) {
@@ -493,15 +753,30 @@ public final class MockDestination implements AutoCloseable {
                 return ("Bearer " + expectA).equals(auth) ? "BEARER" : null;
             case "OAUTH2": {
                 if (auth == null || !auth.startsWith("Bearer ")) return null;
-                Instant exp = tokens.get(auth.substring(7));
-                return exp != null && Instant.now().isBefore(exp) ? "OAUTH2" : null;
+                String token = auth.substring(7);
+                Instant exp = tokens.get(token);
+                if (exp == null || !Instant.now().isBefore(exp)) return null;
+                if (!requiredClaims.isEmpty() && !hasClaims(token, requiredClaims)) return "MISSING-CLAIMS";
+                return "OAUTH2";
             }
             default:
                 return null;
         }
     }
 
-    private Received record(HttpExchange ex, String path, byte[] body, String signIn) {
+    private static boolean hasClaims(String token, List<String> names) {
+        String[] parts = token.split("\\.");
+        if (parts.length != 3) return false;
+        try {
+            Map<String, Object> claims = Json.object(new String(Base64.getUrlDecoder().decode(parts[1]),
+                    StandardCharsets.UTF_8));
+            return names.stream().allMatch(n -> claims.get(n) instanceof String s && !s.isBlank());
+        } catch (Json.Invalid | IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    private Received record(HttpExchange ex, String path, byte[] body, String signIn, OpenApiSpec.Operation op) {
         Map<String, String> headers = new LinkedHashMap<>();
         ex.getRequestHeaders().forEach((k, v) -> {
             String name = k.toLowerCase(Locale.ROOT);
@@ -513,13 +788,58 @@ public final class MockDestination implements AutoCloseable {
         Map<String, Object> fields = Map.of();
         if (type != null && type.toLowerCase(Locale.ROOT).contains("json") && body.length > 0) {
             try {
-                fields = Json.object(new String(body, StandardCharsets.UTF_8));
+                Map<String, Object> parsed = Json.object(new String(body, StandardCharsets.UTF_8));
+                if (recordValues) {
+                    fields = parsed;
+                } else {
+                    Map<String, Object> names = new LinkedHashMap<>();
+                    for (String k : parsed.keySet()) names.put(k, NOT_RECORDED);
+                    fields = names;
+                }
             } catch (Json.Invalid e) {
                 fields = Map.of();
             }
         }
         return new Received(ex.getRequestMethod(), path, ex.getRequestURI().getRawQuery(), Map.copyOf(headers),
-                signIn, fields, sha256(body), body.length, type);
+                signIn, fields, sha256(body), body.length, type, op == null ? null : op.id(), parts(type, body));
+    }
+
+    /** The parts of a multipart/form-data body (names, file names, types, checksums; never the content). */
+    static List<Part> parts(String contentType, byte[] body) {
+        if (contentType == null || !contentType.toLowerCase(Locale.ROOT).startsWith("multipart/form-data")) return List.of();
+        java.util.regex.Matcher bm = Pattern.compile("boundary=([^;]+)").matcher(contentType);
+        if (!bm.find()) return List.of();
+        byte[] delimiter = ("--" + bm.group(1)).getBytes(StandardCharsets.ISO_8859_1);
+        List<Part> out = new ArrayList<>();
+        int at = indexOf(body, delimiter, 0);
+        while (at >= 0) {
+            int start = at + delimiter.length;
+            if (start + 2 <= body.length && body[start] == '-' && body[start + 1] == '-') break; // closing delimiter
+            start += 2; // CRLF
+            int headEnd = indexOf(body, "\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1), start);
+            int next = indexOf(body, delimiter, headEnd < 0 ? start : headEnd);
+            if (headEnd < 0 || next < 0) break;
+            String head = new String(body, start, headEnd - start, StandardCharsets.UTF_8);
+            byte[] content = java.util.Arrays.copyOfRange(body, headEnd + 4, next - 2); // without the CRLF before
+            java.util.regex.Matcher n = Pattern.compile("name=\"([^\"]*)\"").matcher(head);
+            java.util.regex.Matcher f = Pattern.compile("filename=\"([^\"]*)\"").matcher(head);
+            java.util.regex.Matcher t = Pattern.compile("(?i)Content-Type: *([^\\r\\n]+)").matcher(head);
+            out.add(new Part(n.find() ? n.group(1) : null, f.find() ? f.group(1) : null, t.find() ? t.group(1) : null,
+                    sha256(content), content.length));
+            at = next;
+        }
+        return List.copyOf(out);
+    }
+
+    private static int indexOf(byte[] hay, byte[] needle, int from) {
+        outer:
+        for (int i = Math.max(0, from); i <= hay.length - needle.length; i++) {
+            for (int j = 0; j < needle.length; j++) {
+                if (hay[i + j] != needle[j]) continue outer;
+            }
+            return i;
+        }
+        return -1;
     }
 
     private void token(HttpExchange ex, byte[] body) throws IOException {
@@ -558,11 +878,24 @@ public final class MockDestination implements AutoCloseable {
         } else if (tm == TokenMode.REFUSE_REQUEST || !grant || !scopeOk || !audienceOk) {
             send(ex, 400, "{\"error\":\"invalid_scope\"}", null);
         } else {
-            String token = "mock-" + UUID.randomUUID();
+            String token = newToken(clientId);
             tokens.put(token, Instant.now().plusSeconds(tokenLifetimeSeconds));
             send(ex, 200, "{\"access_token\":\"" + token + "\",\"token_type\":\"Bearer\",\"expires_in\":"
                     + tokenLifetimeSeconds + "}", null);
         }
+    }
+
+    /** {@code mock-<uuid>}, or with token claims an unsigned test JWT whose signature part is {@code mock-<uuid>}. */
+    private String newToken(String clientId) {
+        String id = "mock-" + UUID.randomUUID();
+        Map<String, String> claims = tokenClaims;
+        if (claims.isEmpty()) return id;
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("sub", clientId);
+        payload.put("exp", Instant.now().plusSeconds(tokenLifetimeSeconds).getEpochSecond());
+        payload.putAll(claims);
+        return B64URL.encodeToString("{\"alg\":\"none\",\"typ\":\"JWT\"}".getBytes(StandardCharsets.UTF_8)) + "."
+                + B64URL.encodeToString(Json.write(payload).getBytes(StandardCharsets.UTF_8)) + "." + id;
     }
 
     private boolean assertionValid(String jwt, String clientId) {
@@ -606,15 +939,20 @@ public final class MockDestination implements AutoCloseable {
                         case "ALREADY_RECEIVED" -> alreadyReceived(null);
                         case "SIGN_IN_REFUSED" -> signInRefused(q.getOrDefault("code", "MOCK-AUTH-REFUSED"));
                         default -> {
-                            send(ex, 400, error("MOCK-ADMIN-UNKNOWN-MODE"), null);
+                            send(ex, 400, error("MOCK-ADMIN-UNKNOWN-MODE", null), null);
                             return;
                         }
                     }
                     send(ex, 200, "{\"mode\":\"" + name + "\"}", null);
                 }
                 case "/health" -> {
-                    healthFailing(Boolean.parseBoolean(q.getOrDefault("failing", "false")));
-                    send(ex, 200, "{\"healthFailing\":" + healthFailing + "}", null);
+                    if (q.containsKey("busy")) {
+                        healthBusy(q.get("code"), q.containsKey("retryAfter")
+                                ? Duration.ofSeconds(Long.parseLong(q.get("retryAfter"))) : null);
+                    } else {
+                        healthFailing(Boolean.parseBoolean(q.getOrDefault("failing", "false")));
+                    }
+                    send(ex, 200, "{\"healthFailing\":" + healthFailing + ",\"healthBusy\":" + healthBusy + "}", null);
                 }
                 case "/reset" -> {
                     reset();
@@ -633,10 +971,10 @@ public final class MockDestination implements AutoCloseable {
                     }
                     send(ex, 200, Json.write(out), null);
                 }
-                default -> send(ex, 404, error("MOCK-ADMIN-NOT-FOUND"), null);
+                default -> send(ex, 404, error("MOCK-ADMIN-NOT-FOUND", null), null);
             }
         } catch (RuntimeException e) {
-            send(ex, 400, error("MOCK-ADMIN-BAD-REQUEST"), null);
+            send(ex, 400, error("MOCK-ADMIN-BAD-REQUEST", null), null);
         }
     }
 
@@ -647,10 +985,14 @@ public final class MockDestination implements AutoCloseable {
                 .replace("${size}", Long.toString(body.length));
     }
 
-    /** An error body; without a code (null) only a message. */
-    private static String error(String code) {
-        if (code == null) return "{\"message\":\"mock answer\"}";
-        String c = SAFE.matcher(code).matches() ? code : "MOCK-ERROR";
+    /** An error body; without a code (null) only a message. In spec mode the behaviour's shape. */
+    private String error(String code, String reference) {
+        String c = code == null ? null : SAFE.matcher(code).matches() ? code : "MOCK-ERROR";
+        SpecBehaviour b = behaviour;
+        if (b != null && spec != null) {
+            return Json.write(b.error(c, reference == null ? UUID.randomUUID().toString() : reference));
+        }
+        if (c == null) return "{\"message\":\"mock answer\"}";
         return "{\"code\":\"" + c + "\",\"message\":\"mock answer\"}";
     }
 
@@ -667,6 +1009,7 @@ public final class MockDestination implements AutoCloseable {
     }
 
     private static void pause(Duration d) {
+        if (d.isZero()) return;
         try {
             Thread.sleep(d.toMillis());
         } catch (InterruptedException e) {
@@ -700,5 +1043,11 @@ public final class MockDestination implements AutoCloseable {
         if (s != null) s.stop(0);
         admin.stop(0);
         pool.shutdownNow();
+    }
+
+    /** For tests that need a set of the spec's operation IDs. */
+    public Set<String> specOperations() {
+        OpenApiSpec s = spec;
+        return s == null ? Set.of() : Set.copyOf(s.operations().stream().map(OpenApiSpec.Operation::id).toList());
     }
 }

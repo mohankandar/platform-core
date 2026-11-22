@@ -23,9 +23,10 @@ import java.util.regex.Pattern;
  * @param documents     the documents, in order
  * @param values        plain values for {@code {value.<name>}} placeholders. Not for secrets or document text.
  * @param resume        where an earlier attempt stopped, or {@link Resume#NONE}
+ * @param fields        the case field values for {@code {field:<key>}} placeholders, or {@link CaseFields#NONE}
  */
 public record Delivery(String packageId, String correlationId, List<Document> documents, Map<String, String> values,
-                       Resume resume) {
+                       Resume resume, CaseFields fields) {
 
     static final Pattern ID = Pattern.compile("[A-Za-z0-9._:-]{1,200}");
     static final Pattern CORRELATION = Pattern.compile("[A-Za-z0-9._:-]{1,128}");
@@ -56,6 +57,13 @@ public record Delivery(String packageId, String correlationId, List<Document> do
         }
         values = java.util.Collections.unmodifiableMap(v);
         resume = resume == null ? Resume.NONE : resume;
+        fields = fields == null ? CaseFields.NONE : fields;
+    }
+
+    /** Without case fields. */
+    public Delivery(String packageId, String correlationId, List<Document> documents, Map<String, String> values,
+                    Resume resume) {
+        this(packageId, correlationId, documents, values, resume, CaseFields.NONE);
     }
 
     public static Delivery of(String packageId, List<Document> documents, Map<String, String> values) {
@@ -63,7 +71,11 @@ public record Delivery(String packageId, String correlationId, List<Document> do
     }
 
     public Delivery resumingFrom(Resume r) {
-        return new Delivery(packageId, correlationId, documents, values, r);
+        return new Delivery(packageId, correlationId, documents, values, r, fields);
+    }
+
+    public Delivery withFields(CaseFields f) {
+        return new Delivery(packageId, correlationId, documents, values, resume, f);
     }
 
     /** Opens a document's content for reading; called only while the document is sent. */
@@ -80,9 +92,11 @@ public record Delivery(String packageId, String correlationId, List<Document> do
      * @param contentType      its media type ({@code application/pdf})
      * @param size             its size in bytes
      * @param sha256           its SHA-256, lower-case hex
+     * @param attributes       per-document values for {@code {doc.attr.<name>}} (for example a sensitivity level);
+     *                         plain values, never secrets or document text
      */
     public record Document(String sourceDocumentId, String fileName, String contentType, long size, String sha256,
-                           Content content) {
+                           Content content, Map<String, String> attributes) {
 
         private static final Pattern TYPE = Pattern.compile("[a-z0-9][a-z0-9!#$&^_.+-]{0,126}/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}");
         private static final Pattern SHA = Pattern.compile("[0-9a-f]{64}");
@@ -103,6 +117,29 @@ public record Delivery(String packageId, String correlationId, List<Document> do
             if (!TYPE.matcher(contentType).matches()) throw new IllegalArgumentException("Media type is not valid");
             if (size < 0) throw new IllegalArgumentException("Size cannot be negative");
             if (!SHA.matcher(sha256).matches()) throw new IllegalArgumentException("SHA-256 must be 64 lower-case hex");
+            Map<String, String> a = new LinkedHashMap<>();
+            if (attributes != null) {
+                attributes.forEach((k, v) -> {
+                    if (k == null || !VALUE_NAME.matcher(k).matches() || v == null || v.length() > 500) {
+                        throw new IllegalArgumentException("Attribute names are letters, digits, '_' or '-'; values at "
+                                + "most 500 characters");
+                    }
+                    a.put(k, v);
+                });
+            }
+            attributes = java.util.Collections.unmodifiableMap(a);
+        }
+
+        /** Without attributes. */
+        public Document(String sourceDocumentId, String fileName, String contentType, long size, String sha256,
+                        Content content) {
+            this(sourceDocumentId, fileName, contentType, size, sha256, content, Map.of());
+        }
+
+        public Document withAttribute(String name, String value) {
+            Map<String, String> a = new LinkedHashMap<>(attributes);
+            a.put(name, value);
+            return new Document(sourceDocumentId, fileName, contentType, size, sha256, content, a);
         }
 
         /** A document held in memory; size and SHA-256 are worked out here. */

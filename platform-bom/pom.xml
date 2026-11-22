@@ -116,6 +116,11 @@
                 <artifactId>platform-integration-testkit</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.documentplatform.platform</groupId>
+                <artifactId>platform-integration-profiles</artifactId>
+                <version>${project.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 </project>

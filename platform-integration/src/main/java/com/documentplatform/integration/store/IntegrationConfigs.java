@@ -41,12 +41,21 @@ public final class IntegrationConfigs {
     private final IntegrationAudit audit;
     private final Installation installation;
     private final Clock clock;
+    private final com.documentplatform.integration.config.FieldLists fieldLists;
 
+    /** Without field lists: a configuration with {field:<key>} placeholders is refused (INT_CONFIG_FIELD_UNKNOWN). */
     public IntegrationConfigs(IntegrationStore store, IntegrationAudit audit, Installation installation, Clock clock) {
+        this(store, audit, installation, clock, com.documentplatform.integration.config.FieldLists.NONE);
+    }
+
+    /** @param fieldLists the entity's field lists, to check {field:<key>} placeholders and sensitive fields */
+    public IntegrationConfigs(IntegrationStore store, IntegrationAudit audit, Installation installation, Clock clock,
+                              com.documentplatform.integration.config.FieldLists fieldLists) {
         this.store = Objects.requireNonNull(store, "store");
         this.audit = Objects.requireNonNull(audit, "audit");
         this.installation = Objects.requireNonNull(installation, "installation");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.fieldLists = Objects.requireNonNull(fieldLists, "fieldLists");
     }
 
     /** Version 1. */
@@ -115,7 +124,7 @@ public final class IntegrationConfigs {
         if (by == null || !BY.matcher(by).matches()) {
             throw new IllegalArgumentException("Who saved the change must be 1-200 printable characters");
         }
-        ConfigCheck.Report report = ConfigCheck.check(config, installation);
+        ConfigCheck.Report report = ConfigCheck.check(config, installation, fieldLists);
         if (!report.ok()) throw new Refused(report.errors());
         return report;
     }

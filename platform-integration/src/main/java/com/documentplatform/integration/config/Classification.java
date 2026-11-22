@@ -44,9 +44,20 @@ public final class Classification {
         return new Classification(configured);
     }
 
+    /** Step rules first, then the integration's, then the defaults. */
+    public static Classification of(List<Rule> step, List<Rule> integration) {
+        List<Rule> all = new ArrayList<>(step);
+        all.addAll(integration);
+        return new Classification(all);
+    }
+
     public Decision decide(int status, String destinationCode, Object json) {
+        return decide(status, destinationCode, json, false);
+    }
+
+    public Decision decide(int status, String destinationCode, Object json, boolean hasRetryAfter) {
         for (Rule r : rules) {
-            if (r.matches(status, destinationCode, json)) {
+            if (r.matches(status, destinationCode, json, hasRetryAfter)) {
                 return new Decision(r.outcome(), r.effectiveCode(), r.effectiveAttemptUsed());
             }
         }

@@ -1,0 +1,2 @@
+# Pinned API specifications are kept byte for byte (their SHA-256 is checked by the build).
+platform-integration-profiles/src/main/resources/profiles/**/*.openapi.json -text

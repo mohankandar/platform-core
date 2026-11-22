@@ -54,6 +54,41 @@ public final class SignInHeaders {
     }
 
     public Prepared prepare(SignIn signIn, Limits limits, boolean useProxy) {
+        return prepare(signIn, limits, useProxy, List.of());
+    }
+
+    /**
+     * @param requiredClaims claims an OAuth 2.0 access token must carry (it must then be a JWT); checked for presence
+     *                       only, from the token's payload, which is read here and kept nowhere
+     */
+    public Prepared prepare(SignIn signIn, Limits limits, boolean useProxy, List<String> requiredClaims) {
+        Prepared p = headers(signIn, limits, useProxy);
+        if (!p.ok() || requiredClaims.isEmpty() || !(signIn instanceof SignIn.OAuth2ClientCredentials)) return p;
+        String token = p.headers().get(0).getValue().substring("Bearer ".length());
+        if (!hasClaims(token, requiredClaims)) {
+            return Prepared.failed(Outcome.SIGN_IN_FAILED, IntegrationCode.INT_TOKEN_CLAIMS_MISSING);
+        }
+        return p;
+    }
+
+    /** Whether the JWT's payload has every claim (with a non-empty value). False for a token that is not a JWT. */
+    static boolean hasClaims(String token, List<String> claims) {
+        String[] parts = token.split("\\.");
+        if (parts.length != 3) return false;
+        try {
+            java.util.Map<String, Object> payload = com.documentplatform.integration.json.Json.object(
+                    new String(java.util.Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8));
+            for (String c : claims) {
+                Object v = payload.get(c);
+                if (v == null || (v instanceof String s && s.isBlank())) return false;
+            }
+            return true;
+        } catch (com.documentplatform.integration.json.Json.Invalid | IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    private Prepared headers(SignIn signIn, Limits limits, boolean useProxy) {
         if (signIn instanceof SignIn.None) {
             if (installation.hosted() || !installation.allowSignInNone()) {
                 return Prepared.failed(Outcome.NOT_CONFIGURED, IntegrationCode.INT_SIGN_IN_NONE_NOT_ALLOWED);

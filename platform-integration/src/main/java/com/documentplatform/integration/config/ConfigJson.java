@@ -62,6 +62,7 @@ public final class ConfigJson {
         l.put("maxFileBytes", c.limits().maxFileBytes());
         l.put("maxDocuments", (long) c.limits().maxDocuments());
         l.put("maxResponseBytes", (long) c.limits().maxResponseBytes());
+        l.put("maxPackageBytes", c.limits().maxPackageBytes());
         m.put("limits", l);
         List<Object> steps = new ArrayList<>();
         for (CallStep s : c.steps()) {
@@ -75,6 +76,20 @@ public final class ConfigJson {
             sm.put("repeat", s.repeat().name());
             sm.put("read", new LinkedHashMap<>(s.read()));
             sm.put("required", new ArrayList<>(new java.util.TreeSet<>(s.required())));
+            if (!s.rules().isEmpty()) sm.put("rules", rules(s.rules()));
+            if (s.multipart() != null) {
+                Map<String, Object> mp = new LinkedHashMap<>();
+                mp.put("jsonPart", s.multipart().jsonPart());
+                mp.put("filePart", s.multipart().filePart());
+                mp.put("fileName", s.multipart().fileNameTemplate());
+                sm.put("multipart", mp);
+            }
+            if (s.integrity() != null) {
+                Map<String, Object> in = new LinkedHashMap<>();
+                if (s.integrity().sha256Value() != null) in.put("sha256Value", s.integrity().sha256Value());
+                if (s.integrity().sizeValue() != null) in.put("sizeValue", s.integrity().sizeValue());
+                sm.put("integrity", in);
+            }
             steps.add(sm);
         }
         m.put("steps", steps);
@@ -91,6 +106,8 @@ public final class ConfigJson {
         m.put("testMode", c.testMode().name());
         m.put("sendCorrelationId", c.sendCorrelationId());
         if (c.profile() != null) m.put("profile", c.profile());
+        if (!c.allowedSensitiveFields().isEmpty()) m.put("allowedSensitiveFields", new ArrayList<>(c.allowedSensitiveFields()));
+        if (!c.settings().isEmpty()) m.put("settings", new LinkedHashMap<>(c.settings()));
         return m;
     }
 
@@ -135,6 +152,7 @@ public final class ConfigJson {
             m.put("outcome", r.outcome().name());
             if (r.platformCode() != null) m.put("platformCode", r.platformCode().name());
             if (r.attemptUsed() != null) m.put("attemptUsed", r.attemptUsed());
+            if (r.retryAfter() != null) m.put("retryAfter", r.retryAfter());
             out.add(m);
         }
         return out;
@@ -157,17 +175,9 @@ public final class ConfigJson {
             Map<String, Object> l = map(m, "limits");
             Limits limits = new Limits(Duration.ofMillis(num(l, "connectTimeoutMs")),
                     Duration.ofMillis(num(l, "readTimeoutMs")), num(l, "maxFileBytes"),
-                    (int) num(l, "maxDocuments"), (int) num(l, "maxResponseBytes"));
-            List<CallStep> steps = new ArrayList<>();
-            for (Object o : list(m, "steps")) {
-                @SuppressWarnings("unchecked") Map<String, Object> s = (Map<String, Object>) o;
-                Set<String> required = new HashSet<>();
-                for (Object r : list(s, "required")) required.add((String) r);
-                steps.add(new CallStep(str(s, "name"), HttpMethod.valueOf(str(s, "method")), str(s, "path"),
-                        strings(map(s, "headers")), CallStep.Body.valueOf(str(s, "body")),
-                        (String) s.get("bodyTemplate"), CallStep.Repeat.valueOf(str(s, "repeat")),
-                        strings(map(s, "read")), required));
-            }
+                    (int) num(l, "maxDocuments"), (int) num(l, "maxResponseBytes"),
+                    l.containsKey("maxPackageBytes") ? num(l, "maxPackageBytes") : Limits.DEFAULT_PACKAGE_BYTES);
+            List<CallStep> steps = readStepList(list(m, "steps"));
             Map<String, Object> h = optMap(m, "health");
             HealthCheck health = h == null ? null : new HealthCheck(HttpMethod.valueOf(str(h, "method")),
                     str(h, "path"), bool(h, "signIn"), readRuleList(list(h, "rules")));
@@ -175,7 +185,10 @@ public final class ConfigJson {
                     str(m, "product"), Kind.valueOf(str(m, "kind")), str(m, "name"), bool(m, "enabled"), endpoint,
                     signIn(map(m, "signIn")), limits, steps, (String) m.get("errorCodePointer"),
                     readRuleList(list(m, "rules")), health, IntegrationConfig.TestMode.valueOf(str(m, "testMode")),
-                    bool(m, "sendCorrelationId"), (String) m.get("profile"));
+                    bool(m, "sendCorrelationId"), (String) m.get("profile"),
+                    m.containsKey("allowedSensitiveFields") ? new java.util.TreeSet<>(stringList(list(m,
+                            "allowedSensitiveFields"))) : Set.of(),
+                    m.containsKey("settings") ? strings(map(m, "settings")) : Map.of());
         } catch (Unreadable u) {
             throw u;
         } catch (RuntimeException bad) {
@@ -205,9 +218,57 @@ public final class ConfigJson {
             Object pc = r.get("platformCode");
             out.add(new Rule(str(r, "status"), (String) r.get("code"), (String) r.get("pointer"),
                     (String) r.get("equals"), Outcome.valueOf(str(r, "outcome")),
-                    pc == null ? null : IntegrationCode.valueOf((String) pc), (Boolean) r.get("attemptUsed")));
+                    pc == null ? null : IntegrationCode.valueOf((String) pc), (Boolean) r.get("attemptUsed"),
+                    (Boolean) r.get("retryAfter")));
         }
         return out;
+    }
+
+    private static CallStep.Multipart multipart(Map<String, Object> s) {
+        Map<String, Object> mp = optMap(s, "multipart");
+        return mp == null ? null : new CallStep.Multipart(str(mp, "jsonPart"), str(mp, "filePart"), str(mp, "fileName"));
+    }
+
+    private static CallStep.Integrity integrity(Map<String, Object> s) {
+        Map<String, Object> in = optMap(s, "integrity");
+        return in == null ? null : new CallStep.Integrity((String) in.get("sha256Value"), (String) in.get("sizeValue"));
+    }
+
+    private static List<String> stringList(List<Object> raw) {
+        List<String> out = new ArrayList<>();
+        for (Object o : raw) {
+            if (!(o instanceof String s)) throw new Unreadable("a list holds something that is not text");
+            out.add(s);
+        }
+        return out;
+    }
+
+    /** Steps as data, from a JSON array (the same shape as in a stored configuration), for profiles. */
+    public static List<CallStep> readSteps(String jsonArray) {
+        try {
+            Map<String, Object> holder = Json.object("{\"format\":\"" + FORMAT + "\",\"steps\":" + jsonArray + "}");
+            return readStepList(list(holder, "steps"));
+        } catch (Json.Invalid e) {
+            throw new Unreadable("steps not JSON");
+        } catch (Unreadable u) {
+            throw u;
+        } catch (RuntimeException bad) {
+            throw new Unreadable("a step is not valid");
+        }
+    }
+
+    private static List<CallStep> readStepList(List<Object> raw) {
+        List<CallStep> steps = new ArrayList<>();
+        for (Object o : raw) {
+            @SuppressWarnings("unchecked") Map<String, Object> s = (Map<String, Object>) o;
+            Set<String> required = new HashSet<>(stringList(list(s, "required")));
+            steps.add(new CallStep(str(s, "name"), HttpMethod.valueOf(str(s, "method")), str(s, "path"),
+                    strings(map(s, "headers")), CallStep.Body.valueOf(str(s, "body")),
+                    (String) s.get("bodyTemplate"), CallStep.Repeat.valueOf(str(s, "repeat")),
+                    strings(map(s, "read")), required,
+                    s.containsKey("rules") ? readRuleList(list(s, "rules")) : List.of(), multipart(s), integrity(s)));
+        }
+        return steps;
     }
 
     /** Rules as data, from a JSON array (the same shape as in a stored configuration), for profiles. */

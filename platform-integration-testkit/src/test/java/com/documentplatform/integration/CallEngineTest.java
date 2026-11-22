@@ -121,6 +121,7 @@ class CallEngineTest {
 
     @Test
     void aHeaderValueWithALineBreakIsRefused() {
+        fx.mock.recordValues(true);
         IntegrationConfig c = integration.config();
         Delivery bad = Delivery.of("pkg-1", List.of(new Delivery.Document("doc-1", "a.pdf", "application/pdf", 3,
                 "a".repeat(64), () -> new java.io.ByteArrayInputStream(new byte[3]))), Map.of("loanId", "L-1"));

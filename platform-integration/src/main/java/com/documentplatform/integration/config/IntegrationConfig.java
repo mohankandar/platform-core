@@ -1,7 +1,12 @@
 package com.documentplatform.integration.config;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -25,13 +30,17 @@ import java.util.regex.Pattern;
  * @param health           the health check, or null when the destination has none
  * @param testMode         what the Test action runs: all steps with fake data, or only health and sign-in
  * @param sendCorrelationId whether each call carries {@code X-Correlation-Id}
- * @param profile          the ready-made profile this configuration came from (for example a published API's
- *                         name), or null
+ * @param profile          the ready-made profile this configuration came from (a published API's name), or null
+ * @param allowedSensitiveFields the sensitive case fields (platform-fields keys) this integration may send; any other
+ *                         sensitive field in a template is refused when saved and when sent
+ * @param settings         named settings: {@link #REQUIRED_TOKEN_CLAIMS} (claims the OAuth 2.0 token must carry,
+ *                         comma-separated), and a profile's own settings (for example {@code senderIdentity})
  */
 public record IntegrationConfig(UUID id, UUID entity, String product, Kind kind, String name, boolean enabled,
                                 Endpoint endpoint, SignIn signIn, Limits limits, List<CallStep> steps,
                                 String errorCodePointer, List<Rule> rules, HealthCheck health, TestMode testMode,
-                                boolean sendCorrelationId, String profile) {
+                                boolean sendCorrelationId, String profile, Set<String> allowedSensitiveFields,
+                                Map<String, String> settings) {
 
     public enum TestMode {
         /** Every step, with fake data, against the destination (its test entity). */
@@ -40,8 +49,12 @@ public record IntegrationConfig(UUID id, UUID entity, String product, Kind kind,
         CHECK_ONLY
     }
 
+    /** Setting: the claims the OAuth 2.0 access token must carry, comma-separated (the token must be a JWT). */
+    public static final String REQUIRED_TOKEN_CLAIMS = "token.requiredClaims";
+
     private static final Pattern PRODUCT = Pattern.compile("[A-Z][A-Z0-9_]{1,31}");
     private static final Pattern PROFILE = Pattern.compile("[a-z0-9][a-z0-9._-]{0,63}");
+    private static final Pattern SETTING = Pattern.compile("[A-Za-z][A-Za-z0-9_.-]{0,63}");
 
     public IntegrationConfig {
         Objects.requireNonNull(id, "id");
@@ -64,10 +77,40 @@ public record IntegrationConfig(UUID id, UUID entity, String product, Kind kind,
         }
         steps = steps == null ? List.of() : List.copyOf(steps);
         rules = rules == null ? List.of() : List.copyOf(rules);
+        allowedSensitiveFields = allowedSensitiveFields == null ? Set.of()
+                : java.util.Collections.unmodifiableSet(new TreeSet<>(allowedSensitiveFields));
+        Map<String, String> s = new TreeMap<>();
+        if (settings != null) {
+            settings.forEach((k, v) -> {
+                if (k == null || !SETTING.matcher(k).matches() || v == null || v.length() > 500
+                        || v.chars().anyMatch(c -> c < 0x20 || c == 0x7f)) {
+                    throw new IllegalArgumentException("A setting's name is 1-64 of A-Z a-z 0-9 _ . - and its value "
+                            + "at most 500 characters");
+                }
+                s.put(k, v);
+            });
+        }
+        settings = java.util.Collections.unmodifiableMap(s);
+    }
+
+    /** Without allowed sensitive fields or settings. */
+    public IntegrationConfig(UUID id, UUID entity, String product, Kind kind, String name, boolean enabled,
+                             Endpoint endpoint, SignIn signIn, Limits limits, List<CallStep> steps,
+                             String errorCodePointer, List<Rule> rules, HealthCheck health, TestMode testMode,
+                             boolean sendCorrelationId, String profile) {
+        this(id, entity, product, kind, name, enabled, endpoint, signIn, limits, steps, errorCodePointer, rules,
+                health, testMode, sendCorrelationId, profile, Set.of(), Map.of());
     }
 
     public Direction direction() {
         return kind.direction();
+    }
+
+    /** The claims the token must carry ({@link #REQUIRED_TOKEN_CLAIMS}), empty when none. */
+    public List<String> requiredTokenClaims() {
+        String v = settings.get(REQUIRED_TOKEN_CLAIMS);
+        if (v == null || v.isBlank()) return List.of();
+        return java.util.Arrays.stream(v.split(",")).map(String::trim).filter(x -> !x.isEmpty()).toList();
     }
 
     /** A new API push configuration, switched on, with default limits, no steps, rules or health check. */
@@ -77,63 +120,87 @@ public record IntegrationConfig(UUID id, UUID entity, String product, Kind kind,
                 Limits.DEFAULT, List.of(), null, List.of(), null, TestMode.FULL, true, null);
     }
 
+    private IntegrationConfig with(String n, boolean on, Endpoint e, SignIn s, Limits l, List<CallStep> st, String p,
+                                   List<Rule> r, HealthCheck h, TestMode t, boolean corr, String prof,
+                                   Set<String> sens, Map<String, String> set) {
+        return new IntegrationConfig(id, entity, product, kind, n, on, e, s, l, st, p, r, h, t, corr, prof, sens, set);
+    }
+
     public IntegrationConfig withEnabled(boolean on) {
-        return new IntegrationConfig(id, entity, product, kind, name, on, endpoint, signIn, limits, steps,
-                errorCodePointer, rules, health, testMode, sendCorrelationId, profile);
+        return with(name, on, endpoint, signIn, limits, steps, errorCodePointer, rules, health, testMode,
+                sendCorrelationId, profile, allowedSensitiveFields, settings);
     }
 
     public IntegrationConfig withName(String n) {
-        return new IntegrationConfig(id, entity, product, kind, n, enabled, endpoint, signIn, limits, steps,
-                errorCodePointer, rules, health, testMode, sendCorrelationId, profile);
+        return with(n, enabled, endpoint, signIn, limits, steps, errorCodePointer, rules, health, testMode,
+                sendCorrelationId, profile, allowedSensitiveFields, settings);
     }
 
     public IntegrationConfig withEndpoint(Endpoint e) {
-        return new IntegrationConfig(id, entity, product, kind, name, enabled, e, signIn, limits, steps,
-                errorCodePointer, rules, health, testMode, sendCorrelationId, profile);
+        return with(name, enabled, e, signIn, limits, steps, errorCodePointer, rules, health, testMode,
+                sendCorrelationId, profile, allowedSensitiveFields, settings);
     }
 
     public IntegrationConfig withSignIn(SignIn s) {
-        return new IntegrationConfig(id, entity, product, kind, name, enabled, endpoint, s, limits, steps,
-                errorCodePointer, rules, health, testMode, sendCorrelationId, profile);
+        return with(name, enabled, endpoint, s, limits, steps, errorCodePointer, rules, health, testMode,
+                sendCorrelationId, profile, allowedSensitiveFields, settings);
     }
 
     public IntegrationConfig withLimits(Limits l) {
-        return new IntegrationConfig(id, entity, product, kind, name, enabled, endpoint, signIn, l, steps,
-                errorCodePointer, rules, health, testMode, sendCorrelationId, profile);
+        return with(name, enabled, endpoint, signIn, l, steps, errorCodePointer, rules, health, testMode,
+                sendCorrelationId, profile, allowedSensitiveFields, settings);
     }
 
     public IntegrationConfig withSteps(List<CallStep> s) {
-        return new IntegrationConfig(id, entity, product, kind, name, enabled, endpoint, signIn, limits, s,
-                errorCodePointer, rules, health, testMode, sendCorrelationId, profile);
+        return with(name, enabled, endpoint, signIn, limits, s, errorCodePointer, rules, health, testMode,
+                sendCorrelationId, profile, allowedSensitiveFields, settings);
     }
 
     public IntegrationConfig withErrorCodePointer(String p) {
-        return new IntegrationConfig(id, entity, product, kind, name, enabled, endpoint, signIn, limits, steps,
-                p, rules, health, testMode, sendCorrelationId, profile);
+        return with(name, enabled, endpoint, signIn, limits, steps, p, rules, health, testMode, sendCorrelationId,
+                profile, allowedSensitiveFields, settings);
     }
 
     public IntegrationConfig withRules(List<Rule> r) {
-        return new IntegrationConfig(id, entity, product, kind, name, enabled, endpoint, signIn, limits, steps,
-                errorCodePointer, r, health, testMode, sendCorrelationId, profile);
+        return with(name, enabled, endpoint, signIn, limits, steps, errorCodePointer, r, health, testMode,
+                sendCorrelationId, profile, allowedSensitiveFields, settings);
     }
 
     public IntegrationConfig withHealth(HealthCheck h) {
-        return new IntegrationConfig(id, entity, product, kind, name, enabled, endpoint, signIn, limits, steps,
-                errorCodePointer, rules, h, testMode, sendCorrelationId, profile);
+        return with(name, enabled, endpoint, signIn, limits, steps, errorCodePointer, rules, h, testMode,
+                sendCorrelationId, profile, allowedSensitiveFields, settings);
     }
 
     public IntegrationConfig withTestMode(TestMode t) {
-        return new IntegrationConfig(id, entity, product, kind, name, enabled, endpoint, signIn, limits, steps,
-                errorCodePointer, rules, health, t, sendCorrelationId, profile);
+        return with(name, enabled, endpoint, signIn, limits, steps, errorCodePointer, rules, health, t,
+                sendCorrelationId, profile, allowedSensitiveFields, settings);
     }
 
     public IntegrationConfig withSendCorrelationId(boolean b) {
-        return new IntegrationConfig(id, entity, product, kind, name, enabled, endpoint, signIn, limits, steps,
-                errorCodePointer, rules, health, testMode, b, profile);
+        return with(name, enabled, endpoint, signIn, limits, steps, errorCodePointer, rules, health, testMode, b,
+                profile, allowedSensitiveFields, settings);
     }
 
     public IntegrationConfig withProfile(String p) {
-        return new IntegrationConfig(id, entity, product, kind, name, enabled, endpoint, signIn, limits, steps,
-                errorCodePointer, rules, health, testMode, sendCorrelationId, p);
+        return with(name, enabled, endpoint, signIn, limits, steps, errorCodePointer, rules, health, testMode,
+                sendCorrelationId, p, allowedSensitiveFields, settings);
+    }
+
+    /** Allows these sensitive case fields (platform-fields keys) to be sent; recorded in the version and audited. */
+    public IntegrationConfig withAllowedSensitiveFields(Set<String> keys) {
+        return with(name, enabled, endpoint, signIn, limits, steps, errorCodePointer, rules, health, testMode,
+                sendCorrelationId, profile, keys, settings);
+    }
+
+    public IntegrationConfig withSettings(Map<String, String> s) {
+        return with(name, enabled, endpoint, signIn, limits, steps, errorCodePointer, rules, health, testMode,
+                sendCorrelationId, profile, allowedSensitiveFields, s);
+    }
+
+    public IntegrationConfig withSetting(String key, String value) {
+        Map<String, String> s = new LinkedHashMap<>(settings);
+        if (value == null) s.remove(key);
+        else s.put(key, value);
+        return withSettings(s);
     }
 }

@@ -31,6 +31,7 @@
         <module>platform-erase-log-spring</module>
         <module>platform-integration</module>
         <module>platform-integration-testkit</module>
+        <module>platform-integration-profiles</module>
     </modules>
     <properties>
         <maven.compiler.release>21</maven.compiler.release>

@@ -42,6 +42,7 @@ class TestActionTest {
 
     @Test
     void fullRunSendsOnlyTheFakeDocumentAndFakeValues() {
+        fx.mock.recordValues(true);
         AttemptResult r = action.run(Fx.stored(config), "it-admin");
         assertEquals(Outcome.SENT, r.outcome(), r.toString());
         assertTrue(r.test());

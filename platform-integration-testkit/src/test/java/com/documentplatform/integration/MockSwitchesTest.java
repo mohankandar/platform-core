@@ -207,6 +207,7 @@ class MockSwitchesTest {
 
     @Test
     void recordsHeadersFieldsAndChecksumsNeverDocumentText() {
+        fx.mock.recordValues(true);
         Delivery d = Fx.delivery(1, "SECRET-DOCUMENT-TEXT-");
         AttemptResult r = fx.engine.attempt(integration, d);
         assertEquals(Outcome.SENT, r.outcome());

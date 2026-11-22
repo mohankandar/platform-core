@@ -17,4 +17,17 @@ public record HealthResult(UUID integrationId, int configVersion, Outcome outcom
     public boolean healthy() {
         return outcome == Outcome.SENT;
     }
+
+    /**
+     * Busy (a health rule mapped the answer to BUSY, for example 503 with a busy code or Retry-After): wait
+     * {@code retryAfter} when given and send fewer at once; do not pause the destination, and count no attempt.
+     */
+    public boolean busy() {
+        return outcome == Outcome.BUSY;
+    }
+
+    /** Down: neither healthy nor busy (can't connect, a timeout, an outage, sign-in or set-up fault): pause and probe. */
+    public boolean down() {
+        return !healthy() && !busy();
+    }
 }

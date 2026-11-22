@@ -9,13 +9,15 @@ import java.util.regex.Pattern;
 
 /**
  * One classification rule, as data: an answer's status and the destination's own code (and optionally one field of
- * the answer) → the result class. Rules are tried in order; the first that matches decides. For example "503 with the
- * busy code = busy, no attempt used; 503 without it = outage; AUT-004 = sign-in fault":
+ * the answer, or whether it sent Retry-After) → the result class. Rules are tried in order; the first that matches
+ * decides. For example "503 with the busy code = busy, no attempt used; 503 without it = outage; AUT-004 = sign-in
+ * fault":
  *
  * <pre>
  * Rule.of("503", "DEST-BUSY", Outcome.BUSY)
  * Rule.of("503", "-", Outcome.OUTAGE)
  * Rule.of("any", "DEST-AUT-004", Outcome.SIGN_IN_FAILED)
+ * Rule.of("503", null, Outcome.BUSY).whenRetryAfter()     // 503 with a Retry-After header
  * </pre>
  *
  * @param status       {@code any}, an exact status ({@code 503}), a class ({@code 5xx}) or a range ({@code 500-599})
@@ -26,9 +28,10 @@ import java.util.regex.Pattern;
  * @param outcome      the result class when the rule matches
  * @param platformCode optional: the platform code; else the outcome's usual one
  * @param attemptUsed  optional: whether the app should count the attempt; else the outcome's default (busy: no)
+ * @param retryAfter   optional: true = only when the answer has a Retry-After header, false = only without one
  */
 public record Rule(String status, String code, String pointer, String equals, Outcome outcome,
-                   IntegrationCode platformCode, Boolean attemptUsed) {
+                   IntegrationCode platformCode, Boolean attemptUsed, Boolean retryAfter) {
 
     private static final Pattern STATUS = Pattern.compile("any|[1-5]xx|[1-5]\\d\\d|[1-5]\\d\\d-[1-5]\\d\\d");
     private static final Pattern CODE = Pattern.compile("-|[A-Za-z0-9_.:-]{1,40}\\*?|\\*");
@@ -62,26 +65,46 @@ public record Rule(String status, String code, String pointer, String equals, Ou
         }
     }
 
+    /** Without a Retry-After condition. */
+    public Rule(String status, String code, String pointer, String equals, Outcome outcome,
+                IntegrationCode platformCode, Boolean attemptUsed) {
+        this(status, code, pointer, equals, outcome, platformCode, attemptUsed, null);
+    }
+
     public static Rule of(String status, String code, Outcome outcome) {
-        return new Rule(status, code, null, null, outcome, null, null);
+        return new Rule(status, code, null, null, outcome, null, null, null);
     }
 
     /** Also requires the answer's field at {@code pointer} to equal {@code value}. */
     public Rule whenField(String pointer, String value) {
-        return new Rule(status, code, pointer, value, outcome, platformCode, attemptUsed);
+        return new Rule(status, code, pointer, value, outcome, platformCode, attemptUsed, retryAfter);
+    }
+
+    /** Also requires a Retry-After header. */
+    public Rule whenRetryAfter() {
+        return new Rule(status, code, pointer, equals, outcome, platformCode, attemptUsed, true);
     }
 
     public Rule withPlatformCode(IntegrationCode c) {
-        return new Rule(status, code, pointer, equals, outcome, c, attemptUsed);
+        return new Rule(status, code, pointer, equals, outcome, c, attemptUsed, retryAfter);
     }
 
     public Rule withAttemptUsed(boolean used) {
-        return new Rule(status, code, pointer, equals, outcome, platformCode, used);
+        return new Rule(status, code, pointer, equals, outcome, platformCode, used, retryAfter);
     }
 
-    /** Whether the rule matches this answer. {@code json} is the parsed answer, or null when it is not JSON. */
+    /** Whether the rule matches an answer without a Retry-After header. */
     public boolean matches(int httpStatus, String destinationCode, Object json) {
+        return matches(httpStatus, destinationCode, json, false);
+    }
+
+    /**
+     * Whether the rule matches this answer. {@code json} is the parsed answer, or null when it is not JSON;
+     * {@code hasRetryAfter} whether the answer had a Retry-After header.
+     */
+    public boolean matches(int httpStatus, String destinationCode, Object json, boolean hasRetryAfter) {
         if (!statusMatches(httpStatus)) return false;
+        if (retryAfter != null && retryAfter != hasRetryAfter) return false;
         if (code != null) {
             if (code.equals("-")) {
                 if (destinationCode != null) return false;

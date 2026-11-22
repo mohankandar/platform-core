@@ -29,6 +29,14 @@
             </exclusions>
         </dependency>
 
+        <!-- Field mapping by platform-fields key: the field list (sensitive flag, type) and the delivery format
+             (platform-field-values/1). -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-fields</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <dependency>
             <groupId>com.documentplatform.platform</groupId>
             <artifactId>platform-notifications-testkit</artifactId>

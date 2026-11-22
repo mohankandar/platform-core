@@ -30,6 +30,13 @@ public enum IntegrationCode {
     INT_RESPONSE_TOO_LARGE,
     /** An answer with a status no rule covers. */
     INT_UNEXPECTED_STATUS,
+    /** The destination returned another checksum or size than was sent for a document. */
+    INT_INTEGRITY_MISMATCH,
+    /**
+     * The health check says the destination is busy (for example 503 with a busy code or Retry-After): wait and send
+     * fewer at once; it is not down, and no attempt is used.
+     */
+    INT_DESTINATION_BUSY,
 
     // ---- Could not connect ----
     INT_CANT_CONNECT,
@@ -65,6 +72,8 @@ public enum IntegrationCode {
     INT_TOKEN_CREDENTIAL_EXPIRED,
     /** The token address answered 200 with something that is not a bearer token. */
     INT_TOKEN_UNEXPECTED_REPLY,
+    /** The token lacks a claim the configuration requires, or is not a JWT whose claims can be read. */
+    INT_TOKEN_CLAIMS_MISSING,
 
     // ---- Before sending ----
     /** The integration is switched off. */
@@ -79,6 +88,12 @@ public enum IntegrationCode {
     INT_FILE_TOO_LARGE,
     /** More documents than the integration's limit. */
     INT_TOO_MANY_DOCUMENTS,
+    /** The documents together are larger than the integration's limit. */
+    INT_PACKAGE_TOO_LARGE,
+    /** A sensitive case field would be sent although the configuration does not allow that key. */
+    INT_SENSITIVE_FIELD_NOT_ALLOWED,
+    /** The delivery's case field values are not a readable platform-field-values/1 document. */
+    INT_FIELD_VALUES_INVALID,
     /** A document's content could not be read from the app. */
     INT_CONTENT_UNREADABLE,
     /** The address is not https and plain http is not allowed for this installation. */
@@ -111,6 +126,14 @@ public enum IntegrationCode {
     INT_CONFIG_SIGN_IN_NONE_OFF,
     /** Warning (not an error): sign-in NONE is in use on this on-premises installation. */
     INT_CONFIG_SIGN_IN_NONE_WARNING,
+    /** A {field:<key>} placeholder names a field the entity does not have (or no field list was given). */
+    INT_CONFIG_FIELD_UNKNOWN,
+    /** A sensitive field is mapped without being allowed for this integration, or outside a JSON body. */
+    INT_CONFIG_SENSITIVE_FIELD_NOT_ALLOWED,
+    /** A setting (profile setting, required token claims) is not valid. */
+    INT_CONFIG_SETTING_INVALID,
+    /** A multipart or integrity part of a step is not valid. */
+    INT_CONFIG_BODY_INVALID,
     INT_CONFIG_RULE_INVALID,
     INT_CONFIG_STEPS_INVALID,
     INT_CONFIG_VERSION_CONFLICT,
