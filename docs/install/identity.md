@@ -27,16 +27,18 @@ The identity tables all start with `idn_`:
 | `idn_group_grant` | Which group of your login system gets which role, per entity and product |
 | `idn_machine_binding` | Integration client bindings (version 2): which client ID of your login system may send to which entity, as which system, per product; ACTIVE or INACTIVE (never deleted). Loaded by the setup command from the client-binding file (`docs/install/setup.md` section 3a). Client IDs only, never secrets |
 | `idn_machine_binding_history` | Every version of each client binding, with who changed it |
+| `idn_grant_history` | Every grant added, removed or changed (version 3), by setup or in the app, with who, when and the setup run. Insert only: the database refuses changes and deletes, even by the schema owner |
 | `idn_schema_version` | The version of the tables |
 
 1. **Run the identity schema step as its own Flyway run,** apart from the app's other tables:
-   - location `classpath:db/platform/identity` (files `V1__identity.sql`, `V2__machine_binding.sql`; a database
-     that ran only V1 gets V2 at the next schema step, and the app refuses to start with `IDN_VERSION_OLDER` until
-     then)
+   - location `classpath:db/platform/identity` (files `V1__identity.sql`, `V2__machine_binding.sql`,
+     `V3__grant_history.sql`; a database that ran only the earlier files gets the later ones at the next schema step,
+     and the app refuses to start with `IDN_VERSION_OLDER` until then)
    - history table `idn_schema_history`
    - run it as the schema owner, in the same schema the app connects to.
 2. **Grant the app's database user** SELECT, INSERT, UPDATE and DELETE on the `idn_` tables, and SELECT on
-   `idn_schema_version`. Nothing more is needed (the history table's ID column needs no sequence grant).
+   `idn_schema_version`. Nothing more is needed (the history tables' ID columns need no sequence grant). On
+   `idn_grant_history`, SELECT and INSERT are enough; the table refuses UPDATE and DELETE anyway.
 
 If the tables are missing, at another version, or the rights are short, the app does not start. It names the exact
 problem and what to do:
@@ -95,3 +97,61 @@ windows, reports, retention timers and notification times.
   entity.value())).flatMap(EntityTimeZone::ownZone)`. Events of that entity then use its zone; events without an
   entity, and entities without their own zone, use the tenant's zone from the notification settings.
 - The runtime user needs nothing new (UPDATE on `idn_customer` and `idn_entity` is already granted).
+
+## 6. Changing the login system safely: drafts and the test sign-in
+
+Your IT Admin changes the login connection in the app's IT Admin screen without risk to the people signing in. The
+active connection keeps working the whole time; the change is prepared, tested, switched on, and can be undone.
+
+1. **Draft.** The admin starts a draft: a copy of the active connection (or, the very first time, a new one) and
+   edits it, for example a new issuer address or API audience. There is at most one draft per product.
+2. **Test sign-in.** The app then checks the draft against your login system:
+   - it reads the issuer's discovery document (`<issuer>/.well-known/openid-configuration`) and its signing keys, over
+     the same safe outbound rules as the integrations (https only, your proxy and private certificate authority if
+     set, no internal or cloud-metadata addresses, no redirects);
+   - optionally, it checks a token the admin pastes or gets from a test sign-in: its signature, issuer, the API
+     audience the product expects, that it has not expired, and that it carries the groups claim.
+
+   The token is checked and forgotten: never stored, logged or shown. A pass marks the draft **validated**; any later
+   edit makes it a draft again. A failure names the exact cause:
+
+   | Code | Means |
+   |---|---|
+   | `IDN_TEST_ISSUER_UNREACHABLE` | The discovery document could not be fetched (the reason code says why, for example `INT_TLS_FAILED` or `HTTP_404`) |
+   | `IDN_TEST_DISCOVERY_MISMATCH` | The document is not readable, or names another issuer: copy the issuer address exactly |
+   | `IDN_TEST_KEYS_MISSING` | No key address, the keys could not be fetched, or no usable signing key |
+   | `IDN_TEST_TOKEN_UNREADABLE` | The pasted text is not a signed token |
+   | `IDN_TEST_TOKEN_SIGNATURE` | The token's signature does not match the login system's keys |
+   | `IDN_TEST_TOKEN_ISSUER` | The token comes from another issuer |
+   | `IDN_TEST_AUDIENCE` | The token is not for this product's API audience |
+   | `IDN_TEST_EXPIRED` | The token has expired (or is not valid yet: check the server clock) |
+   | `IDN_TEST_GROUPS_CLAIM_MISSING` | The token carries no groups: set the login system to send them |
+
+3. **Activate.** Only a validated draft can be activated. It becomes the active connection and the old one is
+   switched off, in one step.
+4. **Rollback.** If people cannot sign in after the switch, the admin goes back: the previous active version is made
+   active again (as a new version). There must be one; drafts are left as they are.
+
+Every step is kept in `idn_login_connection_history` with who and when (source `APP`; the setup command writes
+`SETUP`). Two admins never overwrite each other: a step made on an out-of-date screen is refused
+(`IDN_VERSION_CONFLICT`); reload and try again. Other refusals: `IDN_DRAFT_EXISTS`, `IDN_NOT_VALIDATED`,
+`IDN_NOT_A_DRAFT`, `IDN_NO_PREVIOUS_CONNECTION`, `IDN_VALUES_INVALID`, `IDN_VALUES_REQUIRED`,
+`IDN_CONNECTION_UNKNOWN`, `IDN_CUSTOMER_UNKNOWN`, `IDN_HTTP_ISSUER_NOT_ALLOWED`.
+
+**Setup and the screen together.** Running setup again never touches a draft. If the admin switched to another
+connection, setup's plan shows `conflict` and leaves it, unless you run it with `--replace-connection`
+(`docs/install/setup.md` section 4).
+
+**Local test login servers.** The issuer is your login system's `https` address. Only for testing, a login server on
+the same machine may use `http` (`localhost`, `127.0.0.1` or `[::1]`), and only while the licence is a demo or test
+licence signed by a development key. Otherwise the connection is refused with `IDN_HTTP_ISSUER_NOT_ALLOWED`; a
+production release lists no development key, so there it is always refused.
+
+## 7. Grant history
+
+Every change to which group gets which role is kept in `idn_grant_history`: one row per entity and grant, with the
+customer, product, entity, the group (and its login system), the role before and after, the change (`ADDED`,
+`REMOVED`, or `CHANGED` when a group's role was swapped in one step), the source (`SETUP` or `APP`), who, when, and
+for setup the run ID (as in setup's run log). The table only grows: the database refuses to change or delete its
+rows, even for the schema owner. The app's audit page reads it per entity and period; the app's everyday database
+user is enough.

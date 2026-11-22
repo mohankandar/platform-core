@@ -129,6 +129,8 @@ public final class SetupCommand {
         String result = "REFUSED";
         String code = "";
         String keys = "-";
+        /** This run's ID: in the output, the run log and the grant history rows it writes. */
+        String runId = java.util.UUID.randomUUID().toString();
         Plan plan;
         int exit;
     }
@@ -160,11 +162,15 @@ public final class SetupCommand {
             }
             SetupInputs in = SetupInputs.load(options, flags.contains("--remove-unlisted-grants"),
                     flags.contains("--replace-connection"));
+            if (flags.contains("--no-customer-keys") && in.roles().customerKeysRequired()) {
+                throw new SetupException(SetupRefusal.SETUP_CUSTOMER_KEYS_REQUIRED, "The product-roles file for "
+                        + in.product() + " says customerKeys \"required\": --no-customer-keys is not allowed.");
+            }
             o.tenant = in.licence().tenantId();
             o.licence = in.licence().licenceId() + "/v" + in.licence().version();
             out.println("Setup " + o.action + " for product " + in.product() + ", customer " + o.tenant + ", licence "
                     + in.licence().licenceId() + " v" + in.licence().version() + " (" + in.licence().kind()
-                    + "), sign-in mode " + in.signin().mode() + ".");
+                    + "), sign-in mode " + in.signin().mode() + ", run " + o.runId + ".");
             o.exit = database(in, o, out, flags.contains("--no-customer-keys"));
         } catch (SetupException e) {
             o.code = e.code().name();
@@ -201,7 +207,7 @@ public final class SetupCommand {
         try (Connection c = ds.getConnection()) {
             c.setAutoCommit(false);
             try {
-                SetupRun run = new SetupRun(in, clock, c);
+                SetupRun run = new SetupRun(in, clock, c, o.runId);
                 plan = run.plan();
                 o.plan = plan;
                 out.println("Plan:");
@@ -315,6 +321,7 @@ public final class SetupCommand {
             o.plan.counts().forEach((a, count) -> line.append(' ').append(a.name().toLowerCase()).append('=').append(count));
         }
         if (!o.code.isEmpty()) line.append(" code=").append(o.code);
+        line.append(" run=").append(o.runId);
         if (!o.keys.equals("-")) line.append(" keys=").append(o.keys);
         line.append(System.lineSeparator());
         try {

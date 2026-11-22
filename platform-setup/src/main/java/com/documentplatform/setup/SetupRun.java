@@ -18,6 +18,7 @@ import com.documentplatform.identity.store.ConnectionChange;
 import com.documentplatform.identity.store.EntityRecord;
 import com.documentplatform.identity.store.EntityTimeZone;
 import com.documentplatform.identity.store.EntityStatus;
+import com.documentplatform.identity.store.GrantAuthor;
 import com.documentplatform.identity.store.LoginConnection;
 import com.documentplatform.identity.store.MachineBinding;
 import com.documentplatform.identity.store.MachineBindingStatus;
@@ -78,8 +79,10 @@ final class SetupRun {
     private final PostgresGroupGrantStore grants;
     private final PostgresMachineBindingStore bindings;
     private final String tenant;
+    private final String runId;
 
-    SetupRun(SetupInputs in, Clock clock, Connection c) {
+    SetupRun(SetupInputs in, Clock clock, Connection c, String runId) {
+        this.runId = runId;
         this.in = in;
         this.clock = clock;
         this.c = c;
@@ -141,9 +144,13 @@ final class SetupRun {
             }
         }
         String product = in.product();
-        p.grantsToAdd.forEach((slot, set) -> grants.add(slot, product, in.signin().issuer(), set));
-        if (in.removeUnlistedGrants()) {
-            p.grantsToRemove.forEach((slot, set) -> grants.remove(slot, product, in.signin().issuer(), set));
+        // One change per slot, so the grant history pairs a removed and an added role of one group as CHANGED.
+        GrantAuthor author = GrantAuthor.setup(CHANGED_BY, runId);
+        Set<String> slots = new TreeSet<>(p.grantsToAdd.keySet());
+        if (in.removeUnlistedGrants()) slots.addAll(p.grantsToRemove.keySet());
+        for (String slot : slots) {
+            grants.change(slot, product, in.signin().issuer(), p.grantsToAdd.getOrDefault(slot, Set.of()),
+                    in.removeUnlistedGrants() ? p.grantsToRemove.getOrDefault(slot, Set.of()) : Set.of(), author);
         }
         for (MachineBinding b : p.bindingsToInsert) {
             bindings.insertBinding(b, ChangeSource.SETUP, CHANGED_BY);
@@ -366,10 +373,14 @@ final class SetupRun {
                 version);
     }
 
-    /** The customer's connection for the product: the ACTIVE one, else the one changed last. */
+    /**
+     * The customer's connection for the product: the ACTIVE one, else the DISABLED one changed last. DRAFT and
+     * VALIDATED connections (the IT Admin's drafts in the app) are left alone.
+     */
     private Optional<LoginConnection> latestConnection(String product) throws SQLException {
         try (PreparedStatement ps = c.prepareStatement("select connection_id from idn_login_connection "
-                + "where tenant_id = ? and product_code = ? order by (status = 'ACTIVE') desc, updated_at desc limit 1")) {
+                + "where tenant_id = ? and product_code = ? and status in ('ACTIVE', 'DISABLED') "
+                + "order by (status = 'ACTIVE') desc, updated_at desc limit 1")) {
             ps.setString(1, tenant);
             ps.setString(2, product);
             try (ResultSet rs = ps.executeQuery()) {
@@ -412,11 +423,24 @@ final class SetupRun {
         for (Map.Entry<String, Set<Grant>> e : current.entrySet()) {
             if (!inFile.contains(e.getKey())) p.grantsToRemove.put(e.getKey(), e.getValue());
         }
+        // Aliases the file used: slot + grant -> the alias written; and alias -> rows, for one line per alias.
+        Map<String, String> aliasOf = new java.util.HashMap<>();
+        Map<String, Integer> aliasRows = new TreeMap<>();
+        for (MappingRow r : rows) {
+            if (r.alias() == null) continue;
+            aliasOf.put(r.slotId() + "\u0000" + r.group() + "\u0000" + r.role(), r.alias());
+            aliasRows.merge(r.alias(), 1, Integer::sum);
+        }
+        aliasRows.forEach((alias, n) -> p.add(CHECKED, "role alias \"" + alias + "\" -> " + in.roles().aliases().get(alias)
+                + " (" + n + (n == 1 ? " row" : " rows") + " of " + in.mappingName() + "; stored as "
+                + in.roles().aliases().get(alias) + ")"));
         Set<String> slots = new TreeSet<>(inFile);
         slots.addAll(p.grantsToRemove.keySet());
         for (String slot : slots) {
-            for (Grant g : p.grantsToAdd.getOrDefault(slot, Set.of())) {
-                p.add(CREATE, "grant " + slot + " " + product + ": group \"" + g.group() + "\" -> " + g.role());
+            for (Grant g : sorted(p.grantsToAdd.getOrDefault(slot, Set.of()))) {
+                String alias = aliasOf.get(slot + "\u0000" + g.group() + "\u0000" + g.role());
+                p.add(CREATE, "grant " + slot + " " + product + ": group \"" + g.group() + "\" -> "
+                        + (alias == null ? g.role() : alias + " -> " + g.role()));
             }
             for (Grant g : sorted(p.grantsToRemove.getOrDefault(slot, Set.of()))) {
                 String text = "grant " + slot + " " + product + ": group \"" + g.group() + "\" -> " + g.role()

@@ -4,6 +4,9 @@ This page tells your IT team how to set up licensing: the database tables, the i
 command you use to store your licence and its renewals. The app's own install guide says where its install config
 file is and how the licence command is started. The settings below all start with `platform.licensing`.
 
+> **Until the app turns licensing on, the licensing tables and the stored licence exist, but nothing checks the
+> allowance. Licensing is not live.**
+
 Three rules hold throughout:
 
 - **No secrets.** The app only holds our public keys. You never receive or store a private key.

@@ -5,7 +5,7 @@ Demo values only. Nothing here belongs to a real customer, login system or produ
 | File | What it is |
 |---|---|
 | `licence-demo.json` | Licence `LIC-DEMO-0001` for customer `TEN-DEMO-0001`, two entity slots, products `PRODUCT_A` and `PRODUCT_B`, kind `NON_PRODUCTION` (the apps show "Test environment"), perpetual. Signed with the **development** key `dev-demo-1`. |
-| `development-trusted-keys.json` | The development public key. Only demo and test installs list it. |
+| `development-trusted-keys.json` | The development public key, marked `"development": true`. Only demo and test installs list it; with it, setup also accepts an `http` issuer on this machine (a local test login server). |
 | `signin-demo.json` | Sign-in file (`platform-signin/1`), direct mode. No secrets. |
 | `role-mapping-product-a.csv`, `role-mapping-product-b.csv` | Role mapping per product, by slot ID. |
 | `client-bindings-product-a.csv` | Integration client bindings for `PRODUCT_A` (client ID → entity slot → source; demo client IDs, no secrets). Named in `signin-demo.json` as `clientBindingsFile`, with the product's `sources`. `PRODUCT_B` has none, so it has no machine callers. |

@@ -7,6 +7,9 @@ is already there stays as it is.
 
 This version sets up **direct sign-in**: your people sign in with your own login system (for example Okta).
 
+> **Until the app turns licensing on, the licensing tables and the stored licence exist, but nothing checks the
+> allowance. Licensing is not live.**
+
 ## 1. Before you start
 
 - The app's schema step has run for this release (licensing and identity tables, `docs/install/licensing.md` and
@@ -71,6 +74,11 @@ This version sets up **direct sign-in**: your people sign in with your own login
   (`SETUP_TIME_ZONE_SLOT_NOT_IN_LICENCE`).
 - **No secrets.** Direct sign-in needs no client secret in setup. Any field not shown above refuses the file, so a
   secret pasted in by mistake is never read or stored (the message names the field, never its value).
+- **`issuer` is your login system's `https` address,** without a query. One exception, for testing only: a local test
+  login server on the same machine may use `http`, when its host is exactly `localhost`, `127.0.0.1` or `[::1]` **and**
+  the licence is a demo or test licence signed by a development key (one marked `"development": true` in the
+  `trusted-keys.json` you were given). A production release lists no development key, so there an `http` issuer is
+  always refused (`SETUP_HTTP_ISSUER_NOT_ALLOWED`), as is any `http` address on another machine.
 
 ## 3. The role mapping file
 
@@ -83,10 +91,24 @@ ENT-…,,Finance Readers,READER
 
 - `entity_id` is the entity's slot ID from the licence (`ENT-…`). Leave `entity_name` empty: your Business Admin names
   each entity when activating it. If you do fill it in later, it must match.
-- `role` must be one of the product's roles (`product-roles.json`), written exactly.
+- `role` must be one of the product's roles (`product-roles.json`), written exactly, **or one of its aliases**. A
+  product may list other names for its roles in `product-roles.json`, for example the names your identity team
+  already uses:
+
+  ```json
+  "aliases": { "Reviewer": "READER" }
+  ```
+
+  An alias is written exactly as listed. Setup turns it into the role when it reads the file and stores the role; the
+  plan shows both (`group "Finance Readers" -> Reviewer -> READER`, and one `checked  role alias "Reviewer" -> READER`
+  line per alias used). A name that is neither a role nor an alias is refused, as before.
 - The file is the complete list of grants for this product. Grants in the database that are not in the file are
   shown in the plan as `not removed` and kept, unless you add `--remove-unlisted-grants`; then the plan shows them as
   `remove` first, and `apply` removes them.
+- **Grant history.** Every grant setup adds or removes is written to the grant history (`idn_grant_history`) in the
+  same transaction, with the setup run's ID (shown on the first line of the output and in the run log as `run=…`).
+  A group whose role changes from one role to another in one run is one `CHANGED` row. The app's audit page shows
+  the history per entity; see `docs/install/identity.md` section 7.
 
 ## 3a. The client-binding file (only if other systems send to the product)
 
@@ -214,9 +236,16 @@ bindings. Then it writes
 `platform-tenant.properties` with `platform.licensing.tenant-id`; import it in the app's config
 (`spring.config.import=optional:file:./platform-tenant.properties`).
 
-**Login connection changed in the app.** If someone changed the login connection in the app since the last setup,
-and it now differs from the sign-in file, the plan shows `conflict` and setup leaves it as it is. Add
-`--replace-connection` to replace it with the sign-in file's values.
+**Login connection changed in the app.** If someone changed the login connection in the app since the last setup
+(for example your IT Admin switched to a tested draft, `docs/install/identity.md` section 6), and it now differs from
+the sign-in file, the plan shows `conflict` and setup leaves it as it is. Add `--replace-connection` to replace the
+**active** connection's values with the sign-in file's. A draft the IT Admin is preparing in the app is never touched
+by setup, with or without the flag.
+
+**Customer keys required.** A product that keeps sensitive values says so in its `product-roles.json`
+(`"customerKeys": "required"`). For such a product, `--no-customer-keys` is refused (`SETUP_CUSTOMER_KEYS_REQUIRED`),
+whatever the licence. Without the setting (or with `"optional"`), the flag works as before. A customer set up once
+with `--no-customer-keys` gets both keys from the next run without the flag; nothing else changes.
 
 ## 5. Results
 
@@ -229,15 +258,17 @@ and it now differs from the sign-in file, the plan shows `conflict` and setup le
 
 Refusal codes: `SETUP_BAD_OPTION`, `SETUP_FILE_UNREADABLE`, `SETUP_KEYS_INVALID`, `SETUP_LICENCE_REFUSED` (with the
 licence code, for example `LICENCE_UNKNOWN_KEY_ID`), `SETUP_SIGNIN_INVALID`, `SETUP_MODE_NOT_SUPPORTED`,
-`SETUP_WRONG_TENANT`, `SETUP_PRODUCT_NOT_IN_LICENCE`, `SETUP_PRODUCT_NOT_IN_SIGNIN`, `SETUP_PRODUCT_ROLES_INVALID`,
+`SETUP_HTTP_ISSUER_NOT_ALLOWED` (section 2), `SETUP_WRONG_TENANT`, `SETUP_PRODUCT_NOT_IN_LICENCE`,
+`SETUP_PRODUCT_NOT_IN_SIGNIN`, `SETUP_PRODUCT_ROLES_INVALID` (also a bad alias or `customerKeys` value),
 `SETUP_MAPPING_INVALID` (with every bad line), `SETUP_CLIENT_BINDINGS_INVALID` (with every bad line, section 3a), `SETUP_PROFILE_INVALID` and `SETUP_PROFILE_TAG_MISSING` (section 3b),
 `SETUP_DB_SETTINGS_MISSING`, `SETUP_DB_UNREACHABLE`,
 `SETUP_TABLES_NOT_READY`, `SETUP_OTHER_CUSTOMER_INSTALLED`, `SETUP_LICENCE_OLDER`, `SETUP_LICENCE_VERSION_CONFLICT`,
-`SETUP_CONFIG_OTHER_TENANT`, `SETUP_KEY_SERVICE_SETTINGS_MISSING`, `SETUP_KEY_SERVICE_FAILED`. Failures: `SETUP_FAILED`, `SETUP_CONFIG_NOT_WRITTEN`.
+`SETUP_CONFIG_OTHER_TENANT`, `SETUP_KEY_SERVICE_SETTINGS_MISSING`, `SETUP_KEY_SERVICE_FAILED`,
+`SETUP_CUSTOMER_KEYS_REQUIRED` (section 4). Failures: `SETUP_FAILED`, `SETUP_CONFIG_NOT_WRITTEN`.
 
 Two setup runs on the same database at once never mix: the second waits for the first.
 
-The run log gets one line per run with the time, product, customer and licence IDs, the counts per action and the
+The run log gets one line per run with the time, the run ID (`run=…`, also in the grant history), product, customer and licence IDs, the counts per action and the
 code, and what happened to the customer keys (`keys=created`, `present`, `missing` after a plan, `skipped`). It
 never holds group names, secrets, the database password or the key service login.
 

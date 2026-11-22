@@ -28,7 +28,7 @@ public final class Plan {
         NOT_REMOVED("not removed"),
         /** A client binding no longer in the client-binding file: switched off (INACTIVE), never deleted. */
         SWITCH_OFF("switch off"),
-        /** An integration profile named in the sign-in file: checked, stored nowhere. */
+        /** Checked, nothing stored: an integration profile named in the sign-in file, or a role alias used. */
         CHECKED("checked");
 
         private final String label;

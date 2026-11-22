@@ -203,8 +203,10 @@ public record SigninFile(String tenantId, String mode, String loginType, URI iss
     private static URI issuer(String value) {
         try {
             URI uri = new URI(value);
-            if (!"https".equals(uri.getScheme()) || uri.getHost() == null || uri.getQuery() != null
-                    || uri.getFragment() != null || uri.getUserInfo() != null || value.length() > 2000) {
+            // http is read here and checked once the licence is known (SetupInputs: local test issuers only).
+            if (!("https".equals(uri.getScheme()) || "http".equals(uri.getScheme())) || uri.getHost() == null
+                    || uri.getQuery() != null || uri.getFragment() != null || uri.getUserInfo() != null
+                    || value.length() > 2000) {
                 throw invalid("loginSystem.issuer must be the login system's https issuer address, without query");
             }
             return uri;
