@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.documentplatform.platform</groupId>
         <artifactId>platform-core</artifactId>
-        <version>0.2.0-SNAPSHOT</version>
+        <version>0.2.0</version>
     </parent>
     <artifactId>platform-erase-log</artifactId>
     <description>The erase log (plain Java, no Spring, no required runtime dependencies), shared by the apps: one entry
