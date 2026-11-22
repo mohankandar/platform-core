@@ -68,7 +68,7 @@ client all arrive whole; a chunked body; the Basic sign-in check.
 
 **30-run proof:** `mvn -o -pl platform-integration-testkit -am test -Dtest=ProxyTest` was run 30 times in a loop: **30 of 30 passed**.
 Each run ran the class in both of the module's surefire JVMs, so that is 60 class runs and 240 test runs, with no
-failure. The CI runs above (push, PR, main) ran it again, green. Before the fix it had failed 2 times in about 10 CI
+failure. The CI runs above (push, PR, main) ran it again, green.
 
 **Merge rule** (`docs/work/README.md`, routine step 5 and release step 2): the merge is one script line that merges
 only when the checks' exit status is 0:
