@@ -164,13 +164,17 @@ The SQL files ship inside the app under `db/platform/notifications` (`V1__notifi
    No sequence rights are needed.
 3. **At startup the app checks the tables and stops if something is wrong.** The message says exactly what is wrong:
 
-   | Message starts with | What to do |
-   |---|---|
-   | `Notifications tables missing (expected version 1)` | The schema step was not run on this database schema. Run it. |
-   | `Notifications tables at version N, expected version V` | The schema step for this release was not run. Run it. |
-   | `Notifications tables at version N, newer than this app expects` | An older app release is running against an upgraded database. Install the matching release. |
-   | `Notifications tables at an unknown version` / `Notifications tables incomplete` | Tables were changed or dropped by hand. Run the schema step, or restore the database. |
-   | `The app's database user lacks …` | Grant the rights in step 2. |
+   | Code | Message starts with | What to do |
+   |---|---|---|
+   | `TABLES_MISSING` | `Notifications tables missing (expected version 1)` | The schema step was not run on this database schema. Run it. |
+   | `VERSION_OLDER` | `Notifications tables at version N, expected version V` | The schema step for this release was not run. Run it. |
+   | `VERSION_NEWER` | `Notifications tables at version N, newer than this app expects` | An older app release is running against an upgraded database. Install the matching release. |
+   | `VERSION_UNKNOWN`, `TABLES_INCOMPLETE` | `Notifications tables at an unknown version` / `Notifications tables incomplete` | Tables were changed or dropped by hand. Run the schema step, or restore the database. |
+   | `PRIVILEGES_MISSING` | `The app's database user lacks …` | Grant the rights in step 2. |
+   | `CHECK_FAILED` | `Notifications tables could not be checked` | The database refused the check; the message gives the SQL state. |
+
+   The codes are `NotificationSchemaException.Problem` values; each one's cause and fix are in
+   `docs/errors/platform-error-codes.md`.
 
 **What the tables hold:** ids, the admins' settings, and the text of outgoing messages. That text contains only the
 event name, a record number, counts, times and a link into the app. The tables hold no passwords, no webhook
