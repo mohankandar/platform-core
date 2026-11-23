@@ -349,6 +349,32 @@ class SetupIdentityChangesTest {
         assertFalse(replaced.all().contains(PASSWORD));
     }
 
+    @Test
+    void aConnectionTheAppDisabledIsAConflictUntilReplaceConnectionIsGiven() throws Exception {
+        demo();
+        Pg db = Pg.migrated();
+        assertEquals(0, run(db, "apply").exit());
+        PostgresLoginConnectionStore store = new PostgresLoginConnectionStore(db.appDataSource(PASSWORD));
+        LoginConnection setupMade = store.active(TENANT, A).orElseThrow();
+        store.update(withStatus(setupMade, IdentityConnectionStatus.DISABLED), setupMade.configurationVersion(),
+                ChangeSource.APP, "it-admin").orElseThrow();
+
+        Result conflict = run(db, "apply");
+        assertEquals(SetupCommand.EXIT_NEEDS_FLAG, conflict.exit(), conflict.all());
+        assertTrue(conflict.out().contains("conflict    login connection PRODUCT_A (version 2) was changed in the app "
+                + "since the last setup (status differ from the sign-in file); left as it is."), conflict.out());
+        assertTrue(store.active(TENANT, A).isEmpty(), "left DISABLED");
+        assertEquals(1, db.count("select count(*) from idn_login_connection"), "no second connection made");
+
+        Result replaced = run(db, "apply", "--replace-connection");
+        assertEquals(0, replaced.exit(), replaced.all());
+        assertTrue(replaced.out().contains("update      login connection PRODUCT_A (version 2) -> version 3: status "
+                + "(replaces the change made in the app)"), replaced.out());
+        LoginConnection now = store.active(TENANT, A).orElseThrow();
+        assertEquals(setupMade.connectionId(), now.connectionId(), "the same connection, ACTIVE again");
+        assertEquals(1, db.count("select count(*) from idn_login_connection"));
+    }
+
     private static LoginConnection withStatus(LoginConnection c, IdentityConnectionStatus s) {
         return new LoginConnection(c.connectionId(), c.tenantId(), c.productCode(), c.providerId(), c.providerType(),
                 c.issuer(), c.browserClientId(), c.apiAudience(), c.secretReference(), s, c.configurationVersion());
