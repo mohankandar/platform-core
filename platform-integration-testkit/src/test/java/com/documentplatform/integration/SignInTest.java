@@ -108,6 +108,30 @@ class SignInTest {
     }
 
     @Test
+    void aHeldTokenIsDroppedWhenTheClientCertificateInUseChanges() {
+        // P027 B0.2: the token is bound to the certificate in use when it was fetched (a switch by the admin, at its
+        // set time, or on another instance); with another certificate it is never used again.
+        fx.secrets.put(SecretRef.of("int/client"), "client-secret-xyz");
+        fx.mock.expectOAuth2().registerClient("sender-app", "client-secret-xyz");
+        OAuth2ClientCredentials client = OAuth2ClientCredentials.secret(fx.mock.tokenAddress(), "sender-app",
+                SecretRef.of("int/client"), null);
+        com.documentplatform.integration.signin.ClientCredentialsTokens tokens =
+                new com.documentplatform.integration.signin.ClientCredentialsTokens(
+                        new com.documentplatform.integration.http.Outbound(fx.installation), java.time.Clock.systemUTC());
+        com.documentplatform.integration.config.Limits limits =
+                com.documentplatform.integration.config.Limits.DEFAULT;
+        assertTrue(tokens.token(client, fx.secrets, limits, true, null, "aa11").ok());
+        assertTrue(tokens.token(client, fx.secrets, limits, true, null, "aa11").ok());
+        assertEquals(1, fx.mock.tokensIssued(), "held while the same certificate is in use");
+        assertTrue(tokens.token(client, fx.secrets, limits, true, null, "bb22").ok());
+        assertEquals(2, fx.mock.tokensIssued(), "the switch dropped the held token at once");
+        assertTrue(tokens.token(client, fx.secrets, limits, true, null, "bb22").ok());
+        assertEquals(2, fx.mock.tokensIssued());
+        assertTrue(tokens.token(client, fx.secrets, limits, true, null, null).ok());
+        assertEquals(3, fx.mock.tokensIssued(), "no certificate any more is a change too");
+    }
+
+    @Test
     void oauth2ClientSecretAsBasicWithAudience() {
         fx.secrets.put(SecretRef.of("int/client"), "s3cret:with&odd=chars");
         fx.mock.expectOAuth2().registerClient("sender-app", "s3cret:with&odd=chars").requireAudience("api://dest");

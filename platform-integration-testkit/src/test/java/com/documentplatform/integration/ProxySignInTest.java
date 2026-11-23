@@ -10,7 +10,6 @@ import com.documentplatform.integration.result.AttemptResult;
 import com.documentplatform.integration.result.Outcome;
 import com.documentplatform.integration.safety.AddressGuard;
 import com.documentplatform.integration.safety.Installation;
-import com.documentplatform.integration.safety.JvmProxySignIn;
 import com.documentplatform.integration.safety.ProxySettings;
 import com.documentplatform.integration.testkit.MockDestination;
 import com.documentplatform.integration.testkit.MockProxy;
@@ -72,13 +71,6 @@ class ProxySignInTest {
     }
 
     @Test
-    void thisJvmDisablesBasicForTunnelsByDefault() {
-        // The default run has no start option: the JDK's own conf/net.properties disables Basic for CONNECT.
-        assertTrue(JvmProxySignIn.current().basicDisabledForTunnels());
-        assertFalse(JvmProxySignIn.current().basicDisabledForProxying());
-    }
-
-    @Test
     void rightCredentialsGoToTheProxyOnlyAndTheCallsArrive() {
         try (CallEngine engine = engine(withSignIn())) {
             AttemptResult r = engine.attempt(Fx.stored(config(mock.addressByName())), Fx.delivery(2));
@@ -133,24 +125,16 @@ class ProxySignInTest {
 
     @Test
     void httpsThroughAProxyWithSignInNeedsNoJvmOption() {
-        // P026: the HTTP client sends the proxy sign-in on CONNECT itself; the JVM's disabled schemes do not apply.
-        assertTrue(JvmProxySignIn.current().basicDisabledForTunnels(), "this JVM has the JDK's default");
+        // The HTTP client sends the proxy sign-in on CONNECT itself (this JVM keeps the JDK's default, which
+        // disables Basic for tunnels in the JDK's own client); no start option is needed.
         try (CallEngine engine = engine(withSignIn())) {
             AttemptResult r = engine.attempt(Fx.stored(config(URI.create("https://localhost:" + mock.port()))),
                     Fx.delivery(1));
-            assertNotEquals(IntegrationCode.INT_PROXY_SIGN_IN_DISABLED_BY_JVM, r.code());
             assertNotEquals(IntegrationCode.INT_PROXY_SIGN_IN_REFUSED, r.code());
         }
         assertEquals(1, proxy.targets().size(), "the CONNECT went to the proxy");
         assertEquals(1, proxy.signInsAccepted(), "with the sign-in, at once");
         assertEquals(0, proxy.signInsRefused());
-        // The old constructor still compiles; its JVM answer is not used.
-        Installation i = Installation.onPremises().withInternalAddresses(true).withProxy(withSignIn());
-        try (CallEngine engine = new CallEngine(new Outbound(i, new AddressGuard(true), secrets,
-                new JvmProxySignIn(true, true)), secrets, Clock.systemUTC())) {
-            engine.attempt(Fx.stored(config(URI.create("https://localhost:" + mock.port()))), Fx.delivery(1));
-        }
-        assertEquals(2, proxy.targets().size());
     }
 
     @Test

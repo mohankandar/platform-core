@@ -190,7 +190,7 @@ class NoSecretsInLogsTest {
                         java.net.URI.create("https://localhost:" + fx.mock.port()), true));
                 outputs.add(engine.attempt(Fx.stored(https), d).toString());
                 outputs.add(new com.documentplatform.integration.http.Outbound.Failure(
-                        IntegrationCode.INT_PROXY_SIGN_IN_DISABLED_BY_JVM).getMessage());
+                        IntegrationCode.INT_PROXY_SIGN_IN_REFUSED).getMessage());
             }
         }
 
