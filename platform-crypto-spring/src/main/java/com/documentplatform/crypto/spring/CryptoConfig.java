@@ -47,6 +47,12 @@ record CryptoConfig(URI address, String namespace, VaultAuth auth, Duration time
                         || address.getHost() == null) {
                     problems.add(prefix + "address must be an http or https address with a host");
                     address = null;
+                } else if ("http".equals(address.getScheme()) && !java.util.Set.of("localhost", "127.0.0.1", "[::1]")
+                        .contains(address.getHost())) {
+                    // P044, SEC-30: the token, the AppRole secret and unwrapped data keys never cross a network in clear.
+                    problems.add(prefix + "address must be https; plain http only to this machine (localhost, "
+                            + "127.0.0.1, [::1])");
+                    address = null;
                 }
             } catch (IllegalArgumentException e) {
                 problems.add(prefix + "address is not a valid address");

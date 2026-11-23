@@ -297,9 +297,11 @@ public final class VaultClient implements AutoCloseable {
         if (body != null) {
             b.header("Content-Type", "application/json");
         }
-        HttpResponse<String> response;
+        HttpResponse<java.io.InputStream> response;
+        String text;
         try {
-            response = http.send(b.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            response = http.send(b.build(), HttpResponse.BodyHandlers.ofInputStream());
+            text = limited(response.body());
         } catch (HttpConnectTimeoutException | ConnectException e) {
             throw unreachable(e);
         } catch (HttpTimeoutException e) {
@@ -314,7 +316,6 @@ public final class VaultClient implements AutoCloseable {
             throw new CryptoException(CryptoError.CRYPTO_KEY_SERVICE_UNREACHABLE, "interrupted while calling "
                     + where());
         }
-        String text = response.body();
         Map<String, Object> json;
         if (text == null || text.isBlank()) {
             json = Map.of();
@@ -349,6 +350,30 @@ public final class VaultClient implements AutoCloseable {
                 + "; add Vault's CA certificate to the Java trust store");
     }
 
+    /** The most of a reply read (SEC-48): a Vault answer is a few KiB; anything larger is not Vault's. */
+    static final int MAX_REPLY = 1024 * 1024;
+
+    private String limited(java.io.InputStream in) throws IOException {
+        try (in) {
+            byte[] b = in.readNBytes(MAX_REPLY + 1);
+            if (b.length > MAX_REPLY) {
+                throw new CryptoException(CryptoError.CRYPTO_KEY_SERVICE_ERROR, "the reply from " + where()
+                        + " is larger than " + MAX_REPLY + " bytes: is the address Vault's?");
+            }
+            return new String(b, StandardCharsets.UTF_8);
+        }
+    }
+
+    /**
+     * Whether {@code address} is plain http to this machine: the only http allowed (P044, SEC-30), so a token, an
+     * AppRole secret or an unwrapped data key never crosses a network in clear.
+     */
+    static boolean localHttp(URI address) {
+        String h = address.getHost();
+        return "http".equals(address.getScheme()) && h != null
+                && (h.equals("localhost") || h.equals("127.0.0.1") || h.equals("[::1]") || h.equals("::1"));
+    }
+
     private static URI checkAddress(URI address) {
         if (address == null) {
             throw new CryptoException(CryptoError.CRYPTO_SETTINGS_INVALID, "the Vault address is missing");
@@ -358,6 +383,10 @@ public final class VaultClient implements AutoCloseable {
                 || address.getRawUserInfo() != null || address.getRawQuery() != null) {
             throw new CryptoException(CryptoError.CRYPTO_SETTINGS_INVALID,
                     "the Vault address must be http(s)://host[:port]");
+        }
+        if (scheme.equals("http") && !localHttp(address)) {
+            throw new CryptoException(CryptoError.CRYPTO_SETTINGS_INVALID, "the Vault address must be https; plain "
+                    + "http only to this machine (localhost, 127.0.0.1, [::1])");
         }
         String s = address.toString();
         while (s.endsWith("/")) {

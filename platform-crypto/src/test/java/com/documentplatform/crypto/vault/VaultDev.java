@@ -94,10 +94,27 @@ final class VaultDev {
                 .flatMap(d -> VaultJson.string(d, "secret_id")).orElseThrow();
     }
 
+    /** A new token with only the given policies, without Vault's default policy (no sys/capabilities-self). */
+    static String tokenWithoutDefaultPolicy(String... policies) {
+        StringBuilder list = new StringBuilder();
+        for (String p : policies) {
+            list.append(list.isEmpty() ? "" : ",").append('"').append(p).append('"');
+        }
+        Map<String, Object> r = root("POST", "/v1/auth/token/create", "{\"policies\":[" + list + "],\"ttl\":\"1h\","
+                + "\"no_default_policy\":true}");
+        return VaultJson.object(r, "auth").flatMap(a -> VaultJson.string(a, "client_token")).orElseThrow();
+    }
+
     /** The HTTP status Vault answers to one call with the given token (nothing else sent). */
     static int statusWithToken(String method, String path, String token) {
+        return statusWithToken(method, path, token, null);
+    }
+
+    /** The HTTP status Vault answers to one call with the given token and JSON body. */
+    static int statusWithToken(String method, String path, String token, String body) {
         HttpRequest r = HttpRequest.newBuilder(URI.create(address() + path)).header("X-Vault-Token", token)
-                .method(method, HttpRequest.BodyPublishers.noBody()).build();
+                .method(method, body == null ? HttpRequest.BodyPublishers.noBody()
+                        : HttpRequest.BodyPublishers.ofString(body)).build();
         try {
             return HTTP.send(r, HttpResponse.BodyHandlers.discarding()).statusCode();
         } catch (IOException e) {

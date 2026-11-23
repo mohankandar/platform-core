@@ -49,7 +49,7 @@ class KeyDestructionVaultTest {
     static VaultKeyService setup;
     static VaultClient appClient;
     static VaultKeyService app;
-    /** The offboarding run's login: the set-up and offboard policies. */
+    /** The offboarding run's login: the offboard policy only (P044). */
     static VaultClient offboardClient;
     static VaultKeyService offboard;
 
@@ -57,8 +57,7 @@ class KeyDestructionVaultTest {
     static void start() {
         setupClient = new VaultClient(VaultDev.address(), VaultAuth.token(VaultDev.token("platform-crypto-setup")));
         setup = new VaultKeyService(setupClient);
-        offboardClient = new VaultClient(VaultDev.address(), VaultAuth.token(VaultDev.token("platform-crypto-setup",
-                "platform-crypto-offboard")));
+        offboardClient = new VaultClient(VaultDev.address(), VaultAuth.token(VaultDev.token("platform-crypto-offboard")));
         offboard = new VaultKeyService(offboardClient);
         appClient = new VaultClient(VaultDev.address(), null,
                 VaultAuth.appRole("approle", VaultDev.roleId(), VaultDev.newSecretId()), Duration.ofSeconds(10));
@@ -199,7 +198,7 @@ class KeyDestructionVaultTest {
         CustomerId c = CustomerId.fromTenantId(tenant);
         setup.createKeys(c);
         String sealed = new ValueCipher(app).seal(c, "f", PLAIN);
-        String token = VaultDev.token("platform-crypto-setup", "platform-crypto-offboard");
+        String token = VaultDev.token("platform-crypto-offboard");
         Map<String, String> env = new HashMap<>();
         env.put("PLATFORM_SETUP_VAULT_ADDR", VaultDev.address().toString());
         env.put("PLATFORM_SETUP_VAULT_TOKEN", token);
