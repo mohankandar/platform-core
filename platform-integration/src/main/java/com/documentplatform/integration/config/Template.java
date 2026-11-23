@@ -81,7 +81,7 @@ public final class Template {
     }
 
     /** The template cannot be used; says which placeholder (by name, never a value). */
-    public static final class Problem extends Exception {
+    public static final class Problem extends Exception implements com.documentplatform.errors.HasPlatformCode {
         private final IntegrationCode code;
         private final String placeholder;
 
@@ -92,6 +92,12 @@ public final class Template {
         }
 
         public IntegrationCode code() {
+            return code;
+        }
+
+        /** The code, for monitoring and the app's error handler ({@code HasPlatformCode}). */
+        @Override
+        public com.documentplatform.errors.PlatformCode platformCode() {
             return code;
         }
 

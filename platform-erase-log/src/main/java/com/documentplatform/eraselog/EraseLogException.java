@@ -9,7 +9,7 @@ import java.util.Optional;
  * neutral reasons only, never a value. No cause is attached, so nothing a store or handler carried can leak through a
  * stack trace.
  */
-public final class EraseLogException extends RuntimeException {
+public final class EraseLogException extends RuntimeException implements com.documentplatform.errors.HasPlatformCode {
 
     private final EraseLogError code;
     private final String handlerCode;
@@ -25,6 +25,12 @@ public final class EraseLogException extends RuntimeException {
     }
 
     public EraseLogError code() {
+        return code;
+    }
+
+    /** The code, for monitoring and the app's error handler ({@code HasPlatformCode}). */
+    @Override
+    public com.documentplatform.errors.PlatformCode platformCode() {
         return code;
     }
 

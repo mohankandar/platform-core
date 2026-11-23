@@ -165,7 +165,7 @@ public final class EraseReplay {
                 return;
             } catch (RuntimeException x) {
                 failure = "entry " + e.seq() + " could not be checked (" + x.getClass().getSimpleName() + ")";
-                failureCode = "ERASE_HANDLER_ERROR";
+                failureCode = EraseLogError.ERASE_HANDLER_ERROR.name();
                 return;
             }
             count++;

@@ -9,7 +9,7 @@ import java.util.Objects;
  * {@link #fieldNumber()} says which (1 = first) and {@link #fieldCode()} which rule it breaks. Messages name positions,
  * members and rules, never content.
  */
-public final class FieldFileException extends IllegalArgumentException {
+public final class FieldFileException extends IllegalArgumentException implements com.documentplatform.errors.HasPlatformCode {
 
     public enum Code implements com.documentplatform.errors.PlatformCode {
         /** Not JSON of the strict subset used (no null, whole numbers only, no repeated members). */
@@ -38,6 +38,12 @@ public final class FieldFileException extends IllegalArgumentException {
     }
 
     public Code code() {
+        return code;
+    }
+
+    /** The code, for monitoring and the app's error handler ({@code HasPlatformCode}). */
+    @Override
+    public com.documentplatform.errors.PlatformCode platformCode() {
         return code;
     }
 

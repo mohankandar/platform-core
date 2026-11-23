@@ -3,7 +3,7 @@ package com.documentplatform.licensing;
 import java.util.Objects;
 
 /** A last-seen reset was refused. Message: code, meaning, exact cause (IDs and times only). */
-public class ResetException extends RuntimeException {
+public class ResetException extends RuntimeException implements com.documentplatform.errors.HasPlatformCode {
 
     private final ResetRefusal code;
 
@@ -13,6 +13,12 @@ public class ResetException extends RuntimeException {
     }
 
     public ResetRefusal code() {
+        return code;
+    }
+
+    /** The code, for monitoring and the app's error handler ({@code HasPlatformCode}). */
+    @Override
+    public com.documentplatform.errors.PlatformCode platformCode() {
         return code;
     }
 }

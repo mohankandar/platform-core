@@ -8,7 +8,7 @@ import java.util.Objects;
  *
  * <p>Deliberately not an {@link IllegalArgumentException}, so that callers parsing input cannot swallow it by accident.
  */
-public final class IdentityAdmissionException extends RuntimeException {
+public final class IdentityAdmissionException extends RuntimeException implements com.documentplatform.errors.HasPlatformCode {
 
     /** Why the admission was refused. Lets products choose a status and a safe message per reason. */
     public enum Reason implements com.documentplatform.errors.PlatformCode {
@@ -54,6 +54,12 @@ public final class IdentityAdmissionException extends RuntimeException {
     }
 
     public Reason reason() {
+        return reason;
+    }
+
+    /** The code, for monitoring and the app's error handler ({@code HasPlatformCode}). */
+    @Override
+    public com.documentplatform.errors.PlatformCode platformCode() {
         return reason;
     }
 }

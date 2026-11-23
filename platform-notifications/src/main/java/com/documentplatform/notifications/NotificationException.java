@@ -6,7 +6,7 @@ import java.util.Objects;
  * A catalogue, setting or event was refused. The message names the rule, never the refused value, so it is safe for
  * logs.
  */
-public final class NotificationException extends RuntimeException {
+public final class NotificationException extends RuntimeException implements com.documentplatform.errors.HasPlatformCode {
 
     /** Why it was refused. Stable: apps may map each reason to their own screen message. */
     public enum Reason implements com.documentplatform.errors.PlatformCode {
@@ -52,6 +52,12 @@ public final class NotificationException extends RuntimeException {
     }
 
     public Reason reason() {
+        return reason;
+    }
+
+    /** The code, for monitoring and the app's error handler ({@code HasPlatformCode}). */
+    @Override
+    public com.documentplatform.errors.PlatformCode platformCode() {
         return reason;
     }
 }

@@ -14,7 +14,7 @@ import java.util.UUID;
 public interface IntegrationStore {
 
     /** Thrown when another change was saved first, or the integration already exists or is unknown. */
-    final class Conflict extends RuntimeException {
+    final class Conflict extends RuntimeException implements com.documentplatform.errors.HasPlatformCode {
         private final com.documentplatform.integration.IntegrationCode code;
 
         public Conflict(com.documentplatform.integration.IntegrationCode code) {
@@ -23,6 +23,12 @@ public interface IntegrationStore {
         }
 
         public com.documentplatform.integration.IntegrationCode code() {
+            return code;
+        }
+
+        /** The code, for monitoring and the app's error handler ({@code HasPlatformCode}). */
+        @Override
+        public com.documentplatform.errors.PlatformCode platformCode() {
             return code;
         }
     }

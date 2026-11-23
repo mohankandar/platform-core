@@ -116,7 +116,7 @@ public final class Outbound implements AutoCloseable {
     }
 
     /** The call could not be made or got no answer. */
-    public static final class Failure extends Exception {
+    public static final class Failure extends Exception implements com.documentplatform.errors.HasPlatformCode {
         private final OutboundCode code;
 
         public Failure(OutboundCode code) {
@@ -125,6 +125,12 @@ public final class Outbound implements AutoCloseable {
         }
 
         public OutboundCode code() {
+            return code;
+        }
+
+        /** The code, for monitoring and the app's error handler ({@code HasPlatformCode}). */
+        @Override
+        public com.documentplatform.errors.PlatformCode platformCode() {
             return code;
         }
     }

@@ -36,13 +36,15 @@ class CatalogueTest {
     /** A code enum's name: …Code, …Refusal, …Error, …Problem, …Reason, or the Result of an …Outcome. */
     static final Pattern CODE_NAME = Pattern.compile(".*(Code|Refusal|Error|Problem|Reason|Outcome\\$Result)$");
 
+    static List<Class<?>> classes;
     static List<Class<?>> enums;
     static Catalogue catalogue;
 
     @BeforeAll
     @SuppressWarnings("unchecked")
     static void scan() throws Exception {
-        enums = platformEnums();
+        classes = platformClasses();
+        enums = classes.stream().filter(Class::isEnum).toList();
         List<Class<? extends PlatformCode>> codes = new ArrayList<>();
         for (Class<?> e : enums) {
             if (PlatformCode.class.isAssignableFrom(e)) codes.add((Class<? extends PlatformCode>) e);
@@ -54,13 +56,69 @@ class CatalogueTest {
     void everyCodeEnumImplementsThePlatformCodeShape() {
         List<String> missing = new ArrayList<>();
         for (Class<?> e : enums) {
-            if (CODE_NAME.matcher(e.getName()).matches() && !INTERNAL.contains(e.getName())
+            // A code enum by its name, or by having texts next to it (error-codes-9: the name pattern alone misses one).
+            boolean hasTexts = e.getResource(e.getSimpleName() + ".codes.properties") != null;
+            if ((CODE_NAME.matcher(e.getName()).matches() || hasTexts) && !INTERNAL.contains(e.getName())
                     && !PlatformCode.class.isAssignableFrom(e)) {
                 missing.add(e.getName());
             }
         }
         assertEquals(List.of(), missing, "code enums that do not implement PlatformCode");
         assertTrue(catalogue.entries().size() > 550, "found " + catalogue.entries().size() + " codes");
+    }
+
+    /**
+     * xc-catalogue-3, error-codes-9 (P037): the check sees every module. Every module of the root {@code <modules>}
+     * except the BOM, the testkits and this one is a dependency of this module, so a new module cannot be left out.
+     */
+    @Test
+    void everyPlatformModuleIsOnTheCataloguesClasspath() throws IOException {
+        String root = Files.readString(Path.of("../pom.xml"), StandardCharsets.UTF_8);
+        String own = Files.readString(Path.of("pom.xml"), StandardCharsets.UTF_8);
+        String modules = root.substring(root.indexOf("<modules>"), root.indexOf("</modules>"));
+        java.util.regex.Matcher m = Pattern.compile("<module>([^<]+)</module>").matcher(modules);
+        List<String> missing = new ArrayList<>();
+        int checked = 0;
+        while (m.find()) {
+            String module = m.group(1).strip();
+            if (module.equals("platform-bom") || module.endsWith("-testkit") || module.equals("platform-error-catalogue")) {
+                continue;
+            }
+            checked++;
+            if (!own.contains("<artifactId>" + module + "</artifactId>")) missing.add(module);
+        }
+        assertEquals(List.of(), missing, "modules missing from platform-error-catalogue/pom.xml");
+        assertTrue(checked >= 20, "read " + checked + " modules");
+    }
+
+    /**
+     * xc-catalogue-18 (P037): an exception that carries a code ({@code code()} or {@code reason()} returning a
+     * {@link PlatformCode}) implements {@link com.documentplatform.errors.HasPlatformCode}, so monitoring and the
+     * app's error handler read the real code in one generic way.
+     */
+    @Test
+    void everyExceptionThatCarriesACodeImplementsHasPlatformCode() {
+        List<String> missing = new ArrayList<>();
+        int carrying = 0;
+        for (Class<?> c : classes) {
+            if (!Throwable.class.isAssignableFrom(c)) continue;
+            boolean carries = false;
+            for (String accessor : List.of("code", "reason")) {
+                try {
+                    java.lang.reflect.Method m = c.getMethod(accessor);
+                    if (PlatformCode.class.isAssignableFrom(m.getReturnType())) carries = true;
+                } catch (NoSuchMethodException none) {
+                    // no such accessor
+                } catch (Throwable notLoadable) {
+                    // an optional dependency is missing: skipped like platformClasses does
+                }
+            }
+            if (!carries) continue;
+            carrying++;
+            if (!com.documentplatform.errors.HasPlatformCode.class.isAssignableFrom(c)) missing.add(c.getName());
+        }
+        assertEquals(List.of(), missing, "exceptions that carry a PlatformCode but do not implement HasPlatformCode");
+        assertTrue(carrying >= 18, "found " + carrying + " code-carrying exceptions");
     }
 
     @Test
@@ -86,8 +144,8 @@ class CatalogueTest {
         assertEquals(catalogue.json(), Files.readString(json, StandardCharsets.UTF_8).replace("\r\n", "\n"), stale);
     }
 
-    /** Every enum under com.documentplatform on the test classpath (the platform modules' classes and jars). */
-    static List<Class<?>> platformEnums() throws IOException, URISyntaxException {
+    /** Every class under com.documentplatform on the test classpath (the platform modules' classes and jars). */
+    static List<Class<?>> platformClasses() throws IOException, URISyntaxException {
         Set<String> names = new TreeSet<>();
         for (URL root : Collections.list(CatalogueTest.class.getClassLoader().getResources("com/documentplatform"))) {
             if (root.getProtocol().equals("jar")) {
@@ -113,7 +171,7 @@ class CatalogueTest {
             if (n.matches(".*\\$\\d+.*") || n.contains(".catalogue.")) continue;
             try {
                 Class<?> c = Class.forName(n, false, CatalogueTest.class.getClassLoader());
-                if (c.isEnum()) out.add(c);
+                out.add(c);
             } catch (Throwable notLoadable) {
                 // optional dependencies of a class are not on this classpath: not a code enum
             }

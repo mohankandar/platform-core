@@ -38,7 +38,7 @@ public final class CredentialFiles {
     public static final int MAX_BYTES = 32 * 1024;
 
     /** Why a file could not be read. */
-    public static final class Unusable extends Exception {
+    public static final class Unusable extends Exception implements com.documentplatform.errors.HasPlatformCode {
         private final IntegrationCode code;
 
         Unusable(IntegrationCode code) {
@@ -47,6 +47,12 @@ public final class CredentialFiles {
         }
 
         public IntegrationCode code() {
+            return code;
+        }
+
+        /** The code, for monitoring and the app's error handler ({@code HasPlatformCode}). */
+        @Override
+        public com.documentplatform.errors.PlatformCode platformCode() {
             return code;
         }
     }
