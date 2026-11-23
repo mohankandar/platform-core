@@ -28,7 +28,7 @@ Note says so.
 | ID | Rule | Status | Code | Test | Note |
 |---|---|---|---|---|---|
 | notifications-2 | Rule 1: each app registers eligible event types; the customer switches them on | DONE | `N/EventCatalogue.java` `Builder.register`; `N/NotificationSettings.java` `setTechnicalEvent` / `setBusinessEvent` | `K/EventCatalogueTest.java` `registersTypesInOrderAndFindsThem`; `K/NotificationSettingsTest.java` `defaultsApplyUntilAnAdminSavesSettings` | |
-| notifications-3 | Rule 1: events added/removed in later releases; saved data for a removed type is ignored | UNTESTED | `N/Notifier.java` `queueSummary` (`catalogue.find(...).ifPresent`); `N/ConditionTracker.java` `due` (skips removed types) | none removes a type between two catalogues | see also notifications-70 |
+| notifications-3 | Rule 1: events added/removed in later releases; saved data for a removed type is ignored | DONE (P037, 77e6652) | `N/Notifier.java` `queueSummary` (`catalogue.find(...).ifPresent`); `N/ConditionTracker.java` `due` (skips removed types) | none removes a type between two catalogues | see also notifications-70 |
 | notifications-4 | Rule 2: recipients are roles; e-mail to role holders, Teams/Slack to the assigned webhook | DONE | `N/Notifier.java` `route`, `send` | `K/RoutingTest.java` `enabledImmediateEventGoesByEmailToTheRoleHoldersOfItsEntity`, `webhooksPostToTheAssignedChannelWithoutRecipients` | |
 | notifications-5 | Rule 3: technical events set per tenant, business events per entity | DONE | `N/NotificationSettings.java` `setTechnicalEvent`, `setBusinessEvent` (`WRONG_SETTINGS_LEVEL`) | `K/NotificationSettingsTest.java` `itAdminSetsTechnicalEventsForTheTenant`, `businessAdminSetsBusinessEventsPerEntity`, `levelsAreKeptApart` | |
 | notifications-6 | Rule 3: only the IT Admin / Business Admin may change their settings | APP-SIDE | — | — | the app's settings screens check the caller's role (class javadoc of `NotificationSettings`) |
@@ -237,7 +237,7 @@ connector hosts; the startup error header and example lines).
 ## Gaps
 | ID | Rule | What is missing | Sev | Proposed fix (one line) | Size |
 |---|---|---|---|---|---|
-| notifications-3 | Removed event types ignored | no test removes a type between two catalogues (settings, summaries, conditions) | C | test: build a second catalogue without a type and check buckets / conditions / settings for it are dropped | S |
+| notifications-3 | Removed event types ignored | no test removes a type between two catalogues (settings, summaries, conditions) | C · **FIXED in P037 (77e6652)** | test: build a second catalogue without a type and check buckets / conditions / settings for it are dropped | S |
 | notifications-10 | No personal opt-out | absence only | C | accept as structural; no action | S |
 | notifications-51 / -72 | A2 / B1 XOAUTH2 "still open" | doc stale after P015; Google mail OAuth not built and not stated | C | edit A2 / B1 to "Microsoft 365 decided and built in P015; Google not supported" | S |
 | notifications-54 | JVM proxy settings used | no test through a proxy; token client's proxy behaviour unstated | C | test webhook send through `MockProxy`-like CONNECT proxy via JVM properties; state token-client proxy rule | S |
@@ -266,5 +266,5 @@ connector hosts; the startup error header and example lines).
 | install-notifications-4 | Proxy for the Microsoft 365 token client | not stated | C | say whether `https.proxyHost` applies to `login.microsoftonline.com` too | S |
 | install-notifications-5 | `teams.<id>` wording | ambiguous | C | "key = destination id, value = path of the secret" | S |
 | xc-names-1 | No product names in docs | `docs/design/notifications.md` sections 1 and 3 name the two apps; the guard does not scan `docs/design/` | C | replace with "the apps" or a neutral label; decide whether the guard should cover `docs/design/` | S |
-| xc-catalogue-1 | Codes use `{placeholders}` (P032) | `FailureCode.codes.properties` causes keep `%s` (e.g. `WEBHOOK_ADDRESS_INVALID.cause=%s webhook address no longer valid`), shown raw in the catalogue | C | write `{channel}` in the properties and fill it in `describe` | S |
-| xc-catalogue-2 | Every refusal is a code | `NotificationsConfigException` ("Notifications configuration is not valid: …") and the missing-bean messages are not `PlatformCode`s (P032 question 2) | B | give the settings problems a `NOTIF_SETTINGS_INVALID` code with the per-key lines as details | S |
+| xc-catalogue-1 | Codes use `{placeholders}` (P032) | `FailureCode.codes.properties` causes keep `%s` (e.g. `WEBHOOK_ADDRESS_INVALID.cause=%s webhook address no longer valid`), shown raw in the catalogue | C · **FIXED in P037 (77e6652)** | write `{channel}` in the properties and fill it in `describe` | S |
+| xc-catalogue-2 | Every refusal is a code | `NotificationsConfigException` ("Notifications configuration is not valid: …") and the missing-bean messages are not `PlatformCode`s (P032 question 2) | B · **FIXED in P037 (2a21e26)** | give the settings problems a `NOTIF_SETTINGS_INVALID` code with the per-key lines as details | S |

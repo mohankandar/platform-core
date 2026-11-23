@@ -339,7 +339,7 @@ records contents, `ISSUE_VAULT_NO_TOKEN`, `_LOGIN_REFUSED`, `_PERMISSION_DENIED`
 | licensing-23 | Clock rollback as tampering | Superseded by O1; code follows | C | Strike the old sentence (pointer already there) | S |
 | licensing-33 | Issuing from an input file | Built from options | C | Say "from command options" in section 5 | S |
 | licensing-41 | Setup never deletes | Later setup decisions remove grants / switch bindings off on request | C | Point section 6 to setup.md's rules | S |
-| licensing-93 … licensing-105 | P010 and P011 decisions (expected tenant, broken row, version rules, reset use, tolerance cap, health codes, `LicensingClock`, notification timing, bands, handover, keys, usage levels, purge / catalogue / release date) | Only in the reports; the design body just points to them | C | Write them into section 8 of licensing.md | M |
+| licensing-93 … licensing-105 | P010 and P011 decisions (expected tenant, broken row, version rules, reset use, tolerance cap, health codes, `LicensingClock`, notification timing, bands, handover, keys, usage levels, purge / catalogue / release date) | Only in the reports; the design body just points to them | C · **FIXED in P037 (c3fa330)** | Write them into section 8 of licensing.md | M |
 | licensing-file-format-45 | `"development": true` in the trusted-keys format | Not in section 3 | C | Add the optional field to section 3 | S |
 | install-licensing-1 | `product-code` required | Guide does not say required | C | Mark it required in the guide | S |
 | install-licensing-2 | `clock-tolerance` at most 1 day | Not in the guide | C | Add the limit | S |
