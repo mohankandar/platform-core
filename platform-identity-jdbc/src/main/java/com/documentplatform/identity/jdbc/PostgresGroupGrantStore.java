@@ -6,6 +6,7 @@ import com.documentplatform.identity.store.GrantAuthor;
 import com.documentplatform.identity.store.GrantStep;
 import com.documentplatform.identity.store.GroupGrantStore;
 import com.documentplatform.identity.store.LoginConnection;
+import com.documentplatform.identity.store.PlatformGrantStore;
 
 import javax.sql.DataSource;
 import java.net.URI;
@@ -24,10 +25,11 @@ import java.util.TreeMap;
 import java.util.UUID;
 
 /**
- * {@link GroupGrantStore} on table {@code idn_group_grant}. Every change writes the grant history
+ * {@link GroupGrantStore} on table {@code idn_group_grant} and, since identity V4, {@link PlatformGrantStore} on
+ * {@code idn_platform_grant} (platform-wide grants). Every change writes the grant history
  * ({@code idn_grant_history}) in the same transaction. DML only.
  */
-public final class PostgresGroupGrantStore implements GroupGrantStore {
+public final class PostgresGroupGrantStore implements GroupGrantStore, PlatformGrantStore {
 
     private final Db db;
 
@@ -167,5 +169,89 @@ public final class PostgresGroupGrantStore implements GroupGrantStore {
                 return new Slot(rs.getString(1), rs.getObject(2, UUID.class));
             }
         }
+    }
+
+    // ---- platform-wide grants (identity V4)
+
+    @Override
+    public Set<Grant> platformGrants(String tenantId, String productCode, URI issuer) {
+        EntityUuid.requireTenantId(tenantId);
+        LoginConnection.requireProductCode(productCode);
+        Objects.requireNonNull(issuer, "issuer");
+        return db.read("read platform grants", c -> {
+            Set<Grant> out = new LinkedHashSet<>();
+            try (PreparedStatement ps = c.prepareStatement("select external_group, role from idn_platform_grant "
+                    + "where tenant_id = ? and product_code = ? and issuer_uri = ? order by external_group, role")) {
+                ps.setString(1, tenantId);
+                ps.setString(2, productCode);
+                ps.setString(3, issuer.toString());
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) out.add(new Grant(rs.getString(1), rs.getString(2)));
+                }
+            }
+            return Set.copyOf(out);
+        });
+    }
+
+    @Override
+    public int changePlatform(String tenantId, String productCode, URI issuer, Collection<Grant> add,
+                              Collection<Grant> remove, GrantAuthor author) {
+        EntityUuid.requireTenantId(tenantId);
+        LoginConnection.requireProductCode(productCode);
+        Objects.requireNonNull(issuer, "issuer");
+        Objects.requireNonNull(add, "add");
+        Objects.requireNonNull(remove, "remove");
+        Objects.requireNonNull(author, "author");
+        if (add.isEmpty() && remove.isEmpty()) return 0;
+        return db.inTransaction("change platform grants", c -> {
+            try (PreparedStatement ps = c.prepareStatement("select 1 from idn_customer where tenant_id = ?")) {
+                ps.setString(1, tenantId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) throw new IllegalStateException("customer " + tenantId + " is not stored");
+                }
+            }
+            List<Grant> removed = new ArrayList<>();
+            try (PreparedStatement ps = c.prepareStatement("delete from idn_platform_grant where tenant_id = ? "
+                    + "and product_code = ? and issuer_uri = ? and external_group = ? and role = ?")) {
+                for (Grant g : new LinkedHashSet<>(remove)) {
+                    ps.setString(1, tenantId);
+                    ps.setString(2, productCode);
+                    ps.setString(3, issuer.toString());
+                    ps.setString(4, g.group());
+                    ps.setString(5, g.role());
+                    if (ps.executeUpdate() > 0) removed.add(g);
+                }
+            }
+            List<Grant> added = new ArrayList<>();
+            try (PreparedStatement ps = c.prepareStatement("insert into idn_platform_grant (tenant_id, product_code, "
+                    + "issuer_uri, external_group, role) values (?, ?, ?, ?, ?) on conflict do nothing")) {
+                for (Grant g : new LinkedHashSet<>(add)) {
+                    ps.setString(1, tenantId);
+                    ps.setString(2, productCode);
+                    ps.setString(3, issuer.toString());
+                    ps.setString(4, g.group());
+                    ps.setString(5, g.role());
+                    if (ps.executeUpdate() > 0) added.add(g);
+                }
+            }
+            try (PreparedStatement ps = c.prepareStatement("insert into idn_grant_history (tenant_id, product_code, "
+                    + "scope, issuer_uri, external_group, role_before, role_after, change, change_source, changed_by, "
+                    + "setup_run_id) values (?, ?, 'PLATFORM', ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                for (GrantStep step : GrantStep.of(added, removed)) {
+                    ps.setString(1, tenantId);
+                    ps.setString(2, productCode);
+                    ps.setString(3, issuer.toString());
+                    ps.setString(4, step.group());
+                    ps.setString(5, step.roleBefore());
+                    ps.setString(6, step.roleAfter());
+                    ps.setString(7, step.kind().name());
+                    ps.setString(8, author.source().name());
+                    ps.setString(9, author.changedBy());
+                    ps.setString(10, author.setupRunId());
+                    ps.executeUpdate();
+                }
+            }
+            return added.size() + removed.size();
+        });
     }
 }

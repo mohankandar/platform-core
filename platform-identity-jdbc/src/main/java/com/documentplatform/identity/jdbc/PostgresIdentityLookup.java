@@ -6,6 +6,7 @@ import com.documentplatform.identity.admission.ActiveEntityCandidates;
 import com.documentplatform.identity.admission.ConnectionKey;
 import com.documentplatform.identity.admission.EntityGroupGrants;
 import com.documentplatform.identity.admission.EntityId;
+import com.documentplatform.identity.admission.PlatformGroupGrants;
 import com.documentplatform.identity.store.LoginConnection;
 
 import javax.sql.DataSource;
@@ -30,6 +31,7 @@ import java.util.UUID;
  *   <li>{@link ActiveEntityCandidates}: the ACTIVE entities of every customer with an ACTIVE connection for this
  *       product that matches provider ID, issuer and audience exactly.</li>
  *   <li>{@link EntityGroupGrants}: those entities' grants for this product recorded for this issuer.</li>
+ *   <li>{@link PlatformGroupGrants}: the customer's platform-wide grants for this product and issuer (identity V4).</li>
  *   <li>{@link OidcConnectionBindingResolver}: a binding only when exactly one connection matches and its customer has
  *       exactly one ACTIVE entity (the binding names that entity). Otherwise empty: the person chooses an entity
  *       through {@code EntityMembershipResolver}, which uses the two lookups above. Fails closed on ambiguity.</li>
@@ -37,7 +39,7 @@ import java.util.UUID;
  * Values are compared exactly as given; blank provider ID or audience gives no result. When the tables cannot be read,
  * the candidates and grants lookups return null (the library then refuses) and the resolver throws.
  */
-public final class PostgresIdentityLookup implements ActiveEntityCandidates, EntityGroupGrants,
+public final class PostgresIdentityLookup implements ActiveEntityCandidates, EntityGroupGrants, PlatformGroupGrants,
         OidcConnectionBindingResolver {
 
     private static final System.Logger LOG = System.getLogger(PostgresIdentityLookup.class.getName());
@@ -107,6 +109,41 @@ public final class PostgresIdentityLookup implements ActiveEntityCandidates, Ent
             });
         } catch (IdentityStoreException e) {
             LOG.log(System.Logger.Level.ERROR, "Group grants could not be read; sign-in is refused: {0}",
+                    e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
+    public Map<String, Set<String>> activePlatformGrants(ConnectionKey key) {
+        if (blank(key)) return Map.of();
+        try {
+            return Sql.run(ds, "read platform grants", c -> {
+                Map<String, Map<String, Set<String>>> byTenant = new LinkedHashMap<>();
+                try (PreparedStatement ps = c.prepareStatement("select g.tenant_id, g.external_group, g.role "
+                        + "from idn_login_connection c join idn_platform_grant g on g.tenant_id = c.tenant_id "
+                        + "and g.product_code = c.product_code and g.issuer_uri = c.issuer_uri "
+                        + "where c.status = 'ACTIVE' and c.product_code = ? and c.provider_id = ? and c.issuer_uri = ? "
+                        + "and c.api_audience = ? order by g.tenant_id, g.external_group, g.role")) {
+                    bind(ps, key);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            byTenant.computeIfAbsent(rs.getString(1), t -> new LinkedHashMap<>())
+                                    .computeIfAbsent(rs.getString(2), g -> new LinkedHashSet<>()).add(rs.getString(3));
+                        }
+                    }
+                }
+                if (byTenant.size() > 1) {
+                    LOG.log(System.Logger.Level.ERROR, "Platform grants of {0} customers match one login connection; "
+                            + "platform roles are refused", byTenant.size());
+                    return null;
+                }
+                Map<String, Set<String>> out = new LinkedHashMap<>();
+                byTenant.values().forEach(m -> m.forEach((g, r) -> out.put(g, Set.copyOf(r))));
+                return Map.copyOf(out);
+            });
+        } catch (IdentityStoreException e) {
+            LOG.log(System.Logger.Level.ERROR, "Platform grants could not be read; platform roles are refused: {0}",
                     e.getMessage());
             return null;
         }

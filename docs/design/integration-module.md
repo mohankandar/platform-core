@@ -229,3 +229,38 @@ P027 accepted (1141 tests on CI, 0 skipped). Its decisions stand, including:
 4. **Refused downloads** are in `PollResult.problems` for the app to show IT. A source that wants retries gets a rule mapping its status to OUTAGE.
 
 **Note (board LV-16, 2026-11-22):** the outbound safety code becomes its own module, `platform-outbound`, in P028, so identity's test sign-in uses the same rules without `platform-integration`. Integration depends on it; its behaviour and result codes don't change.
+
+## P028: the outbound module, push callers (built 2026-11-22, `docs/work/P028-report.md`)
+
+**`platform-outbound`** (plain Java, package `com.documentplatform.outbound`) now holds everything that makes a safe
+outbound HTTP call: `Installation`, `AddressGuard` (with the pinning resolver), `TrustBundle`, `ProxySettings`,
+`Outbound` (Apache HttpClient 5 set-up, no redirects, timeouts and answer limit per call), `RetryAfter`,
+`ClientCertificate` and `CertificateInfo` (mutual TLS needs them in the client). Failures are `OutboundCode`
+(`OUT_*`). Integration maps them with `IntegrationCode.of(OutboundCode)` to the `INT_*` code of the same name, so no
+integration result changes. Moved packages: `integration.safety.*`, `integration.http.Outbound`,
+`integration.http.RetryAfter`, `integration.credential.ClientCertificate` / `CertificateInfo` →
+`com.documentplatform.outbound`. `config.Limits` stays in integration: it holds delivery limits (documents,
+package); the outbound limits are parameters of each call.
+
+**Dependencies.** `platform-integration` depends on `platform-outbound` and no longer on `platform-identity-core`.
+The entity slot rule it used (`EntityUuid`) is a small copy, `folder.SlotIds`, checked against identity by a test.
+`OutboundIssuerFetch` moved to `platform-identity-spring` (package `identity.spring`); identity-spring depends on
+`platform-outbound-spring`, which brings the HTTP client (the apps have it through Spring Boot anyway), so no
+separate identity-outbound module.
+
+**Spring.** `platform-outbound-spring` reads `platform.outbound.*` (installation, internal addresses, sign-in NONE,
+private CA file, proxy and its sign-in) whenever any of them is set, and makes the `Installation` and `Outbound`
+beans (`OUTBOUND_SETTINGS_INVALID` with every problem listed). Identity's and integration's Spring modules both use
+them. The old `platform.integration.installation`, `.allow-internal-addresses`, `.allow-sign-in-none`,
+`.private-ca-file` and `.proxy.*` stop the app naming the new property (never released). `allow-sign-in-none` moved
+too, because it is a field of `Installation` that the call engine reads through `Outbound.installation()`.
+
+**Codes that moved.** The outbound failures `INT_CANT_CONNECT`, `INT_HOST_UNKNOWN`, `INT_CONNECT_TIMEOUT`,
+`INT_TIMEOUT`, `INT_CONNECTION_LOST`, `INT_TLS_FAILED`, `INT_ADDRESS_BLOCKED`, `INT_ADDRESS_NOT_SECURE`,
+`INT_PROXY_REFUSED`, `INT_PROXY_SIGN_IN_REFUSED`, `INT_CREDENTIAL_REFUSED`, `INT_SECRET_NOT_FOUND`,
+`INT_SECRET_UNAVAILABLE` and `INT_VALUE_NOT_ALLOWED` now start as `OUT_*` in `platform-outbound` and are mapped back
+by integration; integration results keep the `INT_*` codes. The identity test sign-in's refusal reason
+(`TestReport.reason`) is now the `OUT_*` code.
+
+**Push callers** are identity's (`identity.push.PushCaller`, `docs/design/setup.md` section 8), not integration's
+`integration.inbound.PushCaller` as the P022 split had it: the answer comes from identity's tables only.

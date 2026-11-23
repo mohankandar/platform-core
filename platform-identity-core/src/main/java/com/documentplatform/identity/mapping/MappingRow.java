@@ -6,7 +6,9 @@ import com.documentplatform.identity.admission.EntityId;
  * One validated grant from a role mapping file: in this entity, members of this group get this role.
  *
  * @param entityName  the file's entity_name; null when the file leaves it empty (allowed for slot IDs only)
- * @param slotId      the slot ID when the file names the entity by slot ID ({@code ENT-…}), else null; the entity
+ * @param entity      the entity; null on a platform-wide row
+ * @param slotId      the slot ID when the file names the entity by slot ID ({@code ENT-…}), {@code *} on a
+ *                    platform-wide row (setup files only, since P028), else null; the entity
  *                    is then the UUID derived from it
  * @param productCode the product the file was read for, or null when read without one
  * @param alias       the alias the file wrote instead of {@code role} (resolved when the file was read), or null
@@ -23,6 +25,14 @@ public record MappingRow(int line, EntityId entity, String entityName, String gr
     /** A row naming the entity by UUID, read without a product code. */
     public MappingRow(int line, EntityId entity, String entityName, String group, String role) {
         this(line, entity, entityName, group, role, null, null, null);
+    }
+
+    /** The {@code entity_id} of a platform-wide row (for this customer and product, in every entity). */
+    public static final String PLATFORM_WIDE = "*";
+
+    /** Whether this is a platform-wide row ({@code entity_id} {@code *}): {@code entity} is then null. */
+    public boolean platformWide() {
+        return PLATFORM_WIDE.equals(slotId);
     }
 
     public Grant grant() {

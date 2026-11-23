@@ -385,7 +385,8 @@ class SetupCommandTest {
                 + "ENT-DEMO-0001,,Demo Readers,reader\n");
         Result platform = run(db, "plan", A);
         assertEquals(SetupCommand.EXIT_REFUSED, platform.exit());
-        assertTrue(platform.err().contains("[PLATFORM_ROLE, ROLE_NOT_WRITTEN_CANONICALLY]"), platform.err());
+        assertTrue(platform.err().startsWith("SETUP_PLATFORM_ROLE_ON_ENTITY"), platform.err());
+        assertTrue(platform.err().contains("[PLATFORM_ROLE_ON_ENTITY, ROLE_NOT_WRITTEN_CANONICALLY]"), platform.err());
     }
 
     @Test

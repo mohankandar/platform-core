@@ -72,7 +72,7 @@ class SlotMappingFileTest {
     void theSlotOnlyReaderRefusesUuidsAndTheRulesForRolesAndGroupsStillApply() {
         refused(HEADER + ALPHA + ",Alpha Ltd,g,READER\n", 2, MappingError.Code.SLOT_ID_REQUIRED);
         refused(HEADER + "not-an-id,Some Name,g,READER\n", 2, MappingError.Code.NOT_AN_ENTITY_ID);
-        refused(HEADER + S1 + ",,g,PLATFORM_ADMIN\n", 2, MappingError.Code.PLATFORM_ROLE);
+        refused(HEADER + S1 + ",,g,PLATFORM_ADMIN\n", 2, MappingError.Code.PLATFORM_ROLE_ON_ENTITY);
         refused(HEADER + S1 + ",,g,reader\n", 2, MappingError.Code.ROLE_NOT_WRITTEN_CANONICALLY);
         refused(HEADER + S1 + ",,g ,READER\n", 2, MappingError.Code.INVISIBLE_CHARACTER);
         refused(HEADER + S1 + ",,,READER\n", 2, MappingError.Code.BLANK_VALUE);

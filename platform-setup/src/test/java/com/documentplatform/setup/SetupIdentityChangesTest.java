@@ -353,4 +353,59 @@ class SetupIdentityChangesTest {
         return new LoginConnection(c.connectionId(), c.tenantId(), c.productCode(), c.providerId(), c.providerType(),
                 c.issuer(), c.browserClientId(), c.apiAudience(), c.secretReference(), s, c.configurationVersion());
     }
+
+    // ---- P028 B5 platform-wide grants
+
+    @Test
+    void starRowsLoadAreRefusedForTheWrongRoleKindAndAreRemovedOnlyWithTheFlag() throws Exception {
+        demo();
+        Pg db = Pg.migrated();
+        String mapping = read("role-mapping-product-a.csv");
+        write("role-mapping-product-a.csv", mapping + "*,,Demo Platform Operations,PLATFORM_ADMIN\n");
+        Result plan = run(db, "plan");
+        assertEquals(0, plan.exit(), plan.all());
+        assertTrue(plan.out().contains("create      platform grant PRODUCT_A (every entity): group \"Demo Platform "
+                + "Operations\" -> PLATFORM_ADMIN"), plan.out());
+        assertEquals(0, db.count("select count(*) from idn_platform_grant"), "plan writes nothing");
+
+        Result apply = run(db, "apply");
+        assertEquals(0, apply.exit(), apply.all());
+        assertEquals(List.of(TENANT + " PRODUCT_A Demo Platform Operations PLATFORM_ADMIN"), db.strings("select "
+                + "tenant_id || ' ' || product_code || ' ' || external_group || ' ' || role from idn_platform_grant"));
+        assertEquals(List.of("PLATFORM ADDED " + apply.runId()), db.strings("select scope || ' ' || change || ' ' || "
+                + "setup_run_id from idn_grant_history where scope = 'PLATFORM'"));
+        assertEquals(0, db.count("select count(*) from idn_grant_history where scope = 'PLATFORM' and "
+                + "(slot_id is not null or entity_uuid is not null)"), "a platform row names no entity");
+        assertTrue(read("setup-runs.log").contains("run=" + apply.runId()));
+
+        Result again = run(db, "apply");
+        assertEquals(0, again.exit(), again.all());
+        assertTrue(again.out().contains("unchanged   platform grants PRODUCT_A: 1 grant"), again.out());
+        assertEquals(1, db.count("select count(*) from idn_grant_history where scope = 'PLATFORM'"), "no history");
+
+        // The * row removed from the file: kept without the flag, removed with it.
+        write("role-mapping-product-a.csv", mapping);
+        Result kept = run(db, "apply");
+        assertEquals(SetupCommand.EXIT_NEEDS_FLAG, kept.exit(), kept.all());
+        assertTrue(kept.out().contains("not removed platform grant PRODUCT_A (every entity): group \"Demo Platform "
+                + "Operations\" -> PLATFORM_ADMIN (not in the mapping file); kept."), kept.out());
+        assertEquals(1, db.count("select count(*) from idn_platform_grant"));
+        Result removed = run(db, "apply", "--remove-unlisted-grants");
+        assertEquals(0, removed.exit(), removed.all());
+        assertEquals(0, db.count("select count(*) from idn_platform_grant"));
+        assertEquals(List.of("PLATFORM REMOVED PLATFORM_ADMIN"), db.strings("select scope || ' ' || change || ' ' || "
+                + "role_before from idn_grant_history where setup_run_id = '" + removed.runId() + "'"));
+
+        // The wrong role kind on either kind of row: refused with its own code, nothing written.
+        write("role-mapping-product-a.csv", mapping + "*,,Demo Platform Operations,READER\n");
+        Result entityRole = run(db, "apply");
+        assertNotEquals(0, entityRole.exit());
+        assertTrue(entityRole.err().contains("SETUP_ENTITY_ROLE_PLATFORM_WIDE"), entityRole.all());
+        assertTrue(entityRole.err().contains("ENTITY_ROLE_PLATFORM_WIDE"), entityRole.all());
+        write("role-mapping-product-a.csv", mapping + S1 + ",,Demo Platform Operations,PLATFORM_ADMIN\n");
+        Result platformRole = run(db, "apply");
+        assertNotEquals(0, platformRole.exit());
+        assertTrue(platformRole.err().contains("SETUP_PLATFORM_ROLE_ON_ENTITY"), platformRole.all());
+        assertEquals(0, db.count("select count(*) from idn_platform_grant"));
+    }
 }

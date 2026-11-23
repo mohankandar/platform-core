@@ -16,4 +16,12 @@ public interface GrantHistory {
      * first.
      */
     List<GrantChange> forEntity(UUID entityUuid, Instant from, Instant to);
+
+    /**
+     * The customer's platform-wide grant changes (scope PLATFORM) for the product from {@code from} (inclusive) to
+     * {@code to} (exclusive), oldest first. Since identity V4.
+     */
+    default List<PlatformGrantChange> forPlatform(String tenantId, String productCode, Instant from, Instant to) {
+        throw new UnsupportedOperationException("this history does not hold platform grants");
+    }
 }

@@ -65,6 +65,9 @@ public final class Plan {
     long connectionExpectedVersion;
     final Map<String, Set<Grant>> grantsToAdd = new TreeMap<>();
     final Map<String, Set<Grant>> grantsToRemove = new TreeMap<>();
+    /** Platform-wide grants ({@code *} rows, identity V4) to add, and those not in the file (removed only with the flag). */
+    final Set<Grant> platformToAdd = new java.util.LinkedHashSet<>();
+    final Set<Grant> platformToRemove = new java.util.LinkedHashSet<>();
     ConfigFragment.State config;
     /** The customer's time zone to store (none stored yet), or null. */
     java.time.ZoneId customerZone;
