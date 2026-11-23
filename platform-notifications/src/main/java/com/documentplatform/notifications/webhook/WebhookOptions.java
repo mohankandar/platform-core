@@ -6,7 +6,8 @@ import java.util.Objects;
 /**
  * Connection settings for webhook senders.
  *
- * @param allowPlainHttp accept {@code http://} addresses. Off by default: the address carries a token, which must not
+ * @param allowPlainHttp accept {@code http://} addresses to this machine only (localhost, 127.0.0.1, [::1]). Off by
+ *                       default: the address carries a token, which must not
  *                       travel unencrypted. Only for tests against a local server
  */
 public record WebhookOptions(Duration connectTimeout, Duration requestTimeout, boolean allowPlainHttp) {
@@ -27,7 +28,10 @@ public record WebhookOptions(Duration connectTimeout, Duration requestTimeout, b
         return new WebhookOptions(connect, request, allowPlainHttp);
     }
 
-    /** Accepts {@code http://} addresses. For tests against a local server only. */
+    /**
+     * Accepts {@code http://} addresses to this machine only (localhost, 127.0.0.1, [::1]): for tests against a local
+     * server. Any other host stays https only even with this switch (P037), so it cannot weaken production sending.
+     */
     public WebhookOptions allowingPlainHttpForTests() {
         return new WebhookOptions(connectTimeout, requestTimeout, true);
     }

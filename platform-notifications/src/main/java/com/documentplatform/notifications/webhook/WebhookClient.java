@@ -90,7 +90,9 @@ public final class WebhookClient implements AutoCloseable {
             return SendResult.failed(FailureCode.WEBHOOK_ADDRESS_INVALID);
         }
         String scheme = uri.getScheme().toLowerCase();
-        if (!scheme.equals("https") && !(scheme.equals("http") && options.allowPlainHttp())) {
+        // Plain http only with the test switch AND to this machine (P037, xc-public-api-3): the address carries a token.
+        boolean localHttp = scheme.equals("http") && options.allowPlainHttp() && loopback(uri.getHost());
+        if (!scheme.equals("https") && !localHttp) {
             return SendResult.failed(scheme.equals("http") ? FailureCode.WEBHOOK_ADDRESS_NOT_SECURE
                     : FailureCode.WEBHOOK_ADDRESS_INVALID);
         }
@@ -174,5 +176,11 @@ public final class WebhookClient implements AutoCloseable {
     @Override
     public void close() {
         http.close();
+    }
+
+    /** localhost, 127.0.0.1 or [::1]: the only hosts the test switch allows plain http to. */
+    static boolean loopback(String host) {
+        String h = host.toLowerCase(java.util.Locale.ROOT);
+        return h.equals("localhost") || h.equals("127.0.0.1") || h.equals("[::1]") || h.equals("::1");
     }
 }
