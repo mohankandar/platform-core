@@ -9,9 +9,9 @@ import com.documentplatform.fields.FieldValue;
 import com.documentplatform.fields.ValidValue;
 import com.documentplatform.fields.ValidatedFields;
 import com.documentplatform.fields.ValueProblem;
-import com.documentplatform.fields.json.Json;
-import com.documentplatform.fields.json.JsonException;
-import com.documentplatform.fields.json.JsonFields;
+import com.documentplatform.fields.json.internal.Json;
+import com.documentplatform.fields.json.internal.JsonException;
+import com.documentplatform.fields.json.internal.JsonFields;
 
 import java.util.ArrayList;
 import java.util.HashSet;
