@@ -187,6 +187,45 @@ class UsageExportTest {
                 UsageExportVerifier.verify(text.replace("platform-usage-export/1", "platform-usage-export/9"), null).problem());
     }
 
+    /** licensing-file-format-62: a record outside the header's months, re-chained so that nothing else is wrong. */
+    @Test
+    void aRecordOutsideTheHeadersPeriodIsDetected() {
+        String text = export(M9, M10, ExportAnchor.first()).text();
+        assertTrue(UsageExportVerifier.verify(rechained(text, -1, null), null).ok(), "re-chaining alone changes nothing");
+        // Record 4 (index 3) is the first October one; moved to November, outside 2026-09..2026-10.
+        String outside = rechained(text, 3, "2026-11");
+        ExportCheck c = UsageExportVerifier.verify(outside, null);
+        assertEquals(EXPORT_RECORD_OUTSIDE_PERIOD, c.problem(), c.message());
+        assertEquals(3, c.recordIndex());
+        assertTrue(c.message().contains("2026-11") && c.message().contains("2026-09..2026-10"), c.message());
+        assertEquals(EXPORT_RECORD_OUTSIDE_PERIOD, UsageExportVerifier.verify(rechained(text, 0, "2026-08"), null)
+                .problem(), "before the period too");
+    }
+
+    /** The file with record {@code index}'s period set to {@code period}, every chain value after it recomputed. */
+    @SuppressWarnings("unchecked")
+    private static String rechained(String text, int index, String period) {
+        Map<String, Object> file = new java.util.LinkedHashMap<>(Json.parseObject(text));
+        Map<String, Object> footer = new java.util.LinkedHashMap<>((Map<String, Object>) file.get("footer"));
+        String chain = (String) footer.get("headerChainValue");
+        List<Object> records = new java.util.ArrayList<>();
+        List<Object> original = (List<Object>) file.get("records");
+        for (int i = 0; i < original.size(); i++) {
+            Map<String, Object> r = new java.util.LinkedHashMap<>((Map<String, Object>) original.get(i));
+            r.remove("chain");
+            if (i == index) {
+                r.put("period", period);
+            }
+            chain = Ed25519.sha256Hex(chain + "\n" + Json.canonical(r));
+            r.put("chain", chain);
+            records.add(r);
+        }
+        footer.put("finalChainValue", chain);
+        file.put("records", records);
+        file.put("footer", footer);
+        return Json.pretty(file);
+    }
+
     @Test
     void anEmptyPeriodStillExportsAndChains() {
         UsageExport f1 = export(YearMonth.of(2026, 1), YearMonth.of(2026, 8), ExportAnchor.first());
