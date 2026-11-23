@@ -192,88 +192,88 @@ as one task if the owner prefers fewer, larger tasks: all of their rows are S or
 
 | ID | Rule | What is missing | Sev | Proposed fix (one line) | Size |
 |---|---|---|---|---|---|
-| install-monitoring-1 | `every` property | does nothing | B | See monitoring-28 | — |
-| install-monitoring-3 | `channel-mail` | false DOWN / wrong port | B | See monitoring-34 | — |
-| install-notifications-1 | Separate Flyway run, `notif_schema_history` | not in the guide | B | add the B4 rule (own run, own history table) to section 4 | S |
-| xc-independence-1 | platform-core never names or assumes a product | Two root notes name apps and describe one app's schema behaviour; the guard skips them | B | Move their generic content into `docs/install/identity.md` (the identity schema contract) and delete both files | S |
-| erase-log-31 | Value-like id is `ERASE_ENTRY_VALUE_REFUSED` | The test accepts either code | C | Pin `ERASE_ENTRY_VALUE_REFUSED` for the e-mail, sealed, fingerprint and ciphertext samples | S |
-| erase-log-26 | Only dependency platform-fields, optional | Out of date: platform-errors since P032 | C | Update the design sentence | S |
-| erase-log-76 | Replay report holds counts, codes, entry numbers only | Message also has kind, record type and ID, location, handler text | C | Either say so in the design, or move ids and handler text out of `describe()` | S |
-| erase-log-DG-1 | Everyday erase compares head only; full walk at startup, daily, prune, replay | Not in the design body | C | Add to the design "Guard" section | S |
-| erase-log-DG-2 | One database, one log; move files to move it | Not in the design or install guide | C | Add a line to the design and install section 1 | S |
-| erase-log-DG-3 | `auditId` / `by` id form; `recheck` 5 s – 1 h | Code-only | C | Add both to the design entry table and the install property table | S |
-| case-fields-DG-1 … DG-14 | P017, P019 decisions (keys and capitals, primary one value, search mode, normalisation order, per-type forms, tab and 50 values, extensions, `change()` rules, import all-or-none, delivery rules and 2 MB, limits in messages, no cause in exceptions, no Spring module, `pg_indexes` detection) | In reports only | C | Add a "Decisions from P017–P019" subsection to `docs/design/case-fields.md` | M |
-| install-fields-1 | `f1.` fingerprint texts | Guide names one version only | C | Say `f<version>.` | S |
-| install-fields-2 | Backups hold `pci1.` only | `pck1.` envelope not named | C | Name the envelope column too | S |
-| install-fields-3 | Import conflict "type differs" | Currency and key-capitals conflicts not named | C | List all three conflicts | S |
-| install-fields-4 | Runtime grants | Grants are wider than the check needs | C | Leave the grants as they are; say the check needs fewer | S |
-| install-fields-6 | How the app builds `FieldValues` | Missing | C | Add a short "wiring in the app" paragraph | S |
-| install-erase-log-1 | `recheck` range | Missing | C | Add "5 seconds to 1 hour" | S |
-| install-erase-log-2 | Report entry number | Printed only inside the message | C | Print `stopped at entry N` as its own line in `describe()` | S |
-| install-erase-log-3 | Health details | Not listed | C | List the details (and the pending-entry fields once erase-log-22 is fixed) | S |
-| install-erase-log-4 | Moving a log | Missing | C | See erase-log-DG-2 | S |
-| crypto-1 | No runtime dependencies | Design text out of date (platform-errors since P032) | C | Design section 1: "depends only on platform-errors" | S |
-| crypto-30 | platform-fields contexts | Context form not pinned | C | Fields test: a sealed item copied to another record does not open (`CRYPTO_CIPHERTEXT_INVALID`) | S |
-| crypto-42 | `fingerprintAll` one call | Doc says one call; it is two | C | Design section 4: "`ofAll` one call; `fingerprintAll` two (versions + one batch)" | S |
-| crypto-62 | Only the stated log lines | No test | C | In `NoSecretInLogsTest`, assert the captured `com.documentplatform.crypto` records are the AppRole DEBUG line only | S |
-| crypto-65 | Policy texts in docs = test resources | No guard | C | Test that the design and install guide contain each `.hcl` resource's `path` lines verbatim (as licensing does) | S |
-| crypto-77 | `CustomerId.of(tenantId)` in section 8 | Doc names the wrong method | C | Design section 8 step 2: `CustomerId.fromTenantId(tenantId)` | S |
-| crypto-82 | `VaultClient` closed on shutdown, AppRole token revoked | No test | C | Spring test: close the context and check `revoke-self` reached a stub | S |
-| crypto-88 | One customer per installation in Spring | Not in the design | C | Design section 10: the `CustomerId` bean is the installation's only customer; multi-customer apps derive their own | S |
-| crypto-112 | Destroyed keys look like never created | Not stated; fix text suggests running setup | C | Design section 11 + `CRYPTO_KEY_MISSING.fix`: "after a customer exit this is expected; do not re-create" | S |
-| crypto-113 | `destroyCustomerKeys` javadoc | Says set-up login | C | Javadoc: "with the set-up and offboard login" | S |
-| install-crypto-1 | Set-up env variables | Three variables and the one-login rule missing | C | Add `_NAMESPACE`, `_TRANSIT_MOUNT`, `_APPROLE_MOUNT` and "exactly one login" to section 5 | S |
-| install-crypto-2 | `--confirm` | Not mentioned | C | Mention `--confirm TEN-…` for runs without a console | S |
-| install-crypto-3 | tenant-id wording | Setup writes the licensing key | C | "setup writes `platform.licensing.tenant-id`, which this falls back to" | S |
-| install-crypto-4 | `PLATFORM_CRYPTO_VAULT_SECRET_ID` | Untested binding | C | Spring test binding the secret ID from that environment name, or document `…SECRETID` | S |
-| monitoring-71 | Webhook path is a secret, never shown or called | DOC GAP | C | Add to monitoring.md section 1 | S |
-| monitoring-72 | `FileLocationCheck.Disk` replaceable | DOC GAP | C | Add to monitoring.md section 1 | S |
-| model-governance-108 | P033 D1 | DOC GAP | C | Add to model-governance.md section 9 | S |
-| model-governance-109 | P033 D2 | DOC GAP | C | Add to section 9 | S |
-| model-governance-110 | P033 D3 | DOC GAP | C | Add to section 9 | S |
-| model-governance-111 | P033 D5 | DOC GAP | C | Add to section 9 | S |
-| model-governance-112 | P034 report D8 | DOC GAP | C | Add to section 10's Spring line | S |
-| install-monitoring-2 | `tick` property | not in the guide | C | Document it (or fold it into `every`) | S |
-| install-monitoring-4 | Checks table | `model-governance` missing | C | Add the row | S |
-| install-monitoring-5 | Bundle table versions | `mg_` missing | C | See monitoring-58 | — |
-| install-monitoring-6 | Folder thresholds | no range; bare exception | C | Give the range in the guide; list the problem with the property name at startup | S |
-| install-model-governance-1 | Startup codes | two codes not listed | C | Add `MG_VERSION_UNKNOWN`, `MG_CHECK_FAILED` | S |
-| install-model-governance-2 | Runtime grants | message and SQL header contradict the guide; narrow grants untested | C | Make the message and header give the narrow grants; schema test with exactly the guide's grants | S |
-| install-model-governance-3 | `enabled` | not in the guide | C | Document it | S |
-| install-model-governance-4 | Setting limits | not in the guide | C | Document 1d–3650d and ≥ 1 minute | S |
-| integration-module-32 | Test action for API_POLL / WATCHED_FOLDER | Kind not supported in FULL mode | C | Test of intake kinds = health + sign-in (CHECK_ONLY), or document that the Test is health only | S |
-| integration-module-5, 33, 35, 41, 44, 49, 63 | Product profile / pinned spec / product contract tests | Removed by P030; doc still says them | C | Rewrite those design lines to "made-up profiles; owner's contract kit" | S |
-| integration-module-150d…165 | 16 DOC GAPs (listed above) | Decisions not in the design body | C | Add a short "Decisions carried from the reports" section to integration-module.md | S |
-| install-integration-1 | Guide section 7 ignores monitoring-spring | Doc | C | Add: "with platform-monitoring-spring the entries are in `dependencies` (docs/install/monitoring.md)" | S |
-| install-integration-3 | `INT_WATCH_CLAIM_LOST` never given | Doc/code | C | Remove it from the guide table (or give it in `WatchResult`) | S |
-| licensing-83 | Q5: wiped usage tables show `EXPORT_START_MISMATCH` | Only when the app's export anchor is lost too; untested | C | State in the design that the anchor is the app's; add a test that a wiped ledger exports with `recordCount` 0 against the kept anchor | S |
-| licensing-file-format-32 | Check order malformed before unsupported | Format compared before the envelope field set | C | Align the doc's table with the code (format first) | S |
-| licensing-file-format-48 | Run log fields | `resetId`, `resetTo`, `notAfter` not in the doc | C | Add them to format section 4 | S |
-| licensing-12 | Install licence 30–60 days | Superseded by P009-7; code follows | C | Change section 1 to "at most 60 days" | S |
-| licensing-33 | Issuing from an input file | Built from options | C | Say "from command options" in section 5 | S |
-| licensing-41 | Setup never deletes | Later setup decisions remove grants / switch bindings off on request | C | Point section 6 to setup.md's rules | S |
-| licensing-file-format-45 | `"development": true` in the trusted-keys format | Not in section 3 | C | Add the optional field to section 3 | S |
-| install-licensing-1 | `product-code` required | Guide does not say required | C | Mark it required in the guide | S |
-| install-licensing-2 | `clock-tolerance` at most 1 day | Not in the guide | C | Add the limit | S |
-| install-licensing-3 | Licence command options | `--tenant-id`, `--product-code`, `--clock-tolerance` missing; first store accepts any tenant | C | List the options and advise `--tenant-id` on the first store | S |
-| install-licence-signing-1 | `ISSUE_VAULT_SEALED` covers standby | Standby gives `ISSUE_VAULT_ERROR` | C | Reword the guide row (sealed: 503; standby: use the active node) | S |
-| install-licence-signing-2 | Vault mount options | `--vault-mount`, `--vault-login-mount` not in the guide | C | Add them with defaults | S |
-| install-licence-signing-3 | Vault TLS / sealed / error codes | Untested | C | Tests with a stub Vault: untrusted certificate, 503, 500 | S |
-| notifications-85 | Own daemon threads, no `@EnableScheduling` | not asserted | C | test: context without `@EnableScheduling` runs the tick; worker threads are daemon | S |
-| notifications-157..162 | P015 report decisions 1–4, 8–11 | not in design body | C | add a "Decisions made in P015" list to design section 5 | S |
-| notifications-167 | `validFor` 5 min – 30 days | undocumented, bounds untested | C | state it in section 6; add a bounds test | S |
-| notifications-168 | Approval delivery codes | only in the install guide | C | list the `ACTION_*` codes in section 6 | S |
-| install-notifications-2 | `CHECK_FAILED` startup message | not in the table | C | add the row "Notifications tables could not be checked" | S |
-| install-notifications-4 | Proxy for the Microsoft 365 token client | not stated | C | say whether `https.proxyHost` applies to `login.microsoftonline.com` too | S |
-| install-notifications-5 | `teams.<id>` wording | ambiguous | C | "key = destination id, value = path of the secret" | S |
-| xc-names-1 | No product names in docs | `docs/design/notifications.md` sections 1 and 3 name the two apps; the guard does not scan `docs/design/` | C | replace with "the apps" or a neutral label; decide whether the guard should cover `docs/design/` | S |
-| setup-1 | No "tenant" in user-facing text | No test; two texts say tenant | C | Reword the two texts; add the word to a text check over the setup and identity code files | S |
-| install-setup-1 | Refusal code list | Two time-zone codes missing from §5 | C | Add them to the §5 list | S |
-| install-setup-3 | Sign-in fields | §2 says unshown fields refuse, but three optional fields are accepted | C | Show the optional fields in the §2 example or reword the sentence | S |
-| install-setup-4 | Profile check order | "before anything else" is not exact | C | Reword to "before the database is touched" | S |
-| install-identity-1 | Connection refusals | `IDN_TEST_FAILED` not listed | C | Add it to the §6 list | S |
-| xc-javadoc-setup-1 | `ProductRoles` class comment | Says platform roles "are never granted through a mapping file"; since P028 they are, on `*` rows | C | Correct the comment | S |
-| xc-independence-2 | The guard covers every text file a reader or app sees | The guard skips `*.md` outside CLAUDE.md, README and `docs/install/`, and skips `.csv`, `.hcl`, `.sh`, `.ps1` | C | Check every text file outside `docs/work/` and `docs/design/`, with an allow-list of binary types; a test plants a name in each kind | S |
+| install-monitoring-1 | `every` property | does nothing | B · **FIXED in P040 (ca0d211)** | See monitoring-28 | — |
+| install-monitoring-3 | `channel-mail` | false DOWN / wrong port | B · **FIXED in P040 (ca0d211)** | See monitoring-34 | — |
+| install-notifications-1 | Separate Flyway run, `notif_schema_history` | not in the guide | B · **FIXED in P040 (5a6e619, 87bdaa9)** | add the B4 rule (own run, own history table) to section 4 | S |
+| xc-independence-1 | platform-core never names or assumes a product | Two root notes name apps and describe one app's schema behaviour; the guard skips them | B · **FIXED in P040 (21f5663)** | Move their generic content into `docs/install/identity.md` (the identity schema contract) and delete both files | S |
+| erase-log-31 | Value-like id is `ERASE_ENTRY_VALUE_REFUSED` | The test accepts either code | C · **FIXED in P040 (bbf2289, 522a53e)** | Pin `ERASE_ENTRY_VALUE_REFUSED` for the e-mail, sealed, fingerprint and ciphertext samples | S |
+| erase-log-26 | Only dependency platform-fields, optional | Out of date: platform-errors since P032 | C · **FIXED in P040 (bbf2289)** | Update the design sentence | S |
+| erase-log-76 | Replay report holds counts, codes, entry numbers only | Message also has kind, record type and ID, location, handler text | C · **FIXED in P040 (bbf2289)** | Either say so in the design, or move ids and handler text out of `describe()` | S |
+| erase-log-DG-1 | Everyday erase compares head only; full walk at startup, daily, prune, replay | Not in the design body | C · **FIXED in P040 (bbf2289)** | Add to the design "Guard" section | S |
+| erase-log-DG-2 | One database, one log; move files to move it | Not in the design or install guide | C · **FIXED in P040 (bbf2289)** | Add a line to the design and install section 1 | S |
+| erase-log-DG-3 | `auditId` / `by` id form; `recheck` 5 s – 1 h | Code-only | C · **FIXED in P040 (bbf2289)** | Add both to the design entry table and the install property table | S |
+| case-fields-DG-1 … DG-14 | P017, P019 decisions (keys and capitals, primary one value, search mode, normalisation order, per-type forms, tab and 50 values, extensions, `change()` rules, import all-or-none, delivery rules and 2 MB, limits in messages, no cause in exceptions, no Spring module, `pg_indexes` detection) | In reports only | C · **FIXED in P040 (d1c3774)** | Add a "Decisions from P017–P019" subsection to `docs/design/case-fields.md` | M |
+| install-fields-1 | `f1.` fingerprint texts | Guide names one version only | C · **FIXED in P040 (d1c3774)** | Say `f<version>.` | S |
+| install-fields-2 | Backups hold `pci1.` only | `pck1.` envelope not named | C · **FIXED in P040 (d1c3774)** | Name the envelope column too | S |
+| install-fields-3 | Import conflict "type differs" | Currency and key-capitals conflicts not named | C · **FIXED in P040 (d1c3774)** | List all three conflicts | S |
+| install-fields-4 | Runtime grants | Grants are wider than the check needs | C · **FIXED in P040 (d1c3774)** | Leave the grants as they are; say the check needs fewer | S |
+| install-fields-6 | How the app builds `FieldValues` | Missing | C · **FIXED in P040 (d1c3774)** | Add a short "wiring in the app" paragraph | S |
+| install-erase-log-1 | `recheck` range | Missing | C · **FIXED in P040 (bbf2289)** | Add "5 seconds to 1 hour" | S |
+| install-erase-log-2 | Report entry number | Printed only inside the message | C · **FIXED in P040 (bbf2289)** | Print `stopped at entry N` as its own line in `describe()` | S |
+| install-erase-log-3 | Health details | Not listed | C · **FIXED in P040 (bbf2289)** | List the details (and the pending-entry fields once erase-log-22 is fixed) | S |
+| install-erase-log-4 | Moving a log | Missing | C · **FIXED in P040 (bbf2289)** | See erase-log-DG-2 | S |
+| crypto-1 | No runtime dependencies | Design text out of date (platform-errors since P032) | C · **FIXED in P040 (a9399bd)** | Design section 1: "depends only on platform-errors" | S |
+| crypto-30 | platform-fields contexts | Context form not pinned | C · **FIXED in P040 (a9399bd, 522a53e)** | Fields test: a sealed item copied to another record does not open (`CRYPTO_CIPHERTEXT_INVALID`) | S |
+| crypto-42 | `fingerprintAll` one call | Doc says one call; it is two | C · **FIXED in P040 (a9399bd)** | Design section 4: "`ofAll` one call; `fingerprintAll` two (versions + one batch)" | S |
+| crypto-62 | Only the stated log lines | No test | C · **FIXED in P040 (14f89a3)** | In `NoSecretInLogsTest`, assert the captured `com.documentplatform.crypto` records are the AppRole DEBUG line only | S |
+| crypto-65 | Policy texts in docs = test resources | No guard | C · **FIXED in P040 (33d937c)** | Test that the design and install guide contain each `.hcl` resource's `path` lines verbatim (as licensing does) | S |
+| crypto-77 | `CustomerId.of(tenantId)` in section 8 | Doc names the wrong method | C · **FIXED in P040 (a9399bd)** | Design section 8 step 2: `CustomerId.fromTenantId(tenantId)` | S |
+| crypto-82 | `VaultClient` closed on shutdown, AppRole token revoked | No test | C · **FIXED in P040 (f477d16)** | Spring test: close the context and check `revoke-self` reached a stub | S |
+| crypto-88 | One customer per installation in Spring | Not in the design | C · **FIXED in P040 (a9399bd)** | Design section 10: the `CustomerId` bean is the installation's only customer; multi-customer apps derive their own | S |
+| crypto-112 | Destroyed keys look like never created | Not stated; fix text suggests running setup | C · **FIXED in P040 (a9399bd, 522a53e)** | Design section 11 + `CRYPTO_KEY_MISSING.fix`: "after a customer exit this is expected; do not re-create" | S |
+| crypto-113 | `destroyCustomerKeys` javadoc | Says set-up login | C · **FIXED in P040 (522a53e)** | Javadoc: "with the set-up and offboard login" | S |
+| install-crypto-1 | Set-up env variables | Three variables and the one-login rule missing | C · **FIXED in P040 (a9399bd)** | Add `_NAMESPACE`, `_TRANSIT_MOUNT`, `_APPROLE_MOUNT` and "exactly one login" to section 5 | S |
+| install-crypto-2 | `--confirm` | Not mentioned | C · **FIXED in P040 (a9399bd)** | Mention `--confirm TEN-…` for runs without a console | S |
+| install-crypto-3 | tenant-id wording | Setup writes the licensing key | C · **FIXED in P040 (a9399bd)** | "setup writes `platform.licensing.tenant-id`, which this falls back to" | S |
+| install-crypto-4 | `PLATFORM_CRYPTO_VAULT_SECRET_ID` | Untested binding | C · **FIXED in P040 (a9399bd)** | Spring test binding the secret ID from that environment name, or document `…SECRETID` | S |
+| monitoring-71 | Webhook path is a secret, never shown or called | DOC GAP | C · **FIXED in P040 (ca0d211)** | Add to monitoring.md section 1 | S |
+| monitoring-72 | `FileLocationCheck.Disk` replaceable | DOC GAP | C · **FIXED in P040 (ca0d211)** | Add to monitoring.md section 1 | S |
+| model-governance-108 | P033 D1 | DOC GAP | C · **FIXED in P040 (3a6f0a6)** | Add to model-governance.md section 9 | S |
+| model-governance-109 | P033 D2 | DOC GAP | C · **FIXED in P040 (3a6f0a6)** | Add to section 9 | S |
+| model-governance-110 | P033 D3 | DOC GAP | C · **FIXED in P040 (3a6f0a6)** | Add to section 9 | S |
+| model-governance-111 | P033 D5 | DOC GAP | C · **FIXED in P040 (3a6f0a6)** | Add to section 9 | S |
+| model-governance-112 | P034 report D8 | DOC GAP | C · **FIXED in P040 (3a6f0a6)** | Add to section 10's Spring line | S |
+| install-monitoring-2 | `tick` property | not in the guide | C · **FIXED in P040 (ca0d211)** | Document it (or fold it into `every`) | S |
+| install-monitoring-4 | Checks table | `model-governance` missing | C · **FIXED in P040 (ca0d211)** | Add the row | S |
+| install-monitoring-5 | Bundle table versions | `mg_` missing | C · **FIXED in P040 (522a53e)** | See monitoring-58 | — |
+| install-monitoring-6 | Folder thresholds | no range; bare exception | C · **FIXED in P040 (ca0d211)** | Give the range in the guide; list the problem with the property name at startup | S |
+| install-model-governance-1 | Startup codes | two codes not listed | C · **FIXED in P040 (3a6f0a6)** | Add `MG_VERSION_UNKNOWN`, `MG_CHECK_FAILED` | S |
+| install-model-governance-2 | Runtime grants | message and SQL header contradict the guide; narrow grants untested | C · **FIXED in P040 (522a53e)** | Make the message and header give the narrow grants; schema test with exactly the guide's grants | S |
+| install-model-governance-3 | `enabled` | not in the guide | C · **FIXED in P040 (3a6f0a6)** | Document it | S |
+| install-model-governance-4 | Setting limits | not in the guide | C · **FIXED in P040 (3a6f0a6)** | Document 1d–3650d and ≥ 1 minute | S |
+| integration-module-32 | Test action for API_POLL / WATCHED_FOLDER | Kind not supported in FULL mode | C · **FIXED in P040 (bc19f9b; question 1)** | Test of intake kinds = health + sign-in (CHECK_ONLY), or document that the Test is health only | S |
+| integration-module-5, 33, 35, 41, 44, 49, 63 | Product profile / pinned spec / product contract tests | Removed by P030; doc still says them | C · **FIXED in P040 (bc19f9b)** | Rewrite those design lines to "made-up profiles; owner's contract kit" | S |
+| integration-module-150d…165 | 16 DOC GAPs (listed above) | Decisions not in the design body | C · **FIXED in P040 (bc19f9b)** | Add a short "Decisions carried from the reports" section to integration-module.md | S |
+| install-integration-1 | Guide section 7 ignores monitoring-spring | Doc | C · **FIXED in P040 (bc19f9b)** | Add: "with platform-monitoring-spring the entries are in `dependencies` (docs/install/monitoring.md)" | S |
+| install-integration-3 | `INT_WATCH_CLAIM_LOST` never given | Doc/code | C · **FIXED in P040 (bc19f9b)** | Remove it from the guide table (or give it in `WatchResult`) | S |
+| licensing-83 | Q5: wiped usage tables show `EXPORT_START_MISMATCH` | Only when the app's export anchor is lost too; untested | C · **FIXED in P040 (dd2dc2c, 241cfa7)** | State in the design that the anchor is the app's; add a test that a wiped ledger exports with `recordCount` 0 against the kept anchor | S |
+| licensing-file-format-32 | Check order malformed before unsupported | Format compared before the envelope field set | C · **FIXED in P040 (dd2dc2c)** | Align the doc's table with the code (format first) | S |
+| licensing-file-format-48 | Run log fields | `resetId`, `resetTo`, `notAfter` not in the doc | C · **FIXED in P040 (dd2dc2c)** | Add them to format section 4 | S |
+| licensing-12 | Install licence 30–60 days | Superseded by P009-7; code follows | C · **FIXED in P040 (dd2dc2c)** | Change section 1 to "at most 60 days" | S |
+| licensing-33 | Issuing from an input file | Built from options | C · **FIXED in P040 (dd2dc2c)** | Say "from command options" in section 5 | S |
+| licensing-41 | Setup never deletes | Later setup decisions remove grants / switch bindings off on request | C · **FIXED in P040 (dd2dc2c)** | Point section 6 to setup.md's rules | S |
+| licensing-file-format-45 | `"development": true` in the trusted-keys format | Not in section 3 | C · **FIXED in P040 (dd2dc2c)** | Add the optional field to section 3 | S |
+| install-licensing-1 | `product-code` required | Guide does not say required | C · **FIXED in P040 (dd2dc2c)** | Mark it required in the guide | S |
+| install-licensing-2 | `clock-tolerance` at most 1 day | Not in the guide | C · **FIXED in P040 (dd2dc2c)** | Add the limit | S |
+| install-licensing-3 | Licence command options | `--tenant-id`, `--product-code`, `--clock-tolerance` missing; first store accepts any tenant | C · **FIXED in P040 (dd2dc2c)** | List the options and advise `--tenant-id` on the first store | S |
+| install-licence-signing-1 | `ISSUE_VAULT_SEALED` covers standby | Standby gives `ISSUE_VAULT_ERROR` | C · **FIXED in P040 (dd2dc2c, e556f84)** | Reword the guide row (sealed: 503; standby: use the active node) | S |
+| install-licence-signing-2 | Vault mount options | `--vault-mount`, `--vault-login-mount` not in the guide | C · **FIXED in P040 (dd2dc2c)** | Add them with defaults | S |
+| install-licence-signing-3 | Vault TLS / sealed / error codes | Untested | C · **FIXED in P040 (934c35a)** | Tests with a stub Vault: untrusted certificate, 503, 500 | S |
+| notifications-85 | Own daemon threads, no `@EnableScheduling` | not asserted | C · **FIXED in P040 (735f200)** | test: context without `@EnableScheduling` runs the tick; worker threads are daemon | S |
+| notifications-157..162 | P015 report decisions 1–4, 8–11 | not in design body | C · **FIXED in P040 (5a6e619)** | add a "Decisions made in P015" list to design section 5 | S |
+| notifications-167 | `validFor` 5 min – 30 days | undocumented, bounds untested | C · **FIXED in P040 (5a6e619, f7595eb)** | state it in section 6; add a bounds test | S |
+| notifications-168 | Approval delivery codes | only in the install guide | C · **FIXED in P040 (5a6e619)** | list the `ACTION_*` codes in section 6 | S |
+| install-notifications-2 | `CHECK_FAILED` startup message | not in the table | C · **FIXED in P040 (03f7138 (P037))** | add the row "Notifications tables could not be checked" | S |
+| install-notifications-4 | Proxy for the Microsoft 365 token client | not stated | C · **FIXED in P040 (5a6e619)** | say whether `https.proxyHost` applies to `login.microsoftonline.com` too | S |
+| install-notifications-5 | `teams.<id>` wording | ambiguous | C · **FIXED in P040 (5a6e619)** | "key = destination id, value = path of the secret" | S |
+| xc-names-1 | No product names in docs | `docs/design/notifications.md` sections 1 and 3 name the two apps; the guard does not scan `docs/design/` | C · **FIXED in P040 (bbf2289, d1c3774, a9399bd, bc19f9b, 5a6e619, 2cacae1)** | replace with "the apps" or a neutral label; decide whether the guard should cover `docs/design/` | S |
+| setup-1 | No "tenant" in user-facing text | No test; two texts say tenant | C · **FIXED in P040 (a47fed5)** | Reword the two texts; add the word to a text check over the setup and identity code files | S |
+| install-setup-1 | Refusal code list | Two time-zone codes missing from §5 | C · **FIXED in P040 (2cacae1)** | Add them to the §5 list | S |
+| install-setup-3 | Sign-in fields | §2 says unshown fields refuse, but three optional fields are accepted | C · **FIXED in P040 (2cacae1)** | Show the optional fields in the §2 example or reword the sentence | S |
+| install-setup-4 | Profile check order | "before anything else" is not exact | C · **FIXED in P040 (2cacae1)** | Reword to "before the database is touched" | S |
+| install-identity-1 | Connection refusals | `IDN_TEST_FAILED` not listed | C · **FIXED in P040 (21f5663)** | Add it to the §6 list | S |
+| xc-javadoc-setup-1 | `ProductRoles` class comment | Says platform roles "are never granted through a mapping file"; since P028 they are, on `*` rows | C · **FIXED in P040 (2cacae1)** | Correct the comment | S |
+| xc-independence-2 | The guard covers every text file a reader or app sees | The guard skips `*.md` outside CLAUDE.md, README and `docs/install/`, and skips `.csv`, `.hcl`, `.sh`, `.ps1` | C · **FIXED in P040 (ad9ced5)** | Check every text file outside `docs/work/` and `docs/design/`, with an allow-list of binary types; a test plants a name in each kind | S |
 
 ## S2-8 Public API: hide internals
 

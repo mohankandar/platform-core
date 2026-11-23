@@ -69,7 +69,7 @@ The design doc names real products; this file says "a product's published API" i
 
 | ID | Rule | Status | Code | Test | Note |
 |---|---|---|---|---|---|
-| integration-module-32 | A Test action with fake data on every integration | PARTLY | `pi/engine/TestAction.java` `run` | `pit/TestActionTest.java`; `FolderExportTest` `theTestActionWritesTheFakePdfAndAManifestThenRemovesThem`; `CallbackTest` `theTestActionSendsASignedTestCallback` | API push, folder export and callbacks only. For `API_POLL` / `WATCHED_FOLDER`, FULL mode goes to `CallEngine.run` and gives `INT_KIND_NOT_SUPPORTED`; there is only the health check |
+| integration-module-32 | A Test action with fake data on every integration | DONE (P040, bc19f9b; question 1) | `pi/engine/TestAction.java` `run` | `pit/TestActionTest.java`; `FolderExportTest` `theTestActionWritesTheFakePdfAndAManifestThenRemovesThem`; `CallbackTest` `theTestActionSendsASignedTestCallback` | API push, folder export and callbacks only. For `API_POLL` / `WATCHED_FOLDER`, FULL mode goes to `CallEngine.run` and gives `INT_KIND_NOT_SUPPORTED`; there is only the health check |
 | integration-module-33 | Contract tests against each published product API in every build | DIFFERENT | `platform-integration-testkit/.../ProfileContract.java` | `pit/ProfileContractTest.java` (made-up profiles) | P030: made-up profiles only; the kit is for the API's owner. Code follows P030 |
 | integration-module-34 | Live-system integration tests, run only on request | MISSING | — | — | No opt-in tag or switch in any integration test. `ProfileContract.checkAgainstServer` is the owner's tool |
 | integration-module-35 | The mock destination is built from the pinned product spec so it can't drift | DIFFERENT | `MockDestination.specMode(OpenApiSpec, …)` | `pit/ProfileMockTest.java` `everySwitch` (with spec) | P030: spec mode from any OpenAPI file. Code follows |
@@ -399,7 +399,7 @@ All other items match: 112 checked. That covers 33 properties with their default
 | integration-module-129 / 155 | `IntakeFile` self-check; changed file → `_problem` `INT_WATCH_FILE_CHANGED` | Test | B · **FIXED in P037 (7496d86)** | WatchedFolderTest: handler that rewrites a file while reading → `_problem` with the code; unit test of `IntakeFile.Changed` | S |
 | integration-module-46 | `token.requiredClaims` → `INT_TOKEN_CLAIMS_MISSING` | Test | B · **FIXED in P037 (edd4edb)** | SignInTest: mock `tokenClaims`; missing claim → SIGN_IN_FAILED with the code, nothing sent; present → SENT | S |
 | integration-module-153d (code side) | Sensitive field refused at send time for API push (`INT_SENSITIVE_FIELD_NOT_ALLOWED`, CallEngine ~407) | Test (save-time only tested) | B · **FIXED in P037 (cb60d3a)** | CallEngineTest: delivery marks a mapped field sensitive, not allowed → NOT_CONFIGURED, nothing sent | S |
-| integration-module-32 | Test action for API_POLL / WATCHED_FOLDER | Kind not supported in FULL mode | C | Test of intake kinds = health + sign-in (CHECK_ONLY), or document that the Test is health only | S |
+| integration-module-32 | Test action for API_POLL / WATCHED_FOLDER | Kind not supported in FULL mode | C · **FIXED in P040 (bc19f9b; question 1)** | Test of intake kinds = health + sign-in (CHECK_ONLY), or document that the Test is health only | S |
 | integration-module-34 | Live-system tests on request | None | C | Drop the rule (the contract kit covers it) or add an opt-in tag | S |
 | integration-module-50 | 408 = busy | Test | C | Add 408 to `classificationDefaults` | S |
 | integration-module-59 | Mixed replays = SENT | Test | C | MockSwitchesTest: replay on one call only → SENT, steps show ALREADY_RECEIVED | S |
@@ -411,9 +411,9 @@ All other items match: 112 checked. That covers 33 properties with their default
 | integration-module-137 | Early stop drops the connection; `INT_POLL_STORAGE_FAILED` | Test | C | PollingTest: unwritable work folder → the code; oversize download closes without reading the rest | S |
 | integration-module-163d | Hosted refuses a missing scanner | Deferred | C | Hosted go-live task | S |
 | integration-module-163e | ICAP over TLS | Deferred | C | When a customer needs it | M |
-| integration-module-5, 33, 35, 41, 44, 49, 63 | Product profile / pinned spec / product contract tests | Removed by P030; doc still says them | C | Rewrite those design lines to "made-up profiles; owner's contract kit" | S |
+| integration-module-5, 33, 35, 41, 44, 49, 63 | Product profile / pinned spec / product contract tests | Removed by P030; doc still says them | C · **FIXED in P040 (bc19f9b)** | Rewrite those design lines to "made-up profiles; owner's contract kit" | S |
 | integration-module-7, 39, 56, 85 | Superseded rules (push callers, plumbing reuse, JVM proxy option, `_DISABLED_BY_JVM`) | Code follows the later decision; doc body stale | C | Mark each line as replaced, naming the decision | S |
-| integration-module-150d…165 | 16 DOC GAPs (listed above) | Decisions not in the design body | C | Add a short "Decisions carried from the reports" section to integration-module.md | S |
+| integration-module-150d…165 | 16 DOC GAPs (listed above) | Decisions not in the design body | C · **FIXED in P040 (bc19f9b)** | Add a short "Decisions carried from the reports" section to integration-module.md | S |
 | integration-module-161d | User-Agent `platform-integration` | Test too | C | OutboundRulesTest asserts the User-Agent header | S |
 | integration-profile-format-4 | Bad profile name pattern | Test | C | ProfileValidatorTest: name `Bad Name` → `INT_PROFILE_SCHEMA /name` | S |
 | integration-profile-format-6 | Neither steps nor packaging | Test | C | ProfileValidatorTest: remove both → `INT_PROFILE_STEPS` | S |
@@ -423,6 +423,6 @@ All other items match: 112 checked. That covers 33 properties with their default
 | integration-profile-format-31 | Unknown header refused by the contract kit | Test | C | ProfileContractTest: plant a header the spec lacks | S |
 | integration-profile-format-35 | Server-check refusal path | Test | C | ProfileContractTest: mock refuses with an unnamed code → problem reported | S |
 | integration-standards-5 | Scanning always on for hosted | Deferred | C | Hosted go-live task (same as 163d) | S |
-| install-integration-1 | Guide section 7 ignores monitoring-spring | Doc | C | Add: "with platform-monitoring-spring the entries are in `dependencies` (docs/install/monitoring.md)" | S |
+| install-integration-1 | Guide section 7 ignores monitoring-spring | Doc | C · **FIXED in P040 (bc19f9b)** | Add: "with platform-monitoring-spring the entries are in `dependencies` (docs/install/monitoring.md)" | S |
 | install-integration-2 | `*_SETTINGS_INVALID` not codes | Catalogue | B · **FIXED in P037 (2a21e26)** | Cross-check 2 (P032 question 2): make them `PlatformCode`s or say in the guide they are message prefixes | M |
-| install-integration-3 | `INT_WATCH_CLAIM_LOST` never given | Doc/code | C | Remove it from the guide table (or give it in `WatchResult`) | S |
+| install-integration-3 | `INT_WATCH_CLAIM_LOST` never given | Doc/code | C · **FIXED in P040 (bc19f9b)** | Remove it from the guide table (or give it in `WatchResult`) | S |

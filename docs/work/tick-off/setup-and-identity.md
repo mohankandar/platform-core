@@ -19,7 +19,7 @@ Path shorthand (main code / tests):
 
 | ID | Rule | Status | Code | Test | Note |
 |---|---|---|---|---|---|
-| setup-1 | User-facing text says "customer" and "entity", never "tenant" | UNTESTED | `S/SetupRefusal.java`, plan lines in `S/SetupRun.java`; `IC/store/*Outcome.java` messages | — | Code mostly follows it. A few texts still say tenant: `SETUP_CONFIG_OTHER_TENANT.cause` ("another customer's tenant ID") and the config fragment comment in `S/ConfigFragment.java` "customer (tenant) ID". No test looks for the word |
+| setup-1 | User-facing text says "customer" and "entity", never "tenant" | DONE (P040, a47fed5) | `S/SetupRefusal.java`, plan lines in `S/SetupRun.java`; `IC/store/*Outcome.java` messages | — | Code mostly follows it. A few texts still say tenant: `SETUP_CONFIG_OTHER_TENANT.cause` ("another customer's tenant ID") and the config fragment comment in `S/ConfigFragment.java` "customer (tenant) ID". No test looks for the word |
 | setup-2 | The apps' `tenants` tables (which hold entities) are aligned in each app's switch-over | APP-SIDE | — | — | App switch-over tasks |
 
 ## setup.md — section 2 Decisions (owner, 2026-11-21)
@@ -250,7 +250,7 @@ or UUID, no header read by the platform).
 | setup-115 | Grants of slots the file does not name count as "not in the file"; older issuer untouched | Not in setup.md; no test | B · **FIXED in P039 (c211a6b, fa4d697)** | State it in setup.md §5; add a setup test that drops every row of one slot and one for a grant under another issuer | S |
 | setup-116 | Slots of a waiting renewal are stored at once | Not in setup.md; no test | B · **FIXED in P039 (fcbf967, fa4d697)** | State it in setup.md §5; add a setup test with a renewal that starts later | S |
 | setup-117 | An app-DISABLED connection is a conflict | Not in setup.md; no test for the DISABLED case | B · **FIXED in P039 (17ff075, fa4d697)** | State the "changed in the app" rule in setup.md §5; add the DISABLED case to `SetupIdentityChangesTest` | S |
-| setup-1 | No "tenant" in user-facing text | No test; two texts say tenant | C | Reword the two texts; add the word to a text check over the setup and identity code files | S |
+| setup-1 | No "tenant" in user-facing text | No test; two texts say tenant | C · **FIXED in P040 (a47fed5)** | Reword the two texts; add the word to a text check over the setup and identity code files | S |
 | setup-19 | Hub mode | Deferred by design | C | None now; hub-mode task after the proof of concept | L |
 | setup-28 | Organization claim in the lookup key | Deferred by design | C | None now; hub-mode task | M |
 | setup-48 | Grants under an older issuer listed as "not in the file" | Deferred by owner answer | C | None now; hub-mode task | S |
@@ -277,10 +277,10 @@ or UUID, no header read by the platform).
 | setup-132 | `discardDraft` | Not in setup.md; no Postgres test | C | State in setup.md §7; add discard to `LoginConnectionDraftsTest` | S |
 | setup-133 | Rollback target rule | Not in setup.md | C | State in setup.md §7 | S |
 | setup-134 | Run-log field order | Not in setup.md; no test | C | State in setup.md; assert the order in one setup test | S |
-| install-setup-1 | Refusal code list | Two time-zone codes missing from §5 | C | Add them to the §5 list | S |
-| install-setup-3 | Sign-in fields | §2 says unshown fields refuse, but three optional fields are accepted | C | Show the optional fields in the §2 example or reword the sentence | S |
-| install-setup-4 | Profile check order | "before anything else" is not exact | C | Reword to "before the database is touched" | S |
-| install-identity-1 | Connection refusals | `IDN_TEST_FAILED` not listed | C | Add it to the §6 list | S |
-| xc-javadoc-setup-1 | `ProductRoles` class comment | Says platform roles "are never granted through a mapping file"; since P028 they are, on `*` rows | C | Correct the comment | S |
+| install-setup-1 | Refusal code list | Two time-zone codes missing from §5 | C · **FIXED in P040 (2cacae1)** | Add them to the §5 list | S |
+| install-setup-3 | Sign-in fields | §2 says unshown fields refuse, but three optional fields are accepted | C · **FIXED in P040 (2cacae1)** | Show the optional fields in the §2 example or reword the sentence | S |
+| install-setup-4 | Profile check order | "before anything else" is not exact | C · **FIXED in P040 (2cacae1)** | Reword to "before the database is touched" | S |
+| install-identity-1 | Connection refusals | `IDN_TEST_FAILED` not listed | C · **FIXED in P040 (21f5663)** | Add it to the §6 list | S |
+| xc-javadoc-setup-1 | `ProductRoles` class comment | Says platform roles "are never granted through a mapping file"; since P028 they are, on `*` rows | C · **FIXED in P040 (2cacae1)** | Correct the comment | S |
 
 Gap totals: A 0 · B 6 · C 32 (38 rows).

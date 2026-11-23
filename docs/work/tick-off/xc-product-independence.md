@@ -54,5 +54,5 @@ main. The tick-off agents were told to flag any they met; none did (see their fi
 
 | ID | Rule | What is missing | Sev | Proposed fix (one line) | Size |
 |---|---|---|---|---|---|
-| xc-independence-1 | platform-core never names or assumes a product | Two root notes name apps and describe one app's schema behaviour; the guard skips them | B | Move their generic content into `docs/install/identity.md` (the identity schema contract) and delete both files | S |
-| xc-independence-2 | The guard covers every text file a reader or app sees | The guard skips `*.md` outside CLAUDE.md, README and `docs/install/`, and skips `.csv`, `.hcl`, `.sh`, `.ps1` | C | Check every text file outside `docs/work/` and `docs/design/`, with an allow-list of binary types; a test plants a name in each kind | S |
+| xc-independence-1 | platform-core never names or assumes a product | Two root notes name apps and describe one app's schema behaviour; the guard skips them | B · **FIXED in P040 (21f5663)** | Move their generic content into `docs/install/identity.md` (the identity schema contract) and delete both files | S |
+| xc-independence-2 | The guard covers every text file a reader or app sees | The guard skips `*.md` outside CLAUDE.md, README and `docs/install/`, and skips `.csv`, `.hcl`, `.sh`, `.ps1` | C · **FIXED in P040 (ad9ced5)** | Check every text file outside `docs/work/` and `docs/design/`, with an allow-list of binary types; a test plants a name in each kind | S |
