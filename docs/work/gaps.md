@@ -173,20 +173,20 @@ as one task if the owner prefers fewer, larger tasks: all of their rows are S or
 
 | ID | Rule | What is missing | Sev | Proposed fix (one line) | Size |
 |---|---|---|---|---|---|
-| monitoring-28 | `platform.monitoring.every` | setting has no effect | B | Use it as the interval of the built-in checks (or drop it from the properties and guide) | S |
-| monitoring-30 | Key service check from the bean, required per `customer-keys-required` | untested | B | Wiring test with an in-memory `KeyService`, down, both settings | S |
-| monitoring-34 | Mail check from the notifications settings | wrong port default; false DOWN without `from-address` under Microsoft 365 | B | Read the mail settings through notifications-spring's checked config (or mirror its port and sender defaults) and test it | S |
-| model-governance-19 | Customer pass marks never looser | an entity mark becomes looser when the app tightens its default, and stays in force | B | On a default change, refuse it or treat looser entity marks as replaced by the default (both validation and monitoring marks); test it | S |
-| model-governance-33 | A change of where the model runs goes through the gate | only makes the review due (warning by default) | B | Owner to confirm P034 D2; if the gate must refuse, record `runsWhere` in the validation and compare it in `requireLive` | M |
-| model-governance-105 | P034 D4 retention in the database | same as 84 | B | See model-governance-84 | — |
-| install-model-governance-5 | `forbidden-roles` | may be empty silently; separation then lost | B | Refuse (or warn loudly at startup) when `forbidden-roles` is empty; say in the guide it must be set | S |
-| notifications-65 | Outbox stores roles, never addresses | no test that no e-mail address reaches a `notif_` table | B | add recipient addresses to the never-list of `SecretsNeverLeakTest` table dump | S |
-| notifications-78 | Released SQL files never edited | no guard; rule kept so far (V1 unchanged since v0.3.0) | B | build guard: checksum of every released `db/platform/**` file pinned in a test | S |
-| notifications-145 | Told once with several instances (Postgres) | `SKIP LOCKED` claim tested only in memory | B | Postgres test: two threads call `tellExpired` on 30 requests; each told once | S |
-| setup-98 | A certificate caller needs the customer's ACTIVE connection | No test | B | Add a certificate case with a DISABLED connection to `PushCallerTest` (memory and Postgres) | S |
-| setup-115 | Grants of slots the file does not name count as "not in the file"; older issuer untouched | Not in setup.md; no test | B | State it in setup.md §5; add a setup test that drops every row of one slot and one for a grant under another issuer | S |
-| setup-116 | Slots of a waiting renewal are stored at once | Not in setup.md; no test | B | State it in setup.md §5; add a setup test with a renewal that starts later | S |
-| setup-117 | An app-DISABLED connection is a conflict | Not in setup.md; no test for the DISABLED case | B | State the "changed in the app" rule in setup.md §5; add the DISABLED case to `SetupIdentityChangesTest` | S |
+| monitoring-28 | `platform.monitoring.every` | setting has no effect | B · **FIXED in P039 (e0b4e89)** | Use it as the interval of the built-in checks (or drop it from the properties and guide) | S |
+| monitoring-30 | Key service check from the bean, required per `customer-keys-required` | untested | B · **FIXED in P039 (e0b4e89)** | Wiring test with an in-memory `KeyService`, down, both settings | S |
+| monitoring-34 | Mail check from the notifications settings | wrong port default; false DOWN without `from-address` under Microsoft 365 | B · **FIXED in P039 (e0b4e89)** | Read the mail settings through notifications-spring's checked config (or mirror its port and sender defaults) and test it | S |
+| model-governance-19 | Customer pass marks never looser | an entity mark becomes looser when the app tightens its default, and stays in force | B · **FIXED in P039 (eba60f2)** | On a default change, refuse it or treat looser entity marks as replaced by the default (both validation and monitoring marks); test it | S |
+| model-governance-33 | A change of where the model runs goes through the gate | only makes the review due (warning by default) | B · **FIXED in P039 (eba60f2)** | Owner to confirm P034 D2; if the gate must refuse, record `runsWhere` in the validation and compare it in `requireLive` | M |
+| model-governance-105 | P034 D4 retention in the database | same as 84 | B · **FIXED in P039 (0b08363 (P037, with model-governance-84))** | See model-governance-84 | — |
+| install-model-governance-5 | `forbidden-roles` | may be empty silently; separation then lost | B · **FIXED in P039 (eba60f2)** | Refuse (or warn loudly at startup) when `forbidden-roles` is empty; say in the guide it must be set | S |
+| notifications-65 | Outbox stores roles, never addresses | no test that no e-mail address reaches a `notif_` table | B · **FIXED in P039 (6e22171)** | add recipient addresses to the never-list of `SecretsNeverLeakTest` table dump | S |
+| notifications-78 | Released SQL files never edited | no guard; rule kept so far (V1 unchanged since v0.3.0) | B · **FIXED in P039 (b4602b6)** | build guard: checksum of every released `db/platform/**` file pinned in a test | S |
+| notifications-145 | Told once with several instances (Postgres) | `SKIP LOCKED` claim tested only in memory | B · **FIXED in P039 (40468ef)** | Postgres test: two threads call `tellExpired` on 30 requests; each told once | S |
+| setup-98 | A certificate caller needs the customer's ACTIVE connection | No test | B · **FIXED in P039 (0e7e3a4)** | Add a certificate case with a DISABLED connection to `PushCallerTest` (memory and Postgres) | S |
+| setup-115 | Grants of slots the file does not name count as "not in the file"; older issuer untouched | Not in setup.md; no test | B · **FIXED in P039 (c211a6b, fa4d697)** | State it in setup.md §5; add a setup test that drops every row of one slot and one for a grant under another issuer | S |
+| setup-116 | Slots of a waiting renewal are stored at once | Not in setup.md; no test | B · **FIXED in P039 (fcbf967, fa4d697)** | State it in setup.md §5; add a setup test with a renewal that starts later | S |
+| setup-117 | An app-DISABLED connection is a conflict | Not in setup.md; no test for the DISABLED case | B · **FIXED in P039 (17ff075, fa4d697)** | State the "changed in the app" rule in setup.md §5; add the DISABLED case to `SetupIdentityChangesTest` | S |
 
 ## S2-7 Design docs and install guides catch up
 
