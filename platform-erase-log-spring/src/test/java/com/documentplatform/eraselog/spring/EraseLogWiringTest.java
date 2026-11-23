@@ -2,6 +2,7 @@ package com.documentplatform.eraselog.spring;
 
 import com.documentplatform.eraselog.EraseGuard;
 import com.documentplatform.eraselog.EraseLogError;
+import com.documentplatform.eraselog.EraseLogException;
 import com.documentplatform.eraselog.EraseRequest;
 import com.documentplatform.eraselog.ErasePosition;
 import com.documentplatform.eraselog.ErasedBy;
@@ -28,7 +29,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.Statement;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -37,6 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EraseLogWiringTest {
@@ -81,7 +87,9 @@ class EraseLogWiringTest {
 
     /**
      * The health details, exactly: IDs, the location, positions, counts, the code and its message, retention days and
-     * the time checked. Never what an entry names (record type or ID, kind, rule, audit ID) or anything of the record.
+     * the time checked. Never what an entry names (record type or ID, kind, rule, audit ID) or anything of the record,
+     * except, while an entry could not be applied, that entry's number, kind, record type and ID and the handler's code
+     * ({@code lastFailure}, for the admin screen; IDs, not values). Never the rule, audit ID, entity or product.
      */
     @Test
     void healthDetailsAreExactlyTheSafeOnes(@TempDir Path dir) {
@@ -134,6 +142,181 @@ class EraseLogWiringTest {
                     for (String text : never) {
                         assertFalse(h.getDetails().toString().contains(text), text + " in: " + h.getDetails());
                     }
+                });
+
+        // An entry that could not be applied (erase-log-22): the details name it for the admin screen, by its number,
+        // kind, record type and ID and the handler's code; still never the rule, audit ID, entity or product.
+        Path second = dir.resolve("log2");
+        RecordingEraseHandler failing = new RecordingEraseHandler("document").store(record).store("d2")
+                .failWith("DOC_STORE_DOWN");
+        app(second)
+                .withBean(ErasePosition.class, InMemoryErasePosition::new)
+                .withBean(RecordingEraseHandler.class, () -> failing)
+                .run(ctx -> {
+                    EraseLogException e = assertThrows(EraseLogException.class,
+                            () -> ctx.getBean(Eraser.class).erase(document(record)));
+                    assertEquals("DOC_STORE_DOWN", e.handlerCode().orElseThrow());
+                    ctx.getBean(EraseLogWorker.class).recheck();
+                    EraseGuard.State s = ctx.getBean(EraseGuard.class).state();
+                    assertNotNull(s.lastFailure(), "the wired eraser tells the guard");
+                    Health h = ctx.getBean(EraseLogHealthIndicator.class).health();
+                    assertEquals(Status.UP, h.getStatus(), "an erase in progress");
+                    java.util.Map<String, Object> failure = new java.util.LinkedHashMap<>();
+                    failure.put("seq", 1L);
+                    failure.put("kind", "document");
+                    failure.put("recordType", "case");
+                    failure.put("recordId", record);
+                    failure.put("handlerCode", "DOC_STORE_DOWN");
+                    failure.put("code", "ERASE_HANDLER_FAILED");
+                    failure.put("at", s.lastFailure().at().toString());
+                    assertEquals(java.util.Map.ofEntries(
+                            java.util.Map.entry("mayTakeWork", true),
+                            java.util.Map.entry("message", "In step; 1 erase(s) in progress"),
+                            java.util.Map.entry("logId", s.logId().toString()),
+                            java.util.Map.entry("location", second.toAbsolutePath().normalize().toString()),
+                            java.util.Map.entry("logHead", 1L),
+                            java.util.Map.entry("applied", 0L),
+                            java.util.Map.entry("pending", 1L),
+                            java.util.Map.entry("backupRetentionDays", 35),
+                            java.util.Map.entry("logRetentionDays", 65),
+                            java.util.Map.entry("checkedAt", s.checkedAt().toString()),
+                            java.util.Map.entry("lastFailure", failure)), h.getDetails());
+                    for (String text : List.of("AUD-" + record, "RET-7Y", ENTITY.toString(), "PRODUCT_A",
+                            "not erased")) {
+                        assertFalse(h.getDetails().toString().contains(text), text + " in: " + h.getDetails());
+                    }
+
+                    failing.failWith(null);
+                    ctx.getBean(Eraser.class).erase(document("d2"));
+                    ctx.getBean(EraseLogWorker.class).recheck();
+                    Health after = ctx.getBean(EraseLogHealthIndicator.class).health();
+                    assertFalse(after.getDetails().containsKey("lastFailure"), "gone once the entry is applied");
+                    assertEquals(0L, after.getDetails().get("pending"));
+                });
+    }
+
+    /** A clock the test moves. */
+    static final class MovingClock extends Clock {
+        volatile Instant now;
+
+        MovingClock(Instant now) {
+            this.now = now;
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return now;
+        }
+    }
+
+    /** erase-log-97: the worker's daily run checks the chain and prunes, but never while work is blocked. */
+    @Test
+    void theDailyRunPrunesOldAppliedEntriesAndSkipsPruningWhileBlocked(@TempDir Path dir) {
+        Instant t0 = Instant.parse("2026-06-01T08:00:00Z");
+        MovingClock clock = new MovingClock(t0);
+        InMemoryErasePosition position = new InMemoryErasePosition();
+        RecordingEraseHandler documents = new RecordingEraseHandler("document").store("d1").store("d2").store("d3");
+        app(dir.resolve("log"))
+                .withBean(Clock.class, () -> clock)
+                .withBean(ErasePosition.class, () -> position)
+                .withBean(RecordingEraseHandler.class, () -> documents)
+                .run(ctx -> {
+                    assertTrue(ctx.getStartupFailure() == null, () -> String.valueOf(ctx.getStartupFailure()));
+                    Eraser eraser = ctx.getBean(Eraser.class);
+                    EraseLogWorker worker = ctx.getBean(EraseLogWorker.class);
+                    EraseGuard guard = ctx.getBean(EraseGuard.class);
+                    com.documentplatform.eraselog.EraseLogStore store =
+                            ctx.getBean(com.documentplatform.eraselog.EraseLogStore.class);
+                    eraser.erase(document("d1"));
+                    clock.now = t0.plus(Duration.ofDays(2));
+                    eraser.erase(document("d2"));
+                    java.util.Map<UUID, ErasePosition.Position> backup = position.snapshot(); // at entry 2
+                    clock.now = t0.plus(Duration.ofDays(20));
+                    eraser.erase(document("d3"));
+
+                    // 70 days on: entries 1 and 2 are older than the 65 days the log keeps them; 3 is 50 days old.
+                    clock.now = t0.plus(Duration.ofDays(70));
+                    position.restore(backup);
+                    assertFalse(guard.checkAtStartup().mayTakeWork(), "restored: blocked");
+                    worker.daily();
+                    assertFalse(guard.mayTakeWork());
+                    assertEquals(0, store.checkpoint().seq(), "nothing pruned while blocked");
+                    assertEquals(3, store.after(0).size());
+
+                    assertTrue(ctx.getBean(com.documentplatform.eraselog.EraseReplay.class).run().passed());
+                    worker.daily();
+                    EraseGuard.State s = guard.state();
+                    assertTrue(s.mayTakeWork());
+                    assertTrue(s.chainChecked(), "the daily run walked the chain");
+                    assertEquals(clock.now, s.checkedAt());
+                    assertEquals(2, store.checkpoint().seq(), "entries 1 and 2 pruned");
+                    assertEquals(List.of(3L), store.after(0).stream().map(e -> e.seq()).toList());
+
+                    clock.now = t0.plus(Duration.ofDays(86));
+                    worker.daily();
+                    assertEquals(3, store.checkpoint().seq(), "entry 3 pruned once 65 days old");
+                    assertTrue(guard.mayTakeWork());
+                    assertEquals(3L, guard.state().applied());
+                });
+    }
+
+    /** erase-log-99: DOWN, with the code, for every problem other than a restore. */
+    @Test
+    void theHealthIsDownWithItsCodeForABrokenChainTheWrongLogOrAnUnreachablePosition(@TempDir Path dir)
+            throws Exception {
+        Path location = dir.resolve("log");
+        FileEraseLogStore existing = new FileEraseLogStore(location);
+        existing.append(document("d1"), Instant.now());
+        existing.append(document("d2"), Instant.now());
+        Path file = location.resolve(FileEraseLogStore.LOG_FILE);
+        String lines = java.nio.file.Files.readString(file);
+        java.nio.file.Files.writeString(file, lines.replace("\"recordId\":\"d1\"", "\"recordId\":\"d9\""));
+        app(location)
+                .withBean(ErasePosition.class, InMemoryErasePosition::new)
+                .withBean(RecordingEraseHandler.class, () -> new RecordingEraseHandler("document"))
+                .run(ctx -> {
+                    assertTrue(ctx.getStartupFailure() == null, () -> String.valueOf(ctx.getStartupFailure()));
+                    Health h = ctx.getBean(EraseLogHealthIndicator.class).health();
+                    assertEquals(Status.DOWN, h.getStatus());
+                    assertEquals("ERASE_LOG_CHAIN_BROKEN", h.getDetails().get("code"));
+                    assertEquals(false, h.getDetails().get("mayTakeWork"));
+                    ctx.getBean(EraseLogWorker.class).recheck();
+                    assertEquals(Status.DOWN, ctx.getBean(EraseLogHealthIndicator.class).health().getStatus(),
+                            "only a full check clears a broken chain");
+                });
+
+        InMemoryErasePosition position = new InMemoryErasePosition();
+        app(dir.resolve("a"))
+                .withBean(ErasePosition.class, () -> position)
+                .withBean(RecordingEraseHandler.class, () -> new RecordingEraseHandler("document"))
+                .run(ctx -> {
+                    ctx.getBean(Eraser.class).erase(document("d1"));
+                    position.down(true);
+                    ctx.getBean(EraseLogWorker.class).recheck();
+                    Health h = ctx.getBean(EraseLogHealthIndicator.class).health();
+                    assertEquals(Status.DOWN, h.getStatus());
+                    assertEquals("ERASE_POSITION_FAILED", h.getDetails().get("code"));
+                    position.down(false);
+                    ctx.getBean(EraseLogWorker.class).recheck();
+                    assertEquals(Status.UP, ctx.getBean(EraseLogHealthIndicator.class).health().getStatus());
+                });
+        app(dir.resolve("b"))
+                .withBean(ErasePosition.class, () -> position)
+                .withBean(RecordingEraseHandler.class, () -> new RecordingEraseHandler("document"))
+                .run(ctx -> {
+                    Health h = ctx.getBean(EraseLogHealthIndicator.class).health();
+                    assertEquals(Status.DOWN, h.getStatus());
+                    assertEquals("ERASE_LOG_WRONG_LOG", h.getDetails().get("code"));
                 });
     }
 
