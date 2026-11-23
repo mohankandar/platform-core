@@ -36,9 +36,9 @@ as one task if the owner prefers fewer, larger tasks: all of their rows are S or
 
 | ID | Rule | What is missing | Sev | Proposed fix (one line) | Size |
 |---|---|---|---|---|---|
-| model-governance-39 | Periodic re-validation | review date per use, validations per entity: one entity's pass resets the date for all | A | Keep the next review per use and entity (from that entity's live validation) and check it at the gate and in `ModelReviews` | M |
-| xc-devkey-1 (licensing-file-format-44) | A key marked `"development": true` counts as a development key in the app | `LicensingConfig.from` drops the development set, so in Spring apps `DevelopmentLicence` is always false and a local http issuer is refused even under a development-key licence; untested | A | Keep the file's development IDs when merging keys (`TrustedKeys.of(keys, development)`) and add a wiring test through identity-spring | S |
-| xc-never-leak-2, -11 | never log / bundle secrets | `SafeText.scrub` keeps URL user-info, so `redis://user:pw@host`-style app properties reach the diagnostic bundle (and any `PlatformError` detail) | A | In `SafeText.scrub` replace `://[^/\s@]+@` with `://[removed]@`; plant such a property in `DiagnosticBundleTest` and a detail in `ErrorsTest` | S |
+| model-governance-39 | Periodic re-validation | review date per use, validations per entity: one entity's pass resets the date for all | A · **FIXED in P036 (912f3cd)** | Keep the next review per use and entity (from that entity's live validation) and check it at the gate and in `ModelReviews` | M |
+| xc-devkey-1 (licensing-file-format-44) | A key marked `"development": true` counts as a development key in the app | `LicensingConfig.from` drops the development set, so in Spring apps `DevelopmentLicence` is always false and a local http issuer is refused even under a development-key licence; untested | A · **FIXED in P036 (dd2d3e8)** | Keep the file's development IDs when merging keys (`TrustedKeys.of(keys, development)`) and add a wiring test through identity-spring | S |
+| xc-never-leak-2, -11 | never log / bundle secrets | `SafeText.scrub` keeps URL user-info, so `redis://user:pw@host`-style app properties reach the diagnostic bundle (and any `PlatformError` detail) | A · **FIXED in P036 (dc2860a)** | In `SafeText.scrub` replace `://[^/\s@]+@` with `://[removed]@`; plant such a property in `DiagnosticBundleTest` and a detail in `ErrorsTest` | S |
 
 ## S2-2 Every failure is a PlatformCode
 
