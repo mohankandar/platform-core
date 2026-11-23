@@ -7,6 +7,8 @@ import java.util.Optional;
 /**
  * Where continuous conditions are kept while they last. Postgres implementation: {@code jdbc.PostgresConditionStore};
  * in-memory one for tests in the testkit module.
+ *
+ * <p>SPI: implemented by stores; apps call {@link Notifier}.
  */
 public interface ConditionStore {
 

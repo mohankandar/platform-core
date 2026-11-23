@@ -7,6 +7,8 @@ import java.util.List;
 /**
  * Where occurrences wait for their summary. Postgres implementation: {@code jdbc.PostgresSummaryStore}; in-memory one
  * for tests in the testkit module.
+ *
+ * <p>SPI: implemented by stores; apps call {@link Notifier}.
  */
 public interface SummaryStore {
 

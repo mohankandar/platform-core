@@ -25,7 +25,11 @@ import java.util.Set;
  */
 public final class AddressGuard {
 
-    /** Resolves a host name. Replaceable for tests. */
+    /**
+     * Resolves a host name. The default is the system resolver; platform-integration's save-time check passes one that
+     * knows literal addresses only. Every address it returns is still checked, so no resolver can let a refused address
+     * through.
+     */
     @FunctionalInterface
     public interface Resolver {
         InetAddress[] resolve(String host) throws UnknownHostException;
@@ -43,6 +47,7 @@ public final class AddressGuard {
         this(allowInternal, InetAddress::getAllByName);
     }
 
+    /** With another resolver (P041: kept public, used by platform-integration's {@code ConfigCheck}, not a test hook). */
     public AddressGuard(boolean allowInternal, Resolver resolver) {
         this.allowInternal = allowInternal;
         this.resolver = resolver;

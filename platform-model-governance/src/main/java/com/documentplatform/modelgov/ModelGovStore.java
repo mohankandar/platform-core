@@ -11,6 +11,8 @@ import java.util.UUID;
  * Where the register and the gate's records are kept: Postgres ({@code jdbc.PostgresModelGovStore}) or in memory
  * (the testkit). Plain persistence: every rule is in {@link ModelGovernance} and {@link ModelGate}, so both stores
  * behave the same. Validations, approvals, acceptances and live switches are insert only.
+ *
+ * <p>SPI: implemented by stores; apps call {@link ModelGovernance}.
  */
 public interface ModelGovStore {
 
