@@ -100,6 +100,39 @@ class CatalogueTest {
         assertEquals(classes.size(), codes.size(), "one code per module: " + codes);
     }
 
+    /**
+     * xc-schemas-10 (P037): every schema's startup check answers a database that fails during the check with its own
+     * {@code *CHECK_FAILED} code, naming the SQL state but never the driver's text.
+     */
+    @Test
+    void everySchemaCheckGivesCheckFailedWhenTheDatabaseFails() {
+        Object connection = java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),
+                new Class<?>[]{java.sql.Connection.class}, (p, m, a) -> {
+                    if (m.getName().equals("close")) return null;
+                    throw new java.sql.SQLException("connection lost, password=Planted-Db-Pw", "08006");
+                });
+        javax.sql.DataSource failing = (javax.sql.DataSource) java.lang.reflect.Proxy.newProxyInstance(
+                getClass().getClassLoader(), new Class<?>[]{javax.sql.DataSource.class}, (p, m, a) -> {
+                    if (m.getName().equals("getConnection")) return connection;
+                    throw new UnsupportedOperationException(m.getName());
+                });
+        Map<String, org.junit.jupiter.api.function.Executable> checks = new java.util.LinkedHashMap<>();
+        checks.put("identity", () -> com.documentplatform.identity.jdbc.IdentitySchema.verify(failing));
+        checks.put("licensing", () -> com.documentplatform.licensing.jdbc.LicensingSchema.verify(failing));
+        checks.put("notifications", () -> com.documentplatform.notifications.jdbc.NotificationSchema.verify(failing));
+        checks.put("fields", () -> com.documentplatform.fields.jdbc.FieldSchema.verify(failing));
+        checks.put("erase-log", () -> com.documentplatform.eraselog.jdbc.EraseLogSchema.verify(failing));
+        checks.put("integration", () -> com.documentplatform.integration.jdbc.IntegrationSchema.verify(failing));
+        checks.put("model-governance", () -> com.documentplatform.modelgov.jdbc.ModelGovSchema.verify(failing));
+        for (Map.Entry<String, org.junit.jupiter.api.function.Executable> c : checks.entrySet()) {
+            Throwable t = assertThrows(Throwable.class, c.getValue(), c.getKey());
+            assertInstanceOf(com.documentplatform.errors.HasPlatformCode.class, t, c.getKey() + ": " + t);
+            String code = ((com.documentplatform.errors.HasPlatformCode) t).platformCode().code();
+            assertTrue(code.endsWith("CHECK_FAILED"), c.getKey() + ": " + code);
+            assertFalse(String.valueOf(t.getMessage()).contains("Planted-Db-Pw"), c.getKey() + ": " + t.getMessage());
+        }
+    }
+
     /** xc-catalogue-19 (P037): store and read failures carry a code; the message names the operation and SQL state. */
     @Test
     void everyStoreFailureCarriesItsCode() throws Exception {

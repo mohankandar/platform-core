@@ -13,6 +13,8 @@ public enum MonitoringCode implements PlatformCode {
     MON_CHECK_TIMEOUT,
     MON_DB_UNREACHABLE,
     MON_DB_LOGIN_REFUSED,
+    /** The app's database user owns the platform tables or may create objects: more rights than it needs (P037). */
+    MON_DB_USER_TOO_POWERFUL,
     MON_KEY_SERVICE_DOWN,
     MON_SECRET_MISSING,
     MON_SECRET_UNAVAILABLE,

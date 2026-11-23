@@ -85,7 +85,7 @@ class BrokenStoreLogsTest {
             IdentityStoreException thrown = assertThrows(IdentityStoreException.class,
                     () -> lookup.findActive("customer-oidc", URI.create("https://login.example.test/realms/a"),
                             "api://product-a"));
-            assertEquals("Identity store: read login connection failed (SQL state 28P01)", thrown.getMessage());
+            assertEquals("IDN_STORE_FAILED: Identity store: read login connection failed (SQL state 28P01)", thrown.getMessage());
             texts.add(thrown.getMessage());
             texts.add(thrown.toString());
             IdentityStoreException binding = assertThrows(IdentityStoreException.class,

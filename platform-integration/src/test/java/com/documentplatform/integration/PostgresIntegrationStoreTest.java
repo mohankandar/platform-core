@@ -148,5 +148,40 @@ class PostgresIntegrationStoreTest {
         Pg ok = Pg.migrated();
         IntegrationSchema.verify(ok.owner);
         IntegrationSchema.verify(ok.owner); // twice: nothing was changed
+
+        // xc-schemas-7 (P037): the unknown version and the incomplete tables.
+        Pg unknown = Pg.migrated();
+        unknown.exec("drop table " + IntegrationSchema.VERSION_TABLE);
+        assertEquals(IntegrationSchemaException.Problem.INT_VERSION_UNKNOWN, assertThrows(
+                IntegrationSchemaException.class, () -> IntegrationSchema.verify(unknown.owner)).problem());
+        Pg emptyVersion = Pg.migrated();
+        emptyVersion.exec("delete from " + IntegrationSchema.VERSION_TABLE);
+        assertEquals(IntegrationSchemaException.Problem.INT_VERSION_UNKNOWN, assertThrows(
+                IntegrationSchemaException.class, () -> IntegrationSchema.verify(emptyVersion.owner)).problem());
+        Pg incomplete = Pg.migrated();
+        incomplete.exec("drop table int_callback_outbox");
+        IntegrationSchemaException gone = assertThrows(IntegrationSchemaException.class,
+                () -> IntegrationSchema.verify(incomplete.owner));
+        assertEquals(IntegrationSchemaException.Problem.INT_TABLES_INCOMPLETE, gone.problem());
+        assertTrue(gone.getMessage().contains("int_callback_outbox"), gone.getMessage());
+    }
+
+    /** xc-schemas-10 (P037): a database failing during the check gives INT_CHECK_FAILED, never the driver's text. */
+    @Test
+    void aDatabaseThatFailsDuringTheCheckGivesCheckFailed() {
+        Object connection = java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),
+                new Class<?>[]{java.sql.Connection.class}, (p, m, a) -> {
+                    if (m.getName().equals("close")) return null;
+                    throw new java.sql.SQLException("connection lost, password=Planted-Db-Pw", "08006");
+                });
+        DataSource failing = (DataSource) java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),
+                new Class<?>[]{DataSource.class}, (p, m, a) -> {
+                    if (m.getName().equals("getConnection")) return connection;
+                    throw new UnsupportedOperationException(m.getName());
+                });
+        IntegrationSchemaException e = assertThrows(IntegrationSchemaException.class,
+                () -> IntegrationSchema.verify(failing));
+        assertEquals(IntegrationSchemaException.Problem.INT_CHECK_FAILED, e.problem());
+        assertFalse(e.getMessage().contains("Planted-Db-Pw"), e.getMessage());
     }
 }

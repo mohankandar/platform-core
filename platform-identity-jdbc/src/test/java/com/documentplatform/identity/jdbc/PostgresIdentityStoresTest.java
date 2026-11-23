@@ -336,6 +336,6 @@ class PostgresIdentityStoresTest {
         assertNull(lookup.activeGrants(key));
         IdentityStoreException e = assertThrows(IdentityStoreException.class,
                 () -> lookup.findActive("okta", ISSUER, "api://product-a"));
-        assertEquals("Identity store: read login connection failed (SQL state 42501)", e.getMessage());
+        assertEquals("IDN_STORE_FAILED: Identity store: read login connection failed (SQL state 42501)", e.getMessage());
     }
 }
