@@ -11,6 +11,8 @@ import java.util.Optional;
  * for tests (testkit). Plain storage; the rules for changes are in {@link FieldDefinitions}, which apps use.
  *
  * <p>A store never deletes a definition, never changes a key, and keeps every version in the history.
+ *
+ * <p>SPI: implemented by stores; apps call {@link FieldDefinitions}.
  */
 public interface FieldStore {
 

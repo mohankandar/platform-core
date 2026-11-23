@@ -13,6 +13,9 @@ import java.util.Set;
  *
  * <p>Every change writes the grant history ({@code idn_grant_history}, scope PLATFORM, no entity) in the same
  * transaction.
+ *
+ * <p>SPI: implemented by stores ({@code PostgresGroupGrantStore}, the identity testkit); the setup command
+ * writes it, and apps call {@code admission.PlatformGroupAuthorization} to decide.
  */
 public interface PlatformGrantStore {
 

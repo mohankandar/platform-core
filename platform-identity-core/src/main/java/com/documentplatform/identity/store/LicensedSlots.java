@@ -6,6 +6,9 @@ import java.util.Set;
 /**
  * The entity slots of the licence in force, supplied by the app from platform-licensing (identity-jdbc has an adapter
  * for {@code LicenceService}).
+ *
+ * <p>SPI: supplied by the app (identity-jdbc's {@code LicenceSlots} over {@code LicenceService}); apps call
+ * {@link SlotActivation}.
  */
 @FunctionalInterface
 public interface LicensedSlots {

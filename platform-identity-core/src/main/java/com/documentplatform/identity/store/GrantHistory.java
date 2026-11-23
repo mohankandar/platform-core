@@ -8,6 +8,9 @@ import java.util.UUID;
  * The grant history ({@code idn_grant_history}) for the app's audit page: every grant added, removed or changed, by
  * setup or in the app, with who and when. Insert only; the database refuses updates and deletes. The app's DML-only
  * database user is enough to read it.
+ *
+ * <p>SPI: implemented by stores ({@code PostgresGrantHistory}, the identity testkit); apps call it to read
+ * the history (the grant stores write it).
  */
 public interface GrantHistory {
 
