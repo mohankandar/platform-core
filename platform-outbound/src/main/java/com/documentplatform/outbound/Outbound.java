@@ -277,6 +277,11 @@ public final class Outbound implements AutoCloseable {
         Answer stoppedEarly = null;
         try (ClassicHttpResponse response = client.http().executeOpen(null, b.build(), context)) {
             int status = response.getCode();
+            if (proxied && "https".equalsIgnoreCase(uri.getScheme()) && context.getSSLSession() == null) {
+                // The tunnel was refused: HttpClient 5.4+ hands back the proxy's own answer to the CONNECT instead
+                // of throwing. No TLS session means it never came from the destination; never read it as such.
+                throw new Failure(status == 407 ? OutboundCode.OUT_PROXY_SIGN_IN_REFUSED : OutboundCode.OUT_PROXY_REFUSED);
+            }
             if (proxied && status == 407) {
                 // The proxy itself refused the sign-in (on a plain-http request through it).
                 throw new Failure(OutboundCode.OUT_PROXY_SIGN_IN_REFUSED);
