@@ -25,7 +25,7 @@ import java.util.regex.Pattern;
 
 /**
  * A small client for HashiCorp Vault: login (token, token file or AppRole), Transit calls for
- * {@link VaultKeyService}, KV version 2 secrets ({@link #readSecret}, {@link #writeSecret}) and the health check.
+ * {@link VaultKeyService}, reading KV version 2 secrets ({@link #readSecret}) and the health check.
  *
  * <p>Uses the JDK's {@link HttpClient}, the JVM's trust store and proxy settings. Redirects are not followed (a token
  * is never sent to another address). Every failure is a {@link CryptoException} with a specific code; no message,
@@ -112,8 +112,11 @@ public final class VaultClient implements AutoCloseable {
         return new Secret(values);
     }
 
-    /** Writes a new version of a KV version 2 secret (set-up and tests; the runtime normally only reads). */
-    public void writeSecret(String mount, String path, Map<String, String> values) {
+    /**
+     * Writes a new version of a KV version 2 secret. Package-private: only this package's tests write secrets; the
+     * running app only reads them (its Vault policy has no KV write).
+     */
+    void writeSecret(String mount, String path, Map<String, String> values) {
         Objects.requireNonNull(values, "values");
         String where = kvPath(mount, "data", path);
         Reply r = call("POST", where, VaultJson.write(Map.of("data", values)));
