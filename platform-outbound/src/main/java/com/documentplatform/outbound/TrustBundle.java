@@ -1,4 +1,4 @@
-package com.documentplatform.integration.safety;
+package com.documentplatform.outbound;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;

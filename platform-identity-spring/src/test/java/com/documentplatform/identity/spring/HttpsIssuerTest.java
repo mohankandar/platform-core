@@ -1,12 +1,11 @@
-package com.documentplatform.integration;
+package com.documentplatform.identity.spring;
 
 import com.documentplatform.identity.signin.OidcTestSignIn;
 import com.documentplatform.identity.signin.TestReport;
 import com.documentplatform.identity.signin.TestSignIn;
 import com.documentplatform.identity.testkit.MockIssuer;
-import com.documentplatform.integration.http.Outbound;
-import com.documentplatform.integration.http.OutboundIssuerFetch;
-import com.documentplatform.integration.safety.Installation;
+import com.documentplatform.outbound.Outbound;
+import com.documentplatform.outbound.Installation;
 import com.documentplatform.integration.testkit.TestCertificates;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -30,8 +29,8 @@ import static org.junit.jupiter.api.Assumptions.assumeFalse;
 /**
  * P031's missing piece: the login-connection test sign-in against an https issuer (the identity testkit's
  * {@code MockIssuer.startHttps} with this testkit's certificates), over the outbound rules with the private CA. The
- * successful handshake needs TLS to 127.0.0.1 unchanged; where it is intercepted that check is skipped, as in
- * {@link PrivateCaTest} (CI forbids skips).
+ * successful handshake needs TLS to 127.0.0.1 unchanged; where it is intercepted that check is skipped, as in the integration testkit's
+ * PrivateCaTest (CI forbids skips).
  */
 class HttpsIssuerTest {
 
@@ -74,7 +73,7 @@ class HttpsIssuerTest {
         TestReport r = signIn(Installation.onPremises().withInternalAddresses(true));
         assertFalse(r.passed());
         assertEquals(TestReport.Code.IDN_TEST_ISSUER_UNREACHABLE, r.failure());
-        assertEquals(IntegrationCode.INT_TLS_FAILED.name(), r.reason());
+        assertEquals("OUT_TLS_FAILED", r.reason());
     }
 
     @Test
@@ -83,6 +82,44 @@ class HttpsIssuerTest {
         TestReport r = signIn(Installation.onPremises().withInternalAddresses(true).withPrivateCa(ca.pem()));
         assertTrue(r.passed(), r.toString());
         assertTrue(r.tokenChecked());
+    }
+
+    /**
+     * P028 B4: an identity-only Spring context (no platform-integration) validates a draft against the https issuer,
+     * through the Outbound bean from platform.outbound.* with the private CA file; no development licence needed.
+     */
+    @Test
+    void anIdentityOnlyContextTestSignsInOverHttps() throws Exception {
+        assumeFalse(intercepted, "TLS to 127.0.0.1 is intercepted on this machine");
+        Path caFile = dir.resolve("private-ca.pem");
+        java.nio.file.Files.writeString(caFile, ca.pem());
+        com.documentplatform.identity.inmemory.InMemoryIdentityStore store =
+                new com.documentplatform.identity.inmemory.InMemoryIdentityStore();
+        store.saveCustomer("TEN-TEST-0001", "Test Customer");
+        new org.springframework.boot.test.context.runner.ApplicationContextRunner()
+                .withConfiguration(org.springframework.boot.autoconfigure.AutoConfigurations.of(
+                        com.documentplatform.outbound.spring.OutboundAutoConfiguration.class,
+                        IdentityIssuerFetchAutoConfiguration.class, IdentityLoginConnectionStoreAutoConfiguration.class,
+                        IdentityLoginConnectionsAutoConfiguration.class))
+                .withClassLoader(new org.springframework.boot.test.context.FilteredClassLoader(
+                        "com.documentplatform.integration"))
+                .withPropertyValues("platform.outbound.installation=ON_PREMISES",
+                        "platform.outbound.allow-internal-addresses=true",
+                        "platform.outbound.private-ca-file=" + caFile.toAbsolutePath())
+                .withBean(com.documentplatform.identity.store.LoginConnectionStore.class, () -> store)
+                .run(ctx -> {
+                    assertNull(ctx.getStartupFailure(), () -> String.valueOf(ctx.getStartupFailure()));
+                    var lc = ctx.getBean(com.documentplatform.identity.store.LoginConnections.class);
+                    var d = lc.createDraft("TEN-TEST-0001", "PRODUCT_A", 0,
+                            new com.documentplatform.identity.store.ConnectionValues("test-idp",
+                                    com.documentplatform.identity.IdentityProviderType.OIDC, issuer.issuer(),
+                                    "web-client", AUD, null), "it-admin");
+                    var v = lc.validate(d.connection().connectionId(), 1,
+                            TestSignIn.withToken(issuer.token(AUD, List.of("readers"), Duration.ofMinutes(5))),
+                            "it-admin");
+                    assertEquals(com.documentplatform.identity.store.ConnectionOutcome.Result.VALIDATED, v.result(),
+                            v.message());
+                });
     }
 
     private static X509Certificate peerCertificate(int port) throws Exception {

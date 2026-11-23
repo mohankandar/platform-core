@@ -1,8 +1,9 @@
 package com.documentplatform.integration;
 
-import com.documentplatform.integration.http.Outbound;
-import com.documentplatform.integration.safety.AddressGuard;
-import com.documentplatform.integration.safety.Installation;
+import com.documentplatform.outbound.OutboundCode;
+import com.documentplatform.outbound.Outbound;
+import com.documentplatform.outbound.AddressGuard;
+import com.documentplatform.outbound.Installation;
 import com.documentplatform.integration.testkit.MockDestination;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -70,7 +71,8 @@ class PinningTest {
             // anything is sent.
             Outbound.Failure f = assertThrows(Outbound.Failure.class,
                     () -> out.send(get(), Duration.ofSeconds(5), 10_000, false));
-            assertEquals(IntegrationCode.INT_ADDRESS_BLOCKED, f.code());
+            assertEquals(OutboundCode.OUT_ADDRESS_BLOCKED, f.code());
+            assertEquals(IntegrationCode.INT_ADDRESS_BLOCKED, IntegrationCode.of(f.code())); // unchanged
             assertEquals(2, lookups.get());
             assertEquals(1, mock.received().size(), "nothing more was sent");
         }
@@ -86,7 +88,8 @@ class PinningTest {
             Outbound.Failure f = assertThrows(Outbound.Failure.class, () -> out.send(new Outbound.Call("GET",
                             URI.create("http://localhost:" + mock.port() + "/api/ping"), List.of(), null,
                             Duration.ofSeconds(5)), Duration.ofSeconds(5), 10_000, false));
-            assertEquals(IntegrationCode.INT_HOST_UNKNOWN, f.code());
+            assertEquals(OutboundCode.OUT_HOST_UNKNOWN, f.code());
+            assertEquals(IntegrationCode.INT_HOST_UNKNOWN, IntegrationCode.of(f.code())); // unchanged
         }
         assertTrue(mock.received().isEmpty());
     }
@@ -99,7 +102,8 @@ class PinningTest {
                 Outbound.Failure f = assertThrows(Outbound.Failure.class, () -> out.send(new Outbound.Call("GET",
                         URI.create("http://127.0.0.1:" + mock.port() + "/api/ping"), List.of(h), null,
                         Duration.ofSeconds(5)), Duration.ofSeconds(5), 10_000, false));
-                assertEquals(IntegrationCode.INT_VALUE_NOT_ALLOWED, f.code());
+                assertEquals(OutboundCode.OUT_VALUE_NOT_ALLOWED, f.code());
+                assertEquals(IntegrationCode.INT_VALUE_NOT_ALLOWED, IntegrationCode.of(f.code())); // unchanged
             }
         }
         assertTrue(mock.received().isEmpty());

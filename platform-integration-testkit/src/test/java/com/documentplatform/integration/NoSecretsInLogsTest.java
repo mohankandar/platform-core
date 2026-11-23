@@ -171,13 +171,13 @@ class NoSecretsInLogsTest {
             com.documentplatform.notifications.inmemory.InMemorySecretResolver s =
                     new com.documentplatform.notifications.inmemory.InMemorySecretResolver()
                             .put(SecretRef.of("int/bearer"), BEARER).put(SecretRef.of("int/proxy"), proxyPassword);
-            com.documentplatform.integration.safety.Installation inst = fx.installation.withProxy(
-                    com.documentplatform.integration.safety.ProxySettings.of(proxy.host(), proxy.port())
+            com.documentplatform.outbound.Installation inst = fx.installation.withProxy(
+                    com.documentplatform.outbound.ProxySettings.of(proxy.host(), proxy.port())
                             .withSignIn("svc", SecretRef.of("int/proxy")));
             outputs.add(inst.toString());
             try (com.documentplatform.integration.engine.CallEngine engine =
                          new com.documentplatform.integration.engine.CallEngine(
-                                 new com.documentplatform.integration.http.Outbound(inst, s), s, Clock.systemUTC())) {
+                                 new com.documentplatform.outbound.Outbound(inst, s), s, Clock.systemUTC())) {
                 IntegrationConfig c = Fx.twoStep(fx.mock.addressByName(), new SignIn.BearerFixed(SecretRef.of("int/bearer")));
                 fx.mock.reset();
                 Delivery d = Delivery.of("pkg-p", List.of(Delivery.Document.of("doc-1", "a.pdf", "application/pdf",
@@ -189,8 +189,8 @@ class NoSecretsInLogsTest {
                 IntegrationConfig https = c.withEndpoint(new com.documentplatform.integration.config.Endpoint(
                         java.net.URI.create("https://localhost:" + fx.mock.port()), true));
                 outputs.add(engine.attempt(Fx.stored(https), d).toString());
-                outputs.add(new com.documentplatform.integration.http.Outbound.Failure(
-                        IntegrationCode.INT_PROXY_SIGN_IN_REFUSED).getMessage());
+                outputs.add(new com.documentplatform.outbound.Outbound.Failure(
+                        com.documentplatform.outbound.OutboundCode.OUT_PROXY_SIGN_IN_REFUSED).getMessage());
             }
         }
 
@@ -261,7 +261,7 @@ class NoSecretsInLogsTest {
         try (com.documentplatform.integration.testkit.MockSource source =
                      com.documentplatform.integration.testkit.MockSource.start(src);
              com.documentplatform.integration.engine.CallEngine calls = new com.documentplatform.integration.engine
-                     .CallEngine(new com.documentplatform.integration.http.Outbound(fx.installation), fx.secrets,
+                     .CallEngine(new com.documentplatform.outbound.Outbound(fx.installation), fx.secrets,
                      Clock.systemUTC());
              com.documentplatform.integration.testkit.MockScanner scanner =
                      com.documentplatform.integration.testkit.MockScanner.clamd()) {
@@ -277,7 +277,7 @@ class NoSecretsInLogsTest {
             com.documentplatform.integration.scan.Scanning scanning = new com.documentplatform.integration.scan.Scanning(
                     new com.documentplatform.integration.scan.ClamdScanner(new com.documentplatform.integration.scan
                             .ScannerAddress(scanner.host(), scanner.port(), Duration.ofSeconds(2)),
-                            new com.documentplatform.integration.safety.AddressGuard(true)),
+                            new com.documentplatform.outbound.AddressGuard(true)),
                     com.documentplatform.integration.scan.ScanEvents.NONE);
             com.documentplatform.integration.engine.PollEngine poll =
                     new com.documentplatform.integration.engine.PollEngine(calls, scanning, dir);
@@ -311,7 +311,7 @@ class NoSecretsInLogsTest {
                             .mapping("loan", "/loan"));
             com.documentplatform.integration.watch.WatchedFolder watched =
                     new com.documentplatform.integration.watch.WatchedFolder(folder,
-                            com.documentplatform.integration.safety.Installation.onPremises(), scanning,
+                            com.documentplatform.outbound.Installation.onPremises(), scanning,
                             Clock.systemUTC());
             outputs.add(watched.pass(Fx.stored(w), d -> {
                 outputs.add(d.toString() + d.trigger() + d.files());
@@ -365,7 +365,7 @@ class NoSecretsInLogsTest {
         try (MockDestination mtls = MockDestination.startMutualTls(server.context());
              com.documentplatform.integration.engine.CallEngine engine =
                      new com.documentplatform.integration.engine.CallEngine(
-                             new com.documentplatform.integration.http.Outbound(fx.installation.withPrivateCa(ca.pem())),
+                             new com.documentplatform.outbound.Outbound(fx.installation.withPrivateCa(ca.pem())),
                              fx.secrets, credentials, Clock.systemUTC())) {
             mtls.expectNone();
             com.documentplatform.integration.store.StoredIntegration s = Fx.stored(Fx.twoStep(mtls.addressByName(),

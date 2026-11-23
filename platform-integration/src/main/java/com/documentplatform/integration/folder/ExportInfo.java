@@ -1,6 +1,5 @@
 package com.documentplatform.integration.folder;
 
-import com.documentplatform.identity.EntityUuid;
 import com.documentplatform.integration.json.Json;
 
 import java.util.Map;
@@ -21,7 +20,7 @@ public record ExportInfo(String entitySlotId, String appSection) {
 
     public ExportInfo {
         Objects.requireNonNull(entitySlotId, "entitySlotId");
-        if (!EntityUuid.isSlotId(entitySlotId)) {
+        if (!SlotIds.isSlotId(entitySlotId)) {
             throw new IllegalArgumentException("The entity slot ID is not valid (ENT-...)");
         }
         appSection = appSection == null ? "{}" : appSection;

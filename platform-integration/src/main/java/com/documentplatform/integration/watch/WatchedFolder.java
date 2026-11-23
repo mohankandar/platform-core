@@ -12,7 +12,7 @@ import com.documentplatform.integration.intake.IntakeHandler;
 import com.documentplatform.integration.json.Json;
 import com.documentplatform.integration.result.HealthResult;
 import com.documentplatform.integration.result.Outcome;
-import com.documentplatform.integration.safety.Installation;
+import com.documentplatform.outbound.Installation;
 import com.documentplatform.integration.scan.ScanEvents;
 import com.documentplatform.integration.scan.ScanResult;
 import com.documentplatform.integration.scan.Scanning;

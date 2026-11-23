@@ -11,10 +11,10 @@ import com.documentplatform.integration.config.Kind;
 import com.documentplatform.integration.config.SignIn;
 import com.documentplatform.integration.config.Template;
 import com.documentplatform.integration.credential.CertificateSource;
-import com.documentplatform.integration.credential.ClientCertificate;
+import com.documentplatform.outbound.ClientCertificate;
 import com.documentplatform.integration.credential.CredentialState;
-import com.documentplatform.integration.http.Outbound;
-import com.documentplatform.integration.http.RetryAfter;
+import com.documentplatform.outbound.Outbound;
+import com.documentplatform.outbound.RetryAfter;
 import com.documentplatform.integration.json.Json;
 import com.documentplatform.integration.result.AttemptResult;
 import com.documentplatform.integration.result.HealthResult;
@@ -168,7 +168,7 @@ public final class CallEngine implements AutoCloseable {
                     c.limits().readTimeout()), c.limits().connectTimeout(), c.limits().maxResponseBytes(),
                     c.endpoint().useProxy(), cert.certificate());
         } catch (Outbound.Failure f) {
-            return health(c, integration.version(), failureOutcome(f.code()), f.code(), null, 0, null);
+            return health(c, integration.version(), failureOutcome(IntegrationCode.of(f.code())), IntegrationCode.of(f.code()), null, 0, null);
         }
         Object json = a.tooLarge() ? null : json(a.body());
         String destCode = destinationCode(c, json);
@@ -502,8 +502,8 @@ public final class CallEngine implements AutoCloseable {
                                 c.limits().readTimeout()), c.limits().connectTimeout(), c.limits().maxResponseBytes(),
                         c.endpoint().useProxy(), certificate);
             } catch (Outbound.Failure f) {
-                calls.add(new StepResult(s.name(), docId, failureOutcome(f.code()), f.code(), 0, null));
-                return stop(failureOutcome(f.code()), f.code(), null, 0, null, s.name(), docId);
+                calls.add(new StepResult(s.name(), docId, failureOutcome(IntegrationCode.of(f.code())), IntegrationCode.of(f.code()), 0, null));
+                return stop(failureOutcome(IntegrationCode.of(f.code())), IntegrationCode.of(f.code()), null, 0, null, s.name(), docId);
             } finally {
                 close(opened);
             }
@@ -736,7 +736,7 @@ public final class CallEngine implements AutoCloseable {
                                 c.limits().readTimeout()), c.limits().connectTimeout(), c.limits().maxResponseBytes(),
                         c.endpoint().useProxy(), cert.certificate());
             } catch (Outbound.Failure f) {
-                return result(failureOutcome(f.code()), f.code(), null, 0, null, null);
+                return result(failureOutcome(IntegrationCode.of(f.code())), IntegrationCode.of(f.code()), null, 0, null, null);
             }
             Duration retryAfter = RetryAfter.parse(a.header("Retry-After").orElse(null), clock.instant());
             if (a.tooLarge()) {
@@ -889,7 +889,7 @@ public final class CallEngine implements AutoCloseable {
                     c.limits().connectTimeout(), c.limits().maxResponseBytes(), c.endpoint().useProxy(),
                     cert.certificate());
         } catch (Outbound.Failure f) {
-            return callbackResult(c, version, failureOutcome(f.code()), f.code(), 0, null, null);
+            return callbackResult(c, version, failureOutcome(IntegrationCode.of(f.code())), IntegrationCode.of(f.code()), 0, null, null);
         }
         Object json = a.tooLarge() ? null : json(a.body());
         String destCode = destinationCode(c, json);

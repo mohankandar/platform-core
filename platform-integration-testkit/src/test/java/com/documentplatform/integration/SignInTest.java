@@ -5,7 +5,7 @@ import com.documentplatform.integration.config.SignIn;
 import com.documentplatform.integration.config.SignIn.OAuth2ClientCredentials;
 import com.documentplatform.integration.result.AttemptResult;
 import com.documentplatform.integration.result.Outcome;
-import com.documentplatform.integration.safety.Installation;
+import com.documentplatform.outbound.Installation;
 import com.documentplatform.integration.testkit.MockDestination;
 import com.documentplatform.integration.testkit.TestCertificates;
 import com.documentplatform.notifications.secret.SecretRef;
@@ -117,7 +117,7 @@ class SignInTest {
                 SecretRef.of("int/client"), null);
         com.documentplatform.integration.signin.ClientCredentialsTokens tokens =
                 new com.documentplatform.integration.signin.ClientCredentialsTokens(
-                        new com.documentplatform.integration.http.Outbound(fx.installation), java.time.Clock.systemUTC());
+                        new com.documentplatform.outbound.Outbound(fx.installation), java.time.Clock.systemUTC());
         com.documentplatform.integration.config.Limits limits =
                 com.documentplatform.integration.config.Limits.DEFAULT;
         assertTrue(tokens.token(client, fx.secrets, limits, true, null, "aa11").ok());

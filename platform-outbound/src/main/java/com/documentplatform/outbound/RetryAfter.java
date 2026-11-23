@@ -1,4 +1,4 @@
-package com.documentplatform.integration.http;
+package com.documentplatform.outbound;
 
 import java.time.Duration;
 import java.time.Instant;

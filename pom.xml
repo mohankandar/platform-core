@@ -29,6 +29,8 @@
         <module>platform-erase-log</module>
         <module>platform-erase-log-testkit</module>
         <module>platform-erase-log-spring</module>
+        <module>platform-outbound</module>
+        <module>platform-outbound-spring</module>
         <module>platform-integration</module>
         <module>platform-integration-testkit</module>
         <module>platform-integration-spring</module>

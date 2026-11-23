@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.documentplatform.platform</groupId>
+        <artifactId>platform-core</artifactId>
+        <version>0.3.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>platform-outbound</artifactId>
+    <description>Safe outbound HTTP calls (plain Java, no Spring; package com.documentplatform.outbound), shared by
+        platform-integration and the identity test sign-in: the installation's rules (on premises or hosted, internal
+        addresses, private certificate authority, outbound proxy with its Basic sign-in by secret reference), the
+        address guard with connection pinning (Apache HttpClient 5 connects only to the checked address), the trust
+        bundle, client certificates for mutual TLS, no redirects, timeouts and answer size limits, Retry-After.
+        Failures are OUT_ codes; no address, header or body reaches a message.</description>
+    <dependencies>
+        <!-- Only for SecretRef / SecretResolver (the proxy password by reference). -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-notifications</artifactId>
+            <version>${project.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.eclipse.angus</groupId>
+                    <artifactId>angus-mail</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- The HTTP client: it takes our own resolver, so a connection goes to the address the guard checked. -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+            <version>${httpclient5.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-notifications-testkit</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

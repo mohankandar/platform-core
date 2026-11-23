@@ -5,7 +5,7 @@ import com.documentplatform.integration.config.Limits;
 import com.documentplatform.integration.engine.CallEngine;
 import com.documentplatform.integration.engine.PollEngine;
 import com.documentplatform.integration.engine.TestAction;
-import com.documentplatform.integration.safety.AddressGuard;
+import com.documentplatform.outbound.AddressGuard;
 import com.documentplatform.integration.scan.ClamdScanner;
 import com.documentplatform.integration.scan.FileScanner;
 import com.documentplatform.integration.scan.IcapScanner;
@@ -16,11 +16,11 @@ import com.documentplatform.integration.watch.WatchedFolder;
 import com.documentplatform.integration.folder.ExportFiles;
 import com.documentplatform.integration.folder.FolderExport;
 import com.documentplatform.integration.folder.LocalFiles;
-import com.documentplatform.integration.http.Outbound;
+import com.documentplatform.outbound.Outbound;
 import com.documentplatform.integration.jdbc.IntegrationSchema;
 import com.documentplatform.integration.jdbc.PostgresIntegrationStore;
 import com.documentplatform.integration.profile.ProfileFolder;
-import com.documentplatform.integration.safety.Installation;
+import com.documentplatform.outbound.Installation;
 import com.documentplatform.crypto.CustomerId;
 import com.documentplatform.crypto.envelope.ValueCipher;
 import com.documentplatform.integration.callback.CallbackOutbox;
@@ -62,8 +62,11 @@ import java.util.List;
  * either is missing. Optional: {@link FieldLists} (the entities' case field lists, to check {@code {field:<key>}}
  * placeholders when a configuration is saved), a {@link Clock}, an {@link ExportFiles} (tests).
  *
- * <p>Beans: {@link IntegrationSettings}, {@link Installation}, the default {@link Limits} (bean
- * {@code integrationDefaultLimits}), {@link Outbound}, {@link CallEngine}, {@link IntegrationStore} (Postgres on the
+ * <p>From platform-outbound-spring ({@code platform.outbound.*}): the {@link Installation} and the {@link Outbound}
+ * every call goes through; startup refuses without them.
+ *
+ * <p>Beans: {@link IntegrationSettings}, the default {@link Limits} (bean
+ * {@code integrationDefaultLimits}), {@link CallEngine}, {@link IntegrationStore} (Postgres on the
  * app's DataSource, after {@link IntegrationSchema#verify}: read only, never creates tables), {@link IntegrationConfigs},
  * {@link FolderExport}, {@link TestAction}, {@link ProfileFolder} (when {@code profile-folder} is set), since P026
  * {@link CredentialStore} and {@link IntegrationCredentials} (client certificates; the call engine presents them),
@@ -73,7 +76,8 @@ import java.util.List;
  * {@link PollEngine} and {@link WatchedFolder} (the app may supply {@link WatchFiles}) and, with
  * Actuator, the {@code integrations} health contributor. Every bean backs off when the app defines its own.
  */
-@AutoConfiguration(afterName = "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration")
+@AutoConfiguration(afterName = {"org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration",
+        "com.documentplatform.outbound.spring.OutboundAutoConfiguration"})
 @ConditionalOnProperty(prefix = IntegrationProperties.PREFIX, name = "enabled", havingValue = "true",
         matchIfMissing = true)
 @EnableConfigurationProperties(IntegrationProperties.class)
@@ -87,11 +91,11 @@ public class IntegrationAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    IntegrationSettings integrationSettings(IntegrationProperties properties) {
-        IntegrationSettings s = IntegrationSettings.from(properties);
-        Installation i = s.installation();
-        // Since P026 the HTTP client sends the proxy sign-in on CONNECT itself: no JVM option is needed any more.
-        LOG.log(Level.INFO, "Integrations: {0}", i);
+    IntegrationSettings integrationSettings(IntegrationProperties properties,
+                                            ObjectProvider<Installation> installation) {
+        // The installation and the Outbound bean come from platform.outbound.* (platform-outbound-spring) since P028.
+        IntegrationSettings s = IntegrationSettings.from(properties, installation.getIfUnique());
+        LOG.log(Level.INFO, "Integrations: {0}", s.installation());
         return s;
     }
 
@@ -113,22 +117,28 @@ public class IntegrationAutoConfiguration {
         return new AppBeans(s, a);
     }
 
+    /**
+     * Without platform.outbound.* (and no app-defined Installation): startup stops here, whichever bean asks first,
+     * with every integration problem listed, the missing platform.outbound.installation first.
+     */
     @Bean
-    @ConditionalOnMissingBean
-    Installation integrationInstallation(IntegrationSettings settings) {
-        return settings.installation();
+    @ConditionalOnMissingBean(Installation.class)
+    Installation integrationMissingInstallation(IntegrationProperties properties) {
+        IntegrationSettings.from(properties, null); // always throws: the installation is missing
+        throw new IllegalStateException("unreachable");
+    }
+
+    /** An app that defines its own Installation but no Outbound gets one on it. */
+    @Bean(destroyMethod = "close")
+    @ConditionalOnMissingBean(Outbound.class)
+    Outbound integrationOutbound(Installation installation, AppBeans app) {
+        return new Outbound(installation, app.secrets());
     }
 
     @Bean
     @ConditionalOnMissingBean(name = "integrationDefaultLimits")
     Limits integrationDefaultLimits(IntegrationSettings settings) {
         return settings.defaultLimits();
-    }
-
-    @Bean(destroyMethod = "close")
-    @ConditionalOnMissingBean
-    Outbound integrationOutbound(Installation installation, AppBeans app) {
-        return new Outbound(installation, app.secrets());
     }
 
     @Bean

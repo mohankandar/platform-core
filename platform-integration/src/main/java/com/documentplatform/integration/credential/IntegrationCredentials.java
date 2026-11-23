@@ -1,5 +1,7 @@
 package com.documentplatform.integration.credential;
 
+import com.documentplatform.outbound.CertificateInfo;
+import com.documentplatform.outbound.ClientCertificate;
 import com.documentplatform.crypto.CryptoException;
 import com.documentplatform.crypto.CustomerId;
 import com.documentplatform.crypto.envelope.ValueCipher;

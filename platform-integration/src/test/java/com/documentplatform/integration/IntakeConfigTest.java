@@ -13,7 +13,7 @@ import com.documentplatform.integration.config.SignIn;
 import com.documentplatform.integration.config.WatchSource;
 import com.documentplatform.integration.intake.CursorState;
 import com.documentplatform.integration.intake.IntakeAnswer;
-import com.documentplatform.integration.safety.Installation;
+import com.documentplatform.outbound.Installation;
 import com.documentplatform.notifications.secret.SecretRef;
 import org.junit.jupiter.api.Test;
 

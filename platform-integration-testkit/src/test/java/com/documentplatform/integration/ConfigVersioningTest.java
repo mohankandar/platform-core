@@ -7,7 +7,7 @@ import com.documentplatform.integration.config.HttpMethod;
 import com.documentplatform.integration.config.IntegrationConfig;
 import com.documentplatform.integration.config.SignIn;
 import com.documentplatform.integration.result.AttemptResult;
-import com.documentplatform.integration.safety.Installation;
+import com.documentplatform.outbound.Installation;
 import com.documentplatform.integration.store.ConfigChange;
 import com.documentplatform.integration.store.IntegrationAudit;
 import com.documentplatform.integration.store.IntegrationConfigs;

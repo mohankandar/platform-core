@@ -1,7 +1,7 @@
 package com.documentplatform.integration.jdbc;
 
 import com.documentplatform.integration.IntegrationCode;
-import com.documentplatform.integration.credential.CertificateInfo;
+import com.documentplatform.outbound.CertificateInfo;
 import com.documentplatform.integration.credential.CredentialChange;
 import com.documentplatform.integration.credential.CredentialSource;
 import com.documentplatform.integration.credential.CredentialState;

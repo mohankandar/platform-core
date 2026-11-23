@@ -1,7 +1,7 @@
 package com.documentplatform.integration.scan;
 
 import com.documentplatform.integration.IntegrationCode;
-import com.documentplatform.integration.safety.AddressGuard;
+import com.documentplatform.outbound.AddressGuard;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;

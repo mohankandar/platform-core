@@ -1,4 +1,4 @@
-package com.documentplatform.integration.credential;
+package com.documentplatform.outbound;
 
 import java.math.BigInteger;
 import java.security.GeneralSecurityException;

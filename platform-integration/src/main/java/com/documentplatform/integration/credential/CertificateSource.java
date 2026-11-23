@@ -1,5 +1,6 @@
 package com.documentplatform.integration.credential;
 
+import com.documentplatform.outbound.ClientCertificate;
 import com.documentplatform.integration.IntegrationCode;
 import com.documentplatform.integration.config.IntegrationConfig;
 

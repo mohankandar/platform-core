@@ -22,7 +22,7 @@ import com.documentplatform.integration.config.Template;
 import com.documentplatform.integration.engine.CaseFields;
 import com.documentplatform.integration.json.Json;
 import com.documentplatform.integration.result.Outcome;
-import com.documentplatform.integration.safety.Installation;
+import com.documentplatform.outbound.Installation;
 import com.documentplatform.notifications.secret.SecretRef;
 import org.junit.jupiter.api.Test;
 

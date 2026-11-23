@@ -2,7 +2,7 @@ package com.documentplatform.integration;
 
 import com.documentplatform.integration.profile.IntegrationProfile;
 import com.documentplatform.integration.profile.ProfileValidator;
-import com.documentplatform.integration.safety.Installation;
+import com.documentplatform.outbound.Installation;
 import com.documentplatform.integration.testkit.ProfileContract;
 import com.documentplatform.integration.testkit.ProfileMock;
 import com.documentplatform.integration.testkit.openapi.OpenApiSpec;

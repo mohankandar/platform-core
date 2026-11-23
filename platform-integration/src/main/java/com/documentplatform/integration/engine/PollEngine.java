@@ -9,8 +9,8 @@ import com.documentplatform.integration.config.IntegrationConfig;
 import com.documentplatform.integration.config.Kind;
 import com.documentplatform.integration.config.PollSource;
 import com.documentplatform.integration.config.Template;
-import com.documentplatform.integration.http.Outbound;
-import com.documentplatform.integration.http.RetryAfter;
+import com.documentplatform.outbound.Outbound;
+import com.documentplatform.outbound.RetryAfter;
 import com.documentplatform.integration.intake.CursorState;
 import com.documentplatform.integration.intake.IntakeAnswer;
 import com.documentplatform.integration.intake.IntakeFile;
@@ -457,7 +457,7 @@ public final class PollEngine {
                                 c.limits().readTimeout()), c.limits().connectTimeout(), c.limits().maxResponseBytes(),
                         c.endpoint().useProxy(), ready.certificate(), sink == null ? null : sink::read);
             } catch (Outbound.Failure f) {
-                r.failure = stop(CallEngine.failureOutcome(f.code()), f.code(), null, 0, null, name, null);
+                r.failure = stop(CallEngine.failureOutcome(IntegrationCode.of(f.code())), IntegrationCode.of(f.code()), null, 0, null, name, null);
                 return r;
             }
             r.answer = a;

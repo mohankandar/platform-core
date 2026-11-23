@@ -1,11 +1,5 @@
-package com.documentplatform.integration.http;
+package com.documentplatform.outbound;
 
-import com.documentplatform.integration.IntegrationCode;
-import com.documentplatform.integration.credential.ClientCertificate;
-import com.documentplatform.integration.safety.AddressGuard;
-import com.documentplatform.integration.safety.Installation;
-import com.documentplatform.integration.safety.ProxySettings;
-import com.documentplatform.integration.safety.TrustBundle;
 import com.documentplatform.notifications.secret.Secret;
 import com.documentplatform.notifications.secret.SecretResolver;
 import org.apache.hc.client5.http.ConnectTimeoutException;
@@ -70,9 +64,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
 /**
- * Every outbound HTTP call of the integrations (destination calls, token requests, health, the issuer fetch and
- * callbacks) goes through here, under the installation's rules: https only (plain http only where internal addresses
- * are allowed), the address guard before each call, the outbound proxy (with its Basic sign-in when set), the private
+ * Every outbound HTTP call of the platform (the integrations' destination calls, token requests, health and
+ * callbacks; the identity test sign-in's issuer fetch) goes through here, under the installation's rules: https only
+ * (plain http only where internal addresses are allowed), the address guard before each call, the outbound proxy (with its Basic sign-in when set), the private
  * certificate authority added to the system's, redirects never followed, timeouts, and the answer read only up to a
  * limit. Failures are codes; no address, header or body ever reaches an exception text.
  *
@@ -84,12 +78,12 @@ import java.util.regex.Pattern;
  *
  * <p><b>Client certificate (mutual TLS):</b> a call may carry a {@link ClientCertificate}; the TLS handshake then
  * offers it. Each certificate has its own client (its own connections), so a connection made with one certificate is
- * never reused with another. A destination refusing it (a TLS alert) gives {@link IntegrationCode#INT_CREDENTIAL_REFUSED}.
+ * never reused with another. A destination refusing it (a TLS alert) gives {@link OutboundCode#OUT_CREDENTIAL_REFUSED}.
  *
  * <p><b>Proxy sign-in:</b> the proxy's user and password (read from the secret store at every call, by reference)
  * are sent preemptively as {@code Proxy-Authorization: Basic …} on the CONNECT of an https call and on plain-http
  * requests through the proxy; they never reach the destination. A proxy answering 407 gives
- * {@link IntegrationCode#INT_PROXY_SIGN_IN_REFUSED}. The library never sets JVM properties.
+ * {@link OutboundCode#OUT_PROXY_SIGN_IN_REFUSED}. The library never sets JVM properties.
  */
 public final class Outbound implements AutoCloseable {
 
@@ -123,19 +117,19 @@ public final class Outbound implements AutoCloseable {
 
     /** The call could not be made or got no answer. */
     public static final class Failure extends Exception {
-        private final IntegrationCode code;
+        private final OutboundCode code;
 
-        public Failure(IntegrationCode code) {
+        public Failure(OutboundCode code) {
             super(code.hasMessage() ? code.name() + ": " + code.message() : code.name(), null, false, false);
             this.code = code;
         }
 
-        public IntegrationCode code() {
+        public OutboundCode code() {
             return code;
         }
     }
 
-    /** Headers the HTTP layer sets itself; a caller giving one is refused ({@code INT_VALUE_NOT_ALLOWED}). */
+    /** Headers the HTTP layer sets itself; a caller giving one is refused ({@code OUT_VALUE_NOT_ALLOWED}). */
     private static final Set<String> RESTRICTED = Set.of("host", "content-length", "connection", "expect", "upgrade",
             "transfer-encoding", "te", "trailer", "keep-alive", "proxy-authorization", "proxy-connection");
     private static final Pattern TOKEN = Pattern.compile("[A-Za-z0-9!#$%&'*+.^_`|~-]{1,256}");
@@ -192,7 +186,7 @@ public final class Outbound implements AutoCloseable {
     /**
      * Sends one request and reads the answer up to {@code maxResponseBytes}.
      *
-     * @param useProxy whether this integration uses the installation's proxy (when one is set)
+     * @param useProxy whether this call uses the installation's proxy (when one is set)
      */
     public Answer send(Call call, Duration connectTimeout, int maxResponseBytes, boolean useProxy) throws Failure {
         return send(call, connectTimeout, maxResponseBytes, useProxy, null);
@@ -210,7 +204,7 @@ public final class Outbound implements AutoCloseable {
     /**
      * Receives a 2xx answer's body as a stream (a download), instead of it being read into memory. It reads what it
      * wants and keeps its own limit; its own local failures (a full disk) it records itself and returns. An
-     * {@link IOException} it throws is a network failure ({@code INT_TIMEOUT}, {@code INT_CONNECTION_LOST}).
+     * {@link IOException} it throws is a network failure ({@code OUT_TIMEOUT}, {@code OUT_CONNECTION_LOST}).
      */
     @FunctionalInterface
     public interface BodySink {
@@ -227,11 +221,11 @@ public final class Outbound implements AutoCloseable {
         URI uri = call.uri();
         String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
         if (!scheme.equals("https") && !(scheme.equals("http") && installation.allowPlainHttp())) {
-            throw new Failure(scheme.equals("http") ? IntegrationCode.INT_ADDRESS_NOT_SECURE
-                    : IntegrationCode.INT_CANT_CONNECT);
+            throw new Failure(scheme.equals("http") ? OutboundCode.OUT_ADDRESS_NOT_SECURE
+                    : OutboundCode.OUT_CANT_CONNECT);
         }
         if (uri.getHost() == null || uri.getRawUserInfo() != null) {
-            throw new Failure(IntegrationCode.INT_CANT_CONNECT);
+            throw new Failure(OutboundCode.OUT_CANT_CONNECT);
         }
         ProxySettings proxy = installation.proxy();
         boolean proxied = useProxy && proxy != null && !proxy.bypasses(uri.getHost());
@@ -243,7 +237,7 @@ public final class Outbound implements AutoCloseable {
 
         ClassicRequestBuilder b = ClassicRequestBuilder.create(call.method()).setUri(uri);
         for (Map.Entry<String, String> h : call.headers()) {
-            if (!allowed(h.getKey(), h.getValue())) throw new Failure(IntegrationCode.INT_VALUE_NOT_ALLOWED);
+            if (!allowed(h.getKey(), h.getValue())) throw new Failure(OutboundCode.OUT_VALUE_NOT_ALLOWED);
             b.addHeader(h.getKey(), h.getValue());
         }
         if (call.body() != null) b.setEntity(new PublisherEntity(call.body()));
@@ -279,7 +273,7 @@ public final class Outbound implements AutoCloseable {
             int status = response.getCode();
             if (proxied && status == 407) {
                 // The proxy itself refused the sign-in (on a plain-http request through it).
-                throw new Failure(IntegrationCode.INT_PROXY_SIGN_IN_REFUSED);
+                throw new Failure(OutboundCode.OUT_PROXY_SIGN_IN_REFUSED);
             }
             HttpEntity entity = response.getEntity();
             byte[] body = new byte[0];
@@ -289,9 +283,9 @@ public final class Outbound implements AutoCloseable {
                 try {
                     whole = sink.read(in);
                 } catch (SocketTimeoutException e) {
-                    throw new Failure(IntegrationCode.INT_TIMEOUT);
+                    throw new Failure(OutboundCode.OUT_TIMEOUT);
                 } catch (IOException e) {
-                    throw new Failure(IntegrationCode.INT_CONNECTION_LOST);
+                    throw new Failure(OutboundCode.OUT_CONNECTION_LOST);
                 }
                 Answer answer = new Answer(status, headers(response), body, false);
                 if (!whole) {
@@ -309,7 +303,7 @@ public final class Outbound implements AutoCloseable {
                 try {
                     in.close();
                 } catch (IOException e) {
-                    throw new Failure(IntegrationCode.INT_CONNECTION_LOST);
+                    throw new Failure(OutboundCode.OUT_CONNECTION_LOST);
                 }
                 return answer;
             }
@@ -317,9 +311,9 @@ public final class Outbound implements AutoCloseable {
                 try (InputStream in = entity.getContent()) {
                     body = in.readNBytes(maxResponseBytes + 1);
                 } catch (SocketTimeoutException e) {
-                    throw new Failure(IntegrationCode.INT_TIMEOUT);
+                    throw new Failure(OutboundCode.OUT_TIMEOUT);
                 } catch (IOException e) {
-                    throw new Failure(IntegrationCode.INT_CONNECTION_LOST);
+                    throw new Failure(OutboundCode.OUT_CONNECTION_LOST);
                 }
             }
             boolean tooLarge = body.length > maxResponseBytes;
@@ -328,16 +322,16 @@ public final class Outbound implements AutoCloseable {
             throw f;
         } catch (IOException e) {
             if (stoppedEarly != null) return stoppedEarly; // closing the dropped connection
-            IntegrationCode code = classify(e, proxied, certificate != null);
-            if ((code == IntegrationCode.INT_CONNECTION_LOST || code == IntegrationCode.INT_TLS_FAILED)
+            OutboundCode code = classify(e, proxied, certificate != null);
+            if ((code == OutboundCode.OUT_CONNECTION_LOST || code == OutboundCode.OUT_TLS_FAILED)
                     && certificate != null && !proxied
                     && scheme.equals("https") && !checked.addresses().isEmpty()
                     && certificateRefused(certificate, uri, checked.addresses().get(0), connectTimeout)) {
-                code = IntegrationCode.INT_CREDENTIAL_REFUSED;
+                code = OutboundCode.OUT_CREDENTIAL_REFUSED;
             }
             throw new Failure(code);
         } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
-            throw new Failure(IntegrationCode.INT_CANT_CONNECT);
+            throw new Failure(OutboundCode.OUT_CANT_CONNECT);
         } finally {
             pinned.clear();
         }
@@ -367,37 +361,37 @@ public final class Outbound implements AutoCloseable {
         try {
             password = secrets.resolve(proxy.password());
         } catch (RuntimeException unavailable) {
-            throw new Failure(IntegrationCode.INT_SECRET_UNAVAILABLE);
+            throw new Failure(OutboundCode.OUT_SECRET_UNAVAILABLE);
         }
-        if (password.isEmpty()) throw new Failure(IntegrationCode.INT_SECRET_NOT_FOUND);
+        if (password.isEmpty()) throw new Failure(OutboundCode.OUT_SECRET_NOT_FOUND);
         return password.get().reveal();
     }
 
-    private static IntegrationCode classify(IOException e, boolean proxied, boolean withCertificate) {
+    private static OutboundCode classify(IOException e, boolean proxied, boolean withCertificate) {
         for (Throwable t = e; t != null; t = t.getCause()) {
             if (t instanceof TunnelRefusedException refused) {
                 String m = refused.getMessage();
-                return m != null && m.contains(" 407") ? IntegrationCode.INT_PROXY_SIGN_IN_REFUSED
-                        : IntegrationCode.INT_PROXY_REFUSED;
+                return m != null && m.contains(" 407") ? OutboundCode.OUT_PROXY_SIGN_IN_REFUSED
+                        : OutboundCode.OUT_PROXY_REFUSED;
             }
         }
         for (Throwable t = e; t != null; t = t.getCause()) {
             if (t instanceof SSLException) {
-                return withCertificate && certificateAlert(t) ? IntegrationCode.INT_CREDENTIAL_REFUSED
-                        : IntegrationCode.INT_TLS_FAILED;
+                return withCertificate && certificateAlert(t) ? OutboundCode.OUT_CREDENTIAL_REFUSED
+                        : OutboundCode.OUT_TLS_FAILED;
             }
-            if (t instanceof ConnectTimeoutException) return IntegrationCode.INT_CONNECT_TIMEOUT;
-            if (t instanceof SocketTimeoutException) return IntegrationCode.INT_TIMEOUT;
-            if (t instanceof UnknownHostException) return IntegrationCode.INT_HOST_UNKNOWN;
+            if (t instanceof ConnectTimeoutException) return OutboundCode.OUT_CONNECT_TIMEOUT;
+            if (t instanceof SocketTimeoutException) return OutboundCode.OUT_TIMEOUT;
+            if (t instanceof UnknownHostException) return OutboundCode.OUT_HOST_UNKNOWN;
         }
         for (Throwable t = e; t != null; t = t.getCause()) {
-            if (t instanceof ConnectException) return IntegrationCode.INT_CANT_CONNECT;
+            if (t instanceof ConnectException) return OutboundCode.OUT_CANT_CONNECT;
             if (t instanceof InterruptedIOException) {
                 Thread.currentThread().interrupt();
-                return IntegrationCode.INT_TIMEOUT;
+                return OutboundCode.OUT_TIMEOUT;
             }
         }
-        return IntegrationCode.INT_CONNECTION_LOST;
+        return OutboundCode.OUT_CONNECTION_LOST;
     }
 
     /**
@@ -551,7 +545,7 @@ public final class Outbound implements AutoCloseable {
                 .disableAutomaticRetries()
                 .disableCookieManagement()
                 .disableContentCompression()
-                .setUserAgent("platform-integration");
+                .setUserAgent("platform-integration"); // unchanged since P023
         if (key.proxied()) builder.setProxy(new HttpHost("http", proxy.host(), proxy.port()));
         return new Client(builder.build(), connections, context);
     }

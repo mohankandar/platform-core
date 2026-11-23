@@ -9,7 +9,7 @@ import java.util.Optional;
  *
  * @param failure      the failed check, or null when it passed
  * @param message      for the IT Admin: what was checked, or what failed and what to look at
- * @param reason       for a fetch that was refused, the outbound rule's code (for example {@code INT_TLS_FAILED} or
+ * @param reason       for a fetch that was refused, the outbound rule's code (for example {@code OUT_TLS_FAILED} or
  *                     {@code HTTP_404}); else null
  * @param tokenChecked whether a token was checked too (else only the discovery document and keys)
  */

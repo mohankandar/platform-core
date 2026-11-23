@@ -37,15 +37,6 @@
             <version>${project.version}</version>
         </dependency>
 
-        <!-- Only for the IssuerFetch interface (com.documentplatform.identity.signin): the login-connection test
-             sign-in reads the issuer's discovery document and keys through the outbound rules here
-             (http.OutboundIssuerFetch). platform-identity-core has no dependencies. -->
-        <dependency>
-            <groupId>com.documentplatform.platform</groupId>
-            <artifactId>platform-identity-core</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-
         <!-- Uploaded client certificates are stored sealed under the customer's keys (envelope.ValueCipher). -->
         <dependency>
             <groupId>com.documentplatform.platform</groupId>
@@ -53,12 +44,12 @@
             <version>${project.version}</version>
         </dependency>
 
-        <!-- The HTTP client of every outbound call: it takes our own resolver, so a connection goes to the address the
-             address guard checked (connection pinning), with host name verification and SNI on the original name. -->
+        <!-- Every outbound call (destinations, tokens, health, callbacks, scanners) goes through the shared outbound
+             rules: installation, address guard with connection pinning, proxy, private CA, mutual TLS. -->
         <dependency>
-            <groupId>org.apache.httpcomponents.client5</groupId>
-            <artifactId>httpclient5</artifactId>
-            <version>${httpclient5.version}</version>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-outbound</artifactId>
+            <version>${project.version}</version>
         </dependency>
 
         <dependency>

@@ -108,6 +108,16 @@
             </dependency>
             <dependency>
                 <groupId>com.documentplatform.platform</groupId>
+                <artifactId>platform-outbound</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.documentplatform.platform</groupId>
+                <artifactId>platform-outbound-spring</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.documentplatform.platform</groupId>
                 <artifactId>platform-integration</artifactId>
                 <version>${project.version}</version>
             </dependency>
