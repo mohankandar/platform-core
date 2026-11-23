@@ -18,7 +18,8 @@ import static com.documentplatform.modelgov.ModelGovCode.*;
  * (a {@link ModelGovException} whose code is a {@code PlatformCode} with cause and fix, for the app's IT notice):
  * {@code MOD_RETIRED}, {@code MOD_NOT_VALIDATED}, {@code MOD_NOT_APPROVED}, {@code MOD_NOT_LIVE},
  * {@code MOD_DIGEST_MISMATCH} (the model file or pull changed), {@code MOD_CONFIG_CHANGED} (the prompt or settings
- * changed without a validation), and {@code MOD_REVIEW_OVERDUE} when the use is set to refuse it (else it is a
+ * changed without a validation), {@code MOD_LOCATION_CHANGED} (where the model runs changed since the live validation,
+ * P039), and {@code MOD_REVIEW_OVERDUE} when the use is set to refuse it (else it is a
  * warning on the answer); the review date is the entity's own, from its live validation.
  */
 public final class ModelGate {
@@ -72,6 +73,13 @@ public final class ModelGate {
         if (!v.configFingerprint().equals(observedConfigFingerprint)) {
             throw new ModelGovException(MOD_CONFIG_CHANGED, Map.of("use", useId,
                     "observed", String.valueOf(observedConfigFingerprint), "expected", v.configFingerprint()));
+        }
+        // P039 (design section 4): a change of where the model runs goes through the gate, for every materiality.
+        Model model = store.model(v.modelId()).orElse(null);
+        if (dates.locationChanged(v, model)) {
+            throw new ModelGovException(MOD_LOCATION_CHANGED, Map.of("use", useId, "entity", entity,
+                    "now", model.runsWhere(), "validated", v.runsWhere() == null ? "before the change"
+                            : v.runsWhere()));
         }
         List<ModelGovCode> warnings = new ArrayList<>();
         LocalDate today = LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC);

@@ -121,13 +121,37 @@ public final class ModelGovernance {
         audit.thresholdSet(t, by);
     }
 
-    /** The thresholds in force for the use and entity: the entity's where set, else the default; by measure. */
+    /**
+     * The thresholds in force for the use and entity, by measure: the entity's where set and at least as strict as
+     * the default in force, else the default (P039, model-governance-19: after the app tightens a default, a customer
+     * mark that is now looser stops counting; {@link #looserEntityMarks} lists such marks for the register).
+     */
     public Map<String, Threshold> thresholdsInForce(UUID useId, UUID entity) {
         Map<String, Threshold> out = new LinkedHashMap<>();
         List<Threshold> all = store.thresholds(useId);
         for (Threshold t : all) if (t.entity() == null) out.put(t.measure(), t);
-        for (Threshold t : all) if (entity != null && entity.equals(t.entity())) out.put(t.measure(), t);
+        for (Threshold t : all) {
+            if (entity == null || !entity.equals(t.entity())) continue;
+            Threshold def = out.get(t.measure());
+            if (def == null || stricterOrEqual(t, def)) out.put(t.measure(), t);
+        }
         return out;
+    }
+
+    /** The customers' marks of the use that no longer count, because the default in force is now stricter (P039). */
+    public List<Threshold> looserEntityMarks(UUID useId) {
+        List<Threshold> all = store.thresholds(useId);
+        List<Threshold> out = new ArrayList<>();
+        for (Threshold t : all) {
+            if (t.entity() == null) continue;
+            all.stream().filter(d -> d.entity() == null && d.measure().equals(t.measure())).findFirst()
+                    .filter(d -> !stricterOrEqual(t, d)).ifPresent(d -> out.add(t));
+        }
+        return out;
+    }
+
+    private static boolean stricterOrEqual(Threshold t, Threshold def) {
+        return t.direction() == def.direction() && def.direction().atLeastAsStrict(t.value(), def.value());
     }
 
     // ---- validations
@@ -162,7 +186,7 @@ public final class ModelGovernance {
         Instant now = clock.instant();
         ValidationRecord rec = new ValidationRecord(UUID.randomUUID(), useId, entity, model.modelId(), model.name(),
                 model.modelVersion(), model.provider(), model.digest(), use.configFingerprint(), testSetName,
-                testSetVersion, measures, passed, ranBy, now);
+                testSetVersion, measures, passed, ranBy, now, model.runsWhere());
         store.insertValidation(rec);
         audit.validationRecorded(rec);
         if (passed) {

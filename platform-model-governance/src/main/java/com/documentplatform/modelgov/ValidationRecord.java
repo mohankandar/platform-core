@@ -9,12 +9,26 @@ import java.util.UUID;
 /**
  * One validation (insert only): the use and entity, the model (name, version, provider, exact digest), the
  * configuration fingerprint, the test set's name and version, each measure with its result and the threshold in
- * force, pass or fail, who ran it and when. Never document content or values: measures are numbers.
+ * force, pass or fail, who ran it and when, and where the model ran then (since P039). Never document content or
+ * values: measures are numbers.
  */
 public record ValidationRecord(UUID validationId, UUID useId, UUID entity, UUID modelId, String modelName,
                                String modelVersion, Model.Provider provider, ModelDigest digest,
                                String configFingerprint, String testSetName, String testSetVersion,
-                               List<MeasureResult> measures, boolean passed, String ranBy, Instant ranAt) {
+                               List<MeasureResult> measures, boolean passed, String ranBy, Instant ranAt,
+                               Model.RunsWhere runsWhere) {
+
+    /**
+     * A record without where the model ran (validations recorded before P039; {@code runsWhere} null): the gate then
+     * reads a change of location from the model's history.
+     */
+    public ValidationRecord(UUID validationId, UUID useId, UUID entity, UUID modelId, String modelName,
+                            String modelVersion, Model.Provider provider, ModelDigest digest, String configFingerprint,
+                            String testSetName, String testSetVersion, List<MeasureResult> measures, boolean passed,
+                            String ranBy, Instant ranAt) {
+        this(validationId, useId, entity, modelId, modelName, modelVersion, provider, digest, configFingerprint,
+                testSetName, testSetVersion, measures, passed, ranBy, ranAt, null);
+    }
 
     /** One measure: its result, the threshold in force (copied in), the direction and whether it passed. */
     public record MeasureResult(String measure, BigDecimal result, BigDecimal threshold, Threshold.Direction direction,

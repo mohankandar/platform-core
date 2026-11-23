@@ -297,7 +297,7 @@ public final class InMemoryModelGovStore implements ModelGovStore {
         m.sort(Comparator.comparing(ValidationRecord.MeasureResult::measure));
         return new ValidationRecord(v.validationId(), v.useId(), v.entity(), v.modelId(), v.modelName(),
                 v.modelVersion(), v.provider(), v.digest(), v.configFingerprint(), v.testSetName(), v.testSetVersion(),
-                m, v.passed(), v.ranBy(), v.ranAt());
+                m, v.passed(), v.ranBy(), v.ranAt(), v.runsWhere());
     }
 
     @Override

@@ -59,7 +59,7 @@ public final class PostgresModelGovStore implements ModelGovStore {
             + "status, last_validated_at, next_review_due, review_overdue_refuses, review_every_days, version";
     private static final String VALIDATION_COLUMNS = "validation_id, use_id, entity_uuid, model_id, model_name, "
             + "model_version, provider, digest_algorithm, digest_value, config_fingerprint, test_set_name, "
-            + "test_set_version, passed, ran_by, ran_at";
+            + "test_set_version, passed, ran_by, ran_at, runs_where";
 
     private final DataSource ds;
 
@@ -269,7 +269,7 @@ public final class PostgresModelGovStore implements ModelGovStore {
     public void insertValidation(ValidationRecord v) {
         tx("insert validation", c -> {
             try (PreparedStatement ps = c.prepareStatement("insert into mg_validation (" + VALIDATION_COLUMNS
-                    + ") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                    + ") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                 int i = 1;
                 ps.setObject(i++, v.validationId());
                 ps.setObject(i++, v.useId());
@@ -285,7 +285,8 @@ public final class PostgresModelGovStore implements ModelGovStore {
                 ps.setString(i++, v.testSetVersion());
                 ps.setBoolean(i++, v.passed());
                 ps.setString(i++, v.ranBy());
-                ps.setTimestamp(i, ts(v.ranAt()));
+                ps.setTimestamp(i++, ts(v.ranAt()));
+                ps.setString(i, v.runsWhere() == null ? null : v.runsWhere().name());
                 ps.executeUpdate();
             }
             try (PreparedStatement ps = c.prepareStatement("insert into mg_validation_measure (validation_id, "
@@ -571,7 +572,8 @@ public final class PostgresModelGovStore implements ModelGovStore {
         return new ValidationRecord(id, rs.getObject(2, UUID.class), rs.getObject(3, UUID.class),
                 rs.getObject(4, UUID.class), rs.getString(5), rs.getString(6), Model.Provider.valueOf(rs.getString(7)),
                 new ModelDigest(rs.getString(8), rs.getString(9)), rs.getString(10), rs.getString(11), rs.getString(12),
-                measures, rs.getBoolean(13), rs.getString(14), instant(rs.getTimestamp(15)));
+                measures, rs.getBoolean(13), rs.getString(14), instant(rs.getTimestamp(15)),
+                rs.getString(16) == null ? null : Model.RunsWhere.valueOf(rs.getString(16)));
     }
 
     private static void modelHistory(Connection c, Model m, Change ch) throws SQLException {
