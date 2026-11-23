@@ -65,6 +65,13 @@
             <version>${project.version}</version>
             <scope>test</scope>
         </dependency>
+        <!-- The development-key wiring test: licensing-spring on in-memory licence stores. -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-licensing-testkit</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>com.documentplatform.platform</groupId>
             <artifactId>platform-notifications-testkit</artifactId>

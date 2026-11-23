@@ -15,6 +15,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 
 /** The checked licensing config. */
 public record LicensingConfig(TrustedKeys trustedKeys, String productCode, String tenantId, Duration clockTolerance) {
@@ -27,6 +29,8 @@ public record LicensingConfig(TrustedKeys trustedKeys, String productCode, Strin
         String prefix = LicensingProperties.PREFIX + ".";
         List<String> problems = new ArrayList<>();
         Map<String, PublicKey> keys = new LinkedHashMap<>();
+        // The file's "development": true marks (inline keys carry none): kept, so a development-key licence is seen.
+        Set<String> development = new TreeSet<>();
         String keysFile = blankToNull(p.getTrustedKeysFile());
         boolean inline = p.getTrustedKeys() != null && !p.getTrustedKeys().isEmpty();
         if (keysFile == null && !inline) {
@@ -34,8 +38,10 @@ public record LicensingConfig(TrustedKeys trustedKeys, String productCode, Strin
                     + "this release (or list the keys under " + prefix + "trusted-keys)");
         }
         if (keysFile != null) {
-            readKeysFile(keysFile, prefix, problems).ifPresent(file -> file.keyIds()
-                    .forEach(id -> keys.put(id, file.key(id).orElseThrow())));
+            readKeysFile(keysFile, prefix, problems).ifPresent(file -> file.keyIds().forEach(id -> {
+                keys.put(id, file.key(id).orElseThrow());
+                if (file.isDevelopmentKey(id)) development.add(id);
+            }));
         }
         if (inline) {
             p.getTrustedKeys().forEach((id, value) -> {
@@ -91,7 +97,7 @@ public record LicensingConfig(TrustedKeys trustedKeys, String productCode, Strin
         if (!problems.isEmpty()) {
             throw new LicensingConfigException(problems);
         }
-        return new LicensingConfig(TrustedKeys.of(keys), product, tenant, tolerance);
+        return new LicensingConfig(TrustedKeys.of(keys, development), product, tenant, tolerance);
     }
 
     /** The keys file, or empty with a problem added. */
