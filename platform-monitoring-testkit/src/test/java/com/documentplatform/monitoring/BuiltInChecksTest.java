@@ -98,7 +98,26 @@ class BuiltInChecksTest {
             } catch (java.sql.SQLException e) {
                 throw new IllegalStateException(e);
             }
-            assertResult(CheckState.WORKING, MonitoringCode.MON_WORKING, run(check));
+            // xc-schemas-9 (P037): the owner as the app's login works, with a warning; a DML-only login has none.
+            CheckResult owner = run(check);
+            assertResult(CheckState.HAVING_PROBLEMS, MonitoringCode.MON_DB_USER_TOO_POWERFUL, owner);
+            assertTrue(owner.cause().contains("owns tables"), owner.cause());
+            try (var c = ds.getConnection(); var s = c.createStatement()) {
+                s.execute("create role app_dml login password 'dml-pw'");
+                for (String t : com.documentplatform.identity.jdbc.IdentitySchema.TABLES) {
+                    s.execute("grant select, insert, update, delete on " + t + " to app_dml");
+                }
+                s.execute("grant select on " + com.documentplatform.identity.jdbc.IdentitySchema.VERSION_TABLE
+                        + " to app_dml");
+            } catch (java.sql.SQLException e) {
+                throw new IllegalStateException(e);
+            }
+            PGSimpleDataSource dml = new PGSimpleDataSource();
+            dml.setURL(pg.getJdbcUrl());
+            dml.setUser("app_dml");
+            dml.setPassword("dml-pw");
+            assertResult(CheckState.WORKING, MonitoringCode.MON_WORKING, run(new DatabaseCheck(dml,
+                    List.of(new DatabaseCheck.SchemaVerify("identity", IdentitySchema::verify)))));
             try (var c = ds.getConnection(); var s = c.createStatement()) {
                 s.execute("update idn_schema_version set version = 3");
             } catch (java.sql.SQLException e) {

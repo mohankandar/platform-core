@@ -79,6 +79,32 @@ public final class DatabaseCheck implements DependencyCheck {
                         "error", e.getClass().getName()));
             }
         }
+        String tooPowerful = schemas.isEmpty() ? null : tooPowerful();
+        if (tooPowerful != null) {
+            return Verdict.problems(MonitoringCode.MON_DB_USER_TOO_POWERFUL, Map.of("database", name,
+                    "reason", tooPowerful));
+        }
         return Verdict.working();
+    }
+
+    /**
+     * xc-schemas-9 (P037): why the app's login has more rights than the data rights it needs (it owns tables in its
+     * schema, or may create objects there), or null. Postgres queries; on another database, or if the query fails,
+     * nothing is said.
+     */
+    private String tooPowerful() {
+        try (Connection c = ds.getConnection();
+             java.sql.PreparedStatement ps = c.prepareStatement("select exists (select 1 from pg_class t join "
+                     + "pg_namespace n on n.oid = t.relnamespace where n.nspname = current_schema() and t.relkind = 'r' "
+                     + "and t.relowner = (select oid from pg_roles where rolname = current_user)), "
+                     + "has_schema_privilege(current_schema(), 'CREATE')");
+             java.sql.ResultSet rs = ps.executeQuery()) {
+            if (!rs.next()) return null;
+            if (rs.getBoolean(1)) return "owns tables";
+            if (rs.getBoolean(2)) return "may create objects";
+            return null;
+        } catch (SQLException | RuntimeException notPostgres) {
+            return null;
+        }
     }
 }
