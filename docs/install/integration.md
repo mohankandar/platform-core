@@ -77,9 +77,8 @@ Every call of an integration that uses the proxy goes through it, including the 
 on the bypass list are called directly. An integration can also be set not to use the proxy at all.
 
 **When the proxy asks for a user and password (Basic sign-in):** set `proxy.user` and `proxy.password-secret`. The
-app sends them with the first request to the proxy, also for `https` calls. No Java start option is needed any more:
-since this release the app's HTTP client sends the proxy sign-in itself. The Java option
-`-Djdk.http.auth.tunneling.disabledSchemes=` that the earlier release needed does no harm and can be removed.
+app sends them with the first request to the proxy, also for `https` calls. No Java start option is needed: the app's
+HTTP client sends the proxy sign-in itself.
 
 The proxy password is only sent to the proxy, never to the systems behind it.
 
@@ -252,7 +251,6 @@ value.
 
 | Code | What happened | What to do |
 |---|---|---|
-| `INT_PROXY_SIGN_IN_DISABLED_BY_JVM` | No longer given since this release (section 2) | — |
 | `INT_PROXY_SIGN_IN_REFUSED` | The proxy refused the user or password (407), or asks for sign-in that is not set | Check `proxy.user` and the password in the secret store |
 | `INT_PROXY_REFUSED` | The proxy refused the connection | Allow the destination on the proxy, or add it to the bypass list |
 | `INT_CANT_CONNECT`, `INT_CONNECT_TIMEOUT` | No connection to the destination or proxy | Check the address, the firewall and that the system is up |

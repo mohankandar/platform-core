@@ -67,7 +67,11 @@ public final class ClientCredentialsTokens {
     public record Status(State state, IntegrationCode failure, Instant lastFetch, Instant expiresAt) {
     }
 
-    private record Held(Secret token, Instant refreshAt, Instant expiresAt) {
+    /** {@code certificate}: the fingerprint of the client certificate in use when it was fetched, or null. */
+    private record Held(Secret token, Instant refreshAt, Instant expiresAt, String certificate) {
+        boolean usableAt(Instant now, String inUse) {
+            return now.isBefore(refreshAt) && Objects.equals(certificate, inUse);
+        }
     }
 
     private record Last(IntegrationCode failure, Instant at) {
@@ -92,18 +96,36 @@ public final class ClientCredentialsTokens {
     /** As above; the token request presents {@code certificate} (mutual TLS) when it is not null. */
     public Fetch token(OAuth2ClientCredentials client, SecretResolver secrets, Limits limits, boolean useProxy,
                        com.documentplatform.integration.credential.ClientCertificate certificate) {
+        return token(client, secrets, limits, useProxy, certificate,
+                certificate == null ? null : certificate.fingerprint());
+    }
+
+    /**
+     * As above. {@code certificateInUse} is the fingerprint of the integration's client certificate in use (mutual
+     * TLS; null without one), whether or not the token request presents it. A held token fetched while another
+     * certificate was in use is dropped and a new one fetched: switching the certificate (by the admin, at its set
+     * time, or on another instance of the app) drops the held token at once.
+     */
+    public Fetch token(OAuth2ClientCredentials client, SecretResolver secrets, Limits limits, boolean useProxy,
+                       com.documentplatform.integration.credential.ClientCertificate certificate,
+                       String certificateInUse) {
         Objects.requireNonNull(client, "client");
         Held h = held.get(client);
-        if (h != null && clock.instant().isBefore(h.refreshAt())) {
+        if (h != null && h.usableAt(clock.instant(), certificateInUse)) {
             return Fetch.ok(h.token());
         }
         synchronized (locks.computeIfAbsent(client, k -> new Object())) {
             h = held.get(client);
             Instant now = clock.instant();
-            if (h != null && now.isBefore(h.refreshAt())) {
+            if (h != null && h.usableAt(now, certificateInUse)) {
                 return Fetch.ok(h.token());
             }
-            Fetch f = fetch(client, secrets, limits, useProxy, now, certificate);
+            if (h != null && !Objects.equals(h.certificate(), certificateInUse)) {
+                held.remove(client);
+                LOG.log(System.Logger.Level.INFO, "Token for client {0} dropped: the client certificate changed",
+                        client.clientId());
+            }
+            Fetch f = fetch(client, secrets, limits, useProxy, now, certificate, certificateInUse);
             last.put(client, new Last(f.failure(), now));
             if (!f.ok()) {
                 held.remove(client);
@@ -129,7 +151,8 @@ public final class ClientCredentialsTokens {
     }
 
     private Fetch fetch(OAuth2ClientCredentials client, SecretResolver secrets, Limits limits, boolean useProxy,
-                        Instant now, com.documentplatform.integration.credential.ClientCertificate certificate) {
+                        Instant now, com.documentplatform.integration.credential.ClientCertificate certificate,
+                        String certificateInUse) {
         Optional<Secret> credential;
         try {
             credential = secrets.resolve(client.credential());
@@ -180,14 +203,14 @@ public final class ClientCredentialsTokens {
             IntegrationCode c = f.code();
             return Fetch.failed(c == IntegrationCode.INT_ADDRESS_BLOCKED || c == IntegrationCode.INT_ADDRESS_NOT_SECURE
                     || c == IntegrationCode.INT_TLS_FAILED || c == IntegrationCode.INT_PROXY_REFUSED
-                    || c == IntegrationCode.INT_PROXY_SIGN_IN_REFUSED || c == IntegrationCode.INT_PROXY_SIGN_IN_DISABLED_BY_JVM
+                    || c == IntegrationCode.INT_PROXY_SIGN_IN_REFUSED
                     || c == IntegrationCode.INT_SECRET_NOT_FOUND || c == IntegrationCode.INT_SECRET_UNAVAILABLE || c == IntegrationCode.INT_CREDENTIAL_REFUSED
                     ? c : IntegrationCode.INT_TOKEN_UNREACHABLE);
         }
         int status = answer.status();
         String body = new String(answer.body(), StandardCharsets.UTF_8);
         if (status == 200 && !answer.tooLarge()) {
-            return accept(client, body, now);
+            return accept(client, body, now, certificateInUse);
         }
         if (status == 429 || status >= 500) {
             return new Fetch(null, IntegrationCode.INT_TOKEN_UNREACHABLE,
@@ -199,7 +222,7 @@ public final class ClientCredentialsTokens {
         return Fetch.failed(IntegrationCode.INT_TOKEN_UNEXPECTED_REPLY);
     }
 
-    private Fetch accept(OAuth2ClientCredentials client, String body, Instant now) {
+    private Fetch accept(OAuth2ClientCredentials client, String body, Instant now, String certificateInUse) {
         Map<String, Object> reply;
         try {
             reply = Json.object(body);
@@ -217,7 +240,7 @@ public final class ClientCredentialsTokens {
         Duration life = Duration.ofSeconds(lifetime);
         Duration margin = REFRESH_BEFORE.compareTo(life.dividedBy(2)) < 0 ? REFRESH_BEFORE : life.dividedBy(2);
         Secret secret = Secret.of(t);
-        held.put(client, new Held(secret, now.plus(life).minus(margin), now.plus(life)));
+        held.put(client, new Held(secret, now.plus(life).minus(margin), now.plus(life), certificateInUse));
         return Fetch.ok(secret);
     }
 

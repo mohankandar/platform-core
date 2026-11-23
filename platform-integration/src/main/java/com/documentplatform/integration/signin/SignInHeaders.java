@@ -76,7 +76,8 @@ public final class SignInHeaders {
                 : null;
         SignIn inHeaders = SignIn.headerSignIn(signIn);
         if (inHeaders == null) return Prepared.ok(List.of()); // the certificate alone
-        Prepared p = headers(inHeaders, limits, useProxy, forToken);
+        Prepared p = headers(inHeaders, limits, useProxy, forToken,
+                certificate == null ? null : certificate.fingerprint());
         if (!p.ok() || requiredClaims.isEmpty() || !(inHeaders instanceof SignIn.OAuth2ClientCredentials)) return p;
         String token = p.headers().get(0).getValue().substring("Bearer ".length());
         if (!hasClaims(token, requiredClaims)) {
@@ -102,7 +103,9 @@ public final class SignInHeaders {
         }
     }
 
-    private Prepared headers(SignIn signIn, Limits limits, boolean useProxy, ClientCertificate forToken) {
+    /** @param inUse the fingerprint of the integration's client certificate in use, or null: a held token is bound to it */
+    private Prepared headers(SignIn signIn, Limits limits, boolean useProxy, ClientCertificate forToken,
+                             String inUse) {
         if (signIn instanceof SignIn.None) {
             if (installation.hosted() || !installation.allowSignInNone()) {
                 return Prepared.failed(Outcome.NOT_CONFIGURED, IntegrationCode.INT_SIGN_IN_NONE_NOT_ALLOWED);
@@ -120,7 +123,7 @@ public final class SignInHeaders {
             return secret(t.token(), token -> header("Authorization", "Bearer " + token));
         }
         SignIn.OAuth2ClientCredentials o = (SignIn.OAuth2ClientCredentials) signIn;
-        ClientCredentialsTokens.Fetch f = tokens.token(o, secrets, limits, useProxy, forToken);
+        ClientCredentialsTokens.Fetch f = tokens.token(o, secrets, limits, useProxy, forToken, inUse);
         if (!f.ok()) {
             return Prepared.failed(outcomeOf(f.failure()), f.failure());
         }
@@ -130,7 +133,7 @@ public final class SignInHeaders {
     /** The result class of a token failure. */
     public static Outcome outcomeOf(IntegrationCode tokenFailure) {
         return switch (tokenFailure) {
-            case INT_SECRET_NOT_FOUND, INT_ADDRESS_NOT_SECURE, INT_PROXY_SIGN_IN_DISABLED_BY_JVM -> Outcome.NOT_CONFIGURED;
+            case INT_SECRET_NOT_FOUND, INT_ADDRESS_NOT_SECURE -> Outcome.NOT_CONFIGURED;
             case INT_SECRET_UNAVAILABLE, INT_TOKEN_UNREACHABLE, INT_ADDRESS_BLOCKED, INT_TLS_FAILED,
                  INT_PROXY_REFUSED, INT_PROXY_SIGN_IN_REFUSED -> Outcome.CANT_CONNECT;
             case INT_CREDENTIAL_REFUSED -> Outcome.SIGN_IN_FAILED;

@@ -4,7 +4,6 @@ import com.documentplatform.integration.IntegrationCode;
 import com.documentplatform.integration.credential.ClientCertificate;
 import com.documentplatform.integration.safety.AddressGuard;
 import com.documentplatform.integration.safety.Installation;
-import com.documentplatform.integration.safety.JvmProxySignIn;
 import com.documentplatform.integration.safety.ProxySettings;
 import com.documentplatform.integration.safety.TrustBundle;
 import com.documentplatform.notifications.secret.Secret;
@@ -90,8 +89,7 @@ import java.util.regex.Pattern;
  * <p><b>Proxy sign-in:</b> the proxy's user and password (read from the secret store at every call, by reference)
  * are sent preemptively as {@code Proxy-Authorization: Basic …} on the CONNECT of an https call and on plain-http
  * requests through the proxy; they never reach the destination. A proxy answering 407 gives
- * {@link IntegrationCode#INT_PROXY_SIGN_IN_REFUSED}. The JVM's {@code jdk.http.auth.*.disabledSchemes} settings do
- * not apply to this client; the library never sets JVM properties.
+ * {@link IntegrationCode#INT_PROXY_SIGN_IN_REFUSED}. The library never sets JVM properties.
  */
 public final class Outbound implements AutoCloseable {
 
@@ -185,14 +183,6 @@ public final class Outbound implements AutoCloseable {
         this.secrets = secrets;
         this.privateCas = List.copyOf(installation.privateCaCertificates());
         this.ssl = TrustBundle.context(privateCas);
-    }
-
-    /**
-     * As {@link #Outbound(Installation, AddressGuard, SecretResolver)}. Since P026 the JVM's proxy sign-in settings do
-     * not apply (the HTTP client sends the proxy sign-in itself), so {@code jvm} is not used.
-     */
-    public Outbound(Installation installation, AddressGuard guard, SecretResolver secrets, JvmProxySignIn jvm) {
-        this(installation, guard, secrets);
     }
 
     public Installation installation() {

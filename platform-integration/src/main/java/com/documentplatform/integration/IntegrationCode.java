@@ -55,15 +55,6 @@ public enum IntegrationCode {
     /** The outbound proxy asked for sign-in (407): the proxy user or password is wrong, or none is set. */
     INT_PROXY_SIGN_IN_REFUSED("The outbound proxy refused the sign-in (407). Check the proxy user and the password in "
             + "the secret store (platform.integration.proxy.user, platform.integration.proxy.password-secret)."),
-    /**
-     * No longer given since P026. It said the JVM does not send Basic proxy sign-in on CONNECT; the HTTP client used
-     * since P026 sends the proxy sign-in itself, whatever the JVM's {@code jdk.http.auth.tunneling.disabledSchemes}.
-     * Kept so stored results and audits that name it can still be read.
-     */
-    INT_PROXY_SIGN_IN_DISABLED_BY_JVM("The outbound proxy needs Basic sign-in, which this Java runtime does not send "
-            + "for https (CONNECT) by default. Start the app with the option "
-            + "-Djdk.http.auth.tunneling.disabledSchemes= (see the integration install guide)."),
-
     // ---- Client certificates (mutual TLS) ----
     /** The uploaded file is not a PKCS#12 or PEM file with one certificate and its private key (or it is too large). */
     INT_CREDENTIAL_FILE_INVALID("The certificate file is not a PKCS#12 (.p12, .pfx) or PEM file holding the client "

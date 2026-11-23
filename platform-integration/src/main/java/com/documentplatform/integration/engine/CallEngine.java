@@ -891,8 +891,7 @@ public final class CallEngine implements AutoCloseable {
 
     static Outcome failureOutcome(IntegrationCode code) {
         return switch (code) {
-            case INT_ADDRESS_NOT_SECURE, INT_VALUE_NOT_ALLOWED, INT_SECRET_NOT_FOUND, INT_PROXY_SIGN_IN_DISABLED_BY_JVM
-                    -> Outcome.NOT_CONFIGURED;
+            case INT_ADDRESS_NOT_SECURE, INT_VALUE_NOT_ALLOWED, INT_SECRET_NOT_FOUND -> Outcome.NOT_CONFIGURED;
             case INT_CREDENTIAL_REFUSED -> Outcome.SIGN_IN_FAILED;
             default -> Outcome.CANT_CONNECT;
         };

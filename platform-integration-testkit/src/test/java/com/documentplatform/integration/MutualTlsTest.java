@@ -419,6 +419,24 @@ class MutualTlsTest {
         assertEquals(Outcome.SENT, with.outcome(), with.toString());
     }
 
+    @Test
+    void switchingTheCertificateDropsTheHeldTokenAtOnce() throws Exception {
+        mock.expectOAuth2().registerClient("app", "client-secret");
+        secrets.put(SecretRef.of("int/client"), "client-secret");
+        SignIn.OAuth2ClientCredentials oauth = SignIn.OAuth2ClientCredentials.secret(mock.tokenAddressByName(), "app",
+                SecretRef.of("int/client"), null);
+        StoredIntegration s = Fx.stored(config(new SignIn.MutualTls(oauth, true)));
+        credentials.upload(s, TestCertificates.pkcs12(good, P12_PASSWORD), P12_PASSWORD.toCharArray(), null, "a");
+        credentials.upload(s, TestCertificates.pkcs12(next, P12_PASSWORD), P12_PASSWORD.toCharArray(), null, "a");
+        assumeFalse(intercepted, "TLS to 127.0.0.1 is intercepted on this machine");
+        assertEquals(Outcome.SENT, engine.attempt(s, Fx.delivery(1)).outcome());
+        assertEquals(Outcome.SENT, engine.attempt(s, Fx.delivery(1)).outcome());
+        assertEquals(1, mock.tokensIssued(), "the token is held");
+        credentials.switchToNext(s.id(), "it-admin");
+        assertEquals(Outcome.SENT, engine.attempt(s, Fx.delivery(1)).outcome());
+        assertEquals(2, mock.tokensIssued(), "the switch dropped it; the new token came with the new certificate");
+    }
+
     // ---- Expiry warnings ----
 
     @Test
