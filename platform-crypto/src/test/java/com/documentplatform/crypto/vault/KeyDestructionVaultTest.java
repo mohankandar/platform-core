@@ -149,6 +149,41 @@ class KeyDestructionVaultTest {
     }
 
     @Test
+    void keysCreatedAgainAfterDestructionAreNewAndOpenNothingOld() throws Exception {
+        CustomerId c = CustomerId.of(UUID.randomUUID());
+        setup.createKeys(c);
+        ValueCipher values = new ValueCipher(app);
+        RecordCipher records = new RecordCipher(app);
+        StreamCipher streams = new StreamCipher(app);
+        Fingerprinter fingerprints = new Fingerprinter(app);
+        String sealed = values.seal(c, "case:1:field:name", PLAIN);
+        String envelope;
+        String item;
+        try (RecordCipher.RecordKey key = records.newKey(c, "rec-1")) {
+            envelope = key.envelope();
+            item = key.seal("name/0", PLAIN);
+        }
+        ByteArrayOutputStream enc = new ByteArrayOutputStream();
+        EnvelopeInfo info = streams.encrypt(c, new ByteArrayInputStream(PLAIN.getBytes(StandardCharsets.UTF_8)), enc);
+        Fingerprinter.Fingerprint before = fingerprints.fingerprint(c, "name", PLAIN);
+
+        assertTrue(offboard.destroyCustomerKeys(c).destroyedAny());
+        setup.createKeys(c); // the same names again: new keys, version 1
+
+        assertEquals(new com.documentplatform.crypto.KeyService.KeyVersions(1, 1), app.wrappingKey(c));
+        assertCode(CryptoError.CRYPTO_CIPHERTEXT_INVALID, () -> values.openText(c, "case:1:field:name", sealed));
+        assertCode(CryptoError.CRYPTO_CIPHERTEXT_INVALID, () -> {
+            try (RecordCipher.RecordKey key = records.openKey(c, "rec-1", envelope)) {
+                key.openText("name/0", item);
+            }
+        });
+        assertCode(CryptoError.CRYPTO_CIPHERTEXT_INVALID, () -> streams.decrypt(c, info,
+                new ByteArrayInputStream(enc.toByteArray()), new ByteArrayOutputStream()));
+        assertFalse(fingerprints.searchTerms(c, "name", PLAIN).contains(before), "an old fingerprint matches nothing");
+        assertEquals(PLAIN, values.openText(c, "case:2", values.seal(c, "case:2", PLAIN)), "the new keys work");
+    }
+
+    @Test
     void theRuntimePolicyCannotDestroyKeys() {
         CustomerId c = CustomerId.of(UUID.randomUUID());
         setup.createKeys(c);
