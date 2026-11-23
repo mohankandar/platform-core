@@ -232,4 +232,37 @@ class UsageExportTest {
         UsageExport f2 = export(M9, M9, f1.nextAnchor());
         assertTrue(UsageExportVerifier.verifySequence(List.of(f1.text(), f2.text()), ExportAnchor.first()).ok());
     }
+
+    /**
+     * licensing-83 (design section 4, owner answer Q5): wiping both usage tables looks like a new, empty ledger. The
+     * export anchor is the app's, so with the anchor kept the next export holds no records and continues the file
+     * chain; only when the anchor is lost too does the next file start from the beginning and show
+     * {@code EXPORT_START_MISMATCH} against the previous file.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void aWipedLedgerExportsNoRecordsAndShowsAStartMismatchOnlyWhenTheAnchorIsLostToo() {
+        UsageExport before = export(M9, M9, ExportAnchor.first());
+        ExportAnchor kept = before.nextAnchor();
+        InMemoryUsageLedger wiped = new InMemoryUsageLedger();
+
+        UsageExport next = UsageExport.create(licence, wiped, M10, M10, kept, NOW);
+        Map<String, Object> file = Json.parseObject(next.text());
+        Map<String, Object> header = (Map<String, Object>) file.get("header");
+        assertEquals(0L, ((Map<String, Object>) header.get("ledgerChain")).get("recordCount"));
+        assertEquals(true, ((Map<String, Object>) header.get("ledgerChain")).get("intact"));
+        assertEquals(0L, ((Map<String, Object>) file.get("footer")).get("recordCount"));
+        assertEquals(List.of(), file.get("records"));
+        ExportCheck continued = UsageExportVerifier.verify(next.text(), kept);
+        assertTrue(continued.ok(), continued.message());
+        assertTrue(UsageExportVerifier.verifySequence(List.of(before.text(), next.text()), ExportAnchor.first()).ok(),
+                "with the app's anchor kept the file chain continues");
+
+        UsageExport restarted = UsageExport.create(licence, wiped, M10, M10, ExportAnchor.first(), NOW);
+        assertEquals(0L, ((Map<String, Object>) Json.parseObject(restarted.text()).get("footer")).get("recordCount"));
+        assertTrue(UsageExportVerifier.verify(restarted.text(), null).ok(), "the file itself is intact");
+        assertEquals(EXPORT_START_MISMATCH, UsageExportVerifier.verify(restarted.text(), kept).problem());
+        assertEquals(EXPORT_START_MISMATCH, UsageExportVerifier.verifySequence(
+                List.of(before.text(), restarted.text()), ExportAnchor.first()).problem());
+    }
 }
