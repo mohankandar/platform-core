@@ -6,7 +6,7 @@ import java.util.Optional;
  * Supplied by the caller (the setup command, or the app's mapping screen): what is known about an entity slot that a
  * mapping file names by slot ID ({@code ENT-…}).
  *
- * <p>Unlike {@link MappingTargets}, a slot does not have to be activated or have an active login system yet: setup
+ * <p>Unlike an entity named by UUID, a slot does not have to be activated or have an active login system yet: setup
  * loads the grants at install time, before the Business Admin activates and names the slots, and in the same run that
  * stores the login connection. Grants of a slot that is not ACTIVE never admit anybody.
  */

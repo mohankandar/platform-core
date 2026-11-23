@@ -48,12 +48,13 @@ public final class RoleMappingFile {
     private final SlotTargets slots;
 
     /**
-     * Reads files that name entities by UUID, without a product code.
+     * Reads files that name entities by UUID, without a product code (package-private; callers outside this package
+     * use {@link #forSlots}).
      *
      * @param formatId the product's format name, for example {@code product-role-mapping/1}; a {@code # Format:}
      *                 comment naming anything else refuses the file (no such comment is accepted)
      */
-    public RoleMappingFile(String formatId, EntityRoleCatalog roles, MappingTargets targets) {
+    RoleMappingFile(String formatId, EntityRoleCatalog roles, MappingTargets targets) {
         this(formatId, null, roles, Objects.requireNonNull(targets, "targets"), null);
     }
 
@@ -64,8 +65,8 @@ public final class RoleMappingFile {
      * @param targets     answers for UUIDs; null when only slot IDs are accepted
      * @param slots       answers for slot IDs; null when only UUIDs are accepted
      */
-    public RoleMappingFile(String formatId, String productCode, EntityRoleCatalog roles, MappingTargets targets,
-                           SlotTargets slots) {
+    RoleMappingFile(String formatId, String productCode, EntityRoleCatalog roles, MappingTargets targets,
+                    SlotTargets slots) {
         this.formatId = Objects.requireNonNull(formatId, "formatId");
         this.productCode = productCode;
         this.roles = Objects.requireNonNull(roles, "roles");
