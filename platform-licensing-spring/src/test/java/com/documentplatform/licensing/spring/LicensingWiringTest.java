@@ -219,8 +219,13 @@ class LicensingWiringTest {
         }
         String all = String.join("\n", lines);
         assertTrue(all.contains("stored"), "the paths logged: " + all);
+        // licensing-44 / licensing-79: the start-up check names the licence by ID; the refused start logs the code.
+        assertTrue(all.contains("Licence LIC-TEST-0001 v1: PRODUCTION"), "the start-up check line: " + all);
+        assertTrue(lines.stream().anyMatch(l -> l.strip().endsWith("Licence refused: LICENCE_TAMPERED")),
+                "the refusal line carries the code: " + all);
+        secrets.addAll(List.of("Test Customer", "entitySlots", "\"allowances\"", "2036-12-31", "platform-licence/1"));
         for (String secret : secrets) {
-            assertFalse(all.contains(secret), "a key or signature in the log: " + all);
+            assertFalse(all.contains(secret), "a key, signature or file text in the log: " + secret + "\n" + all);
         }
     }
 

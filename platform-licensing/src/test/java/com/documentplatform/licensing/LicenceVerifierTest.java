@@ -224,6 +224,72 @@ class LicenceVerifierTest {
         }
     }
 
+    /**
+     * licensing-44 / licensing-79: every refusal is logged as one line with the code only; no line, at any level,
+     * holds the signature, a key or text of the file.
+     */
+    @Test
+    void refusalsAreLoggedWithTheCodeOnly() {
+        String file = signed(subscription(START, END));
+        @SuppressWarnings("unchecked")
+        String sig = (String) ((Map<String, Object>) Json.parseObject(file).get("signature")).get("value");
+        String digest = (String) ((Map<?, ?>) Json.parseObject(file).get("signature")).get("payloadSha256");
+        List<String> secrets = List.of(sig, sig.substring(0, 16), digest, Ed25519.encodePrivate(KEY_1.getPrivate()),
+                Ed25519.encodePublic(KEY_1.getPublic()), "Example Customer Ltd", "PAGES_PER_MONTH", "entitySlots",
+                "not a licence", "Pasted Secret Text");
+        Map<String, LicenceRefusal> cases = new java.util.LinkedHashMap<>();
+        cases.put("not a licence", LICENCE_MALFORMED);
+        cases.put("{\"format\":\"platform-licence/1\",\"licence\":\"Pasted Secret Text\"}", LICENCE_MALFORMED);
+        cases.put(file.replace("platform-licence/1", "platform-licence/2"), LICENCE_UNSUPPORTED_FORMAT);
+        cases.put(file.replace(KEY_ID_1, "Pasted Secret Text"), LICENCE_UNKNOWN_KEY_ID);
+        cases.put(file.replace("\"amount\": 10000", "\"amount\": 90000"), LICENCE_TAMPERED);
+        cases.put(LicenceSigner.sign(subscription(START, END), Ed25519.generate().getPrivate()), LICENCE_FORGED);
+        cases.put(file, LICENCE_WRONG_CUSTOMER);
+
+        List<java.util.logging.LogRecord> records = java.util.Collections.synchronizedList(new ArrayList<>());
+        java.util.logging.Handler capture = new java.util.logging.Handler() {
+            @Override
+            public void publish(java.util.logging.LogRecord r) {
+                records.add(r);
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        capture.setLevel(java.util.logging.Level.ALL);
+        java.util.logging.Logger logger = java.util.logging.Logger.getLogger("com.documentplatform.licensing");
+        java.util.logging.Level before = logger.getLevel();
+        logger.addHandler(capture);
+        logger.setLevel(java.util.logging.Level.ALL);
+        java.util.logging.SimpleFormatter format = new java.util.logging.SimpleFormatter();
+        try {
+            for (Map.Entry<String, LicenceRefusal> c : cases.entrySet()) {
+                records.clear();
+                LicenceException e = assertThrows(LicenceException.class,
+                        () -> verifier.verify(c.getKey(),
+                                c.getValue() == LICENCE_WRONG_CUSTOMER ? "TEN-9999-9999-9999-9999" : null));
+                assertEquals(c.getValue(), e.code());
+                assertEquals(1, records.size(), c.getValue() + ": one line per refusal");
+                java.util.logging.LogRecord r = records.get(0);
+                assertEquals(java.util.logging.Level.WARNING, r.getLevel());
+                String line = format.formatMessage(r);
+                assertEquals("Licence refused: " + c.getValue().name(), line, "the code only");
+                assertNull(r.getThrown(), "no exception (and its message) attached");
+                for (String secret : secrets) {
+                    assertFalse(format.format(r).contains(secret), "in the log: " + secret);
+                }
+            }
+        } finally {
+            logger.removeHandler(capture);
+            logger.setLevel(before);
+        }
+    }
+
     @Test
     void theSignedContentMustBeAValidLicence() {
         // A payload that is signed correctly but breaks the model (a perpetual licence with an expiry) is malformed.
