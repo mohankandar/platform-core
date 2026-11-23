@@ -142,6 +142,12 @@ public final class InMemoryModelGovStore implements ModelGovStore {
     }
 
     @Override
+    public synchronized List<UUID> validationEntities(UUID useId) {
+        return validations.values().stream().filter(v -> v.useId().equals(useId)).map(ValidationRecord::entity)
+                .distinct().sorted().toList();
+    }
+
+    @Override
     public synchronized List<ValidationRecord> validations(UUID useId, UUID entity) {
         return validations.values().stream().filter(v -> v.useId().equals(useId) && v.entity().equals(entity))
                 .sorted(Comparator.comparing(ValidationRecord::ranAt)

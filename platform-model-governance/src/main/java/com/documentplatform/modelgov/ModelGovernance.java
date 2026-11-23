@@ -29,12 +29,14 @@ public final class ModelGovernance {
     private final ModelGovAudit audit;
     private final ModelGovSettings settings;
     private final Clock clock;
+    private final ReviewDates dates;
 
     public ModelGovernance(ModelGovStore store, ModelGovAudit audit, ModelGovSettings settings, Clock clock) {
         this.store = Objects.requireNonNull(store, "store");
         this.audit = Objects.requireNonNull(audit, "audit");
         this.settings = Objects.requireNonNull(settings, "settings");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.dates = new ReviewDates(store, settings.reviewEvery());
     }
 
     public ModelGovStore store() {
@@ -164,7 +166,9 @@ public final class ModelGovernance {
         store.insertValidation(rec);
         audit.validationRecorded(rec);
         if (passed) {
-            LocalDate next = LocalDate.ofInstant(now, ZoneOffset.UTC).plus(reviewEvery(use));
+            // The use's date is the earliest over its entities: this pass never moves another entity's (P036).
+            LocalDate next = dates.earliest(use)
+                    .orElse(LocalDate.ofInstant(now, ZoneOffset.UTC).plus(reviewEvery(use)));
             ModelUse updated = use.validated(now, next);
             store.updateUse(updated, use.version(), change(ranBy, List.of("lastValidatedAt", "nextReviewDue",
                     "status"))).ifPresent(u -> audit.useChanged(u, ranBy, List.of("lastValidatedAt", "nextReviewDue",
@@ -255,10 +259,7 @@ public final class ModelGovernance {
             throw new ModelGovException(MOD_VERSION_CONFLICT, Map.of("what", "live model"));
         }
         audit.liveSwitched(change);
-        if (use.status() != ModelUse.Status.LIVE) {
-            store.updateUse(use.withStatus(ModelUse.Status.LIVE), use.version(), change(by, List.of("status")))
-                    .ifPresent(u -> audit.useChanged(u, by, List.of("status")));
-        }
+        liveChanged(useId, true, by);
         return next;
     }
 
@@ -277,15 +278,28 @@ public final class ModelGovernance {
             throw new ModelGovException(MOD_VERSION_CONFLICT, Map.of("what", "live model"));
         }
         audit.liveSwitched(change);
+        liveChanged(useId, false, by);
         return next;
     }
 
     // ---- helpers
 
+    /**
+     * After a live switch: the use is LIVE (when {@code nowLive}) and its next review date is the earliest over its
+     * entities again, since the switched entity's reference validation changed.
+     */
+    private void liveChanged(UUID useId, boolean nowLive, String by) {
+        ModelUse use = store.use(useId).orElseThrow(() -> unknown("use", useId));
+        ModelUse next = nowLive && use.status() != ModelUse.Status.LIVE ? use.withStatus(ModelUse.Status.LIVE) : use;
+        next = next.withNextReviewDue(dates.earliest(next).orElse(next.nextReviewDue()));
+        List<String> fields = changedFields(use, next);
+        if (fields.isEmpty()) return;
+        store.updateUse(next, use.version(), change(by, fields)).ifPresent(u -> audit.useChanged(u, by, fields));
+    }
+
     /** How long a validation of the use lasts: its own interval, else its materiality's. */
     public java.time.Period reviewEvery(ModelUse use) {
-        return use.reviewEveryDays() != null ? java.time.Period.ofDays(use.reviewEveryDays())
-                : settings.reviewEvery().get(use.materiality());
+        return dates.every(use);
     }
 
     private ModelUse dueToday(ModelUse u) {

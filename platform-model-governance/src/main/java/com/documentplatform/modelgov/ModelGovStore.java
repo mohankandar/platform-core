@@ -84,6 +84,9 @@ public interface ModelGovStore {
     /** The use's validations for the entity, oldest first. */
     List<ValidationRecord> validations(UUID useId, UUID entity);
 
+    /** The entities the use has a validation for (passed or not), in UUID order. */
+    List<UUID> validationEntities(UUID useId);
+
     void insertApproval(Decisions.Approval approval);
 
     Optional<Decisions.Approval> approval(UUID validationId);

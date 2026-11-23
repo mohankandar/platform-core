@@ -19,16 +19,34 @@ import static com.documentplatform.modelgov.ModelGovCode.*;
  * {@code MOD_RETIRED}, {@code MOD_NOT_VALIDATED}, {@code MOD_NOT_APPROVED}, {@code MOD_NOT_LIVE},
  * {@code MOD_DIGEST_MISMATCH} (the model file or pull changed), {@code MOD_CONFIG_CHANGED} (the prompt or settings
  * changed without a validation), and {@code MOD_REVIEW_OVERDUE} when the use is set to refuse it (else it is a
- * warning on the answer).
+ * warning on the answer); the review date is the entity's own, from its live validation.
  */
 public final class ModelGate {
 
     private final ModelGovStore store;
     private final Clock clock;
+    private final ReviewDates dates;
 
+    /** @param settings the app's settings: their {@code reviewEvery} intervals date each entity's review */
+    public ModelGate(ModelGovStore store, ModelGovSettings settings, Clock clock) {
+        this(store, Objects.requireNonNull(settings, "settings").reviewEvery(), clock);
+    }
+
+    /**
+     * With the default review intervals ({@link ModelGovSettings#DEFAULT_REVIEW}).
+     *
+     * @deprecated use {@link #ModelGate(ModelGovStore, ModelGovSettings, Clock)}, which takes the app's intervals
+     */
+    @Deprecated
     public ModelGate(ModelGovStore store, Clock clock) {
+        this(store, ModelGovSettings.DEFAULT_REVIEW, clock);
+    }
+
+    private ModelGate(ModelGovStore store, java.util.Map<ModelUse.Materiality, java.time.Period> reviewEvery,
+                      Clock clock) {
         this.store = Objects.requireNonNull(store, "store");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.dates = new ReviewDates(store, reviewEvery);
     }
 
     public LiveModel requireLive(UUID useId, UUID entity, ModelDigest observedDigest, String observedConfigFingerprint) {
@@ -57,9 +75,12 @@ public final class ModelGate {
         }
         List<ModelGovCode> warnings = new ArrayList<>();
         LocalDate today = LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC);
-        if (use.nextReviewDue() != null && !today.isBefore(use.nextReviewDue())) {
+        // This entity's own date, from its live validation: another entity's pass never moves it (P036).
+        Optional<LocalDate> due = dates.due(use, entity);
+        if (due.isPresent() && !today.isBefore(due.get())) {
             if (use.reviewOverdueRefuses()) {
-                throw new ModelGovException(MOD_REVIEW_OVERDUE, Map.of("use", useId, "due", use.nextReviewDue()));
+                throw new ModelGovException(MOD_REVIEW_OVERDUE, Map.of("use", useId, "entity", entity,
+                        "due", due.get()));
             }
             warnings.add(MOD_REVIEW_OVERDUE);
         }

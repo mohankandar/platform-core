@@ -91,10 +91,10 @@ Each code's cause and fix are in `docs/errors/platform-error-codes.md`.
 
 ## 5. Re-validation
 
-- Each use's **next review** is its last validation plus its interval: by default high 90 days, medium 180, low 365
+- Each use's **next review** is kept **per entity**: that entity's live validation plus the use's interval: by default high 90 days, medium 180, low 365
   (settings above), or the use's own interval.
 - **Any change** of the model, its version or digest, the configuration, or where the model runs makes the use **due
-  at once**.
+  at once** for each entity validated before the change. A use is listed and noticed by its earliest entity.
 - The app sends a notice (`MOD_REVIEW_DUE`) 30 days and 7 days before the date, and `MOD_REVIEW_OVERDUE` on the date;
   each once.
 

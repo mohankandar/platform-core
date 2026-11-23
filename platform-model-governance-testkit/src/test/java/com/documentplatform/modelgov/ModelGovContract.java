@@ -86,14 +86,14 @@ public abstract class ModelGovContract {
         store = newStore();
         audit = new RecordingAudit();
         gov = new ModelGovernance(store, audit, settings(), clock);
-        gate = new ModelGate(store, clock);
+        gate = new ModelGate(store, settings(), clock);
         events = new java.util.concurrent.CopyOnWriteArrayList<>();
         ModelEvents sink = e -> {
             events.add(e);
             SEEN.computeIfAbsent(getClass(), k -> ConcurrentHashMap.newKeySet()).add(e.code());
         };
         measures = new ModelMeasures(store, sink, clock, ModelMeasures.DEFAULT_RETENTION);
-        reviews = new ModelReviews(store, sink, clock);
+        reviews = new ModelReviews(store, sink, settings(), clock);
         entity = UUID.randomUUID();
         otherEntity = UUID.randomUUID();
     }
@@ -480,6 +480,47 @@ public abstract class ModelGovContract {
         gov.approve(v2.validationId(), approver());
         gov.goLive(u.useId(), entity, v2.validationId(), "release-manager");
         assertEquals(List.of(), start(u, entity).warnings());
+    }
+
+    /** P036, model-governance-39: the review date is kept per use and entity, from that entity's live validation. */
+    @Test
+    void oneEntitysPassNeverMovesAnotherEntitysReviewDate() {
+        Model m = model(vendorModel());
+        ModelUse u = use(m, null, ModelUse.Materiality.HIGH); // every entity
+        java.time.LocalDate day0 = java.time.LocalDate.parse("2026-11-01");
+        for (UUID e : List.of(entity, otherEntity)) {
+            ValidationRecord v = pass(current(u), e);
+            gov.approve(v.validationId(), approver());
+            gov.goLive(u.useId(), e, v.validationId(), "release-manager");
+        }
+        assertEquals(day0.plusDays(90), current(u).nextReviewDue());
+
+        // Day 60: the first entity is re-validated and goes live on it; the other is not.
+        clock.advance(Duration.ofDays(60));
+        ValidationRecord again = pass(current(u), entity);
+        gov.approve(again.validationId(), approver());
+        gov.goLive(u.useId(), entity, again.validationId(), "release-manager");
+        assertEquals(day0.plusDays(90), current(u).nextReviewDue(), "the use's date is its earliest entity's");
+
+        // Day 90: the other entity is past its own date; the first is not.
+        clock.advance(Duration.ofDays(30));
+        assertEquals(List.of(MOD_REVIEW_OVERDUE), start(u, otherEntity).warnings());
+        assertEquals(List.of(), start(u, entity).warnings());
+        List<ModelReviews.ReviewDue> overdue = reviews.overdue(clock.now);
+        assertEquals(List.of(u.useId()), overdue.stream().map(r -> r.use().useId()).toList());
+        assertEquals(day0.plusDays(90), overdue.get(0).dueDate());
+        gov.changeUse(current(u).withReviewOverdueRefuses(true), current(u).version(), "customer");
+        refuses(MOD_REVIEW_OVERDUE, () -> start(u, otherEntity));
+        assertEquals(List.of(), start(u, entity).warnings(), "the re-validated entity still starts");
+
+        // The other entity's re-validation counts once it is live: then the use is next due from day 60.
+        ValidationRecord other = pass(current(u), otherEntity);
+        gov.approve(other.validationId(), approver());
+        assertEquals(1, reviews.overdue(clock.now).size(), "passed but not live: still the live validation's date");
+        gov.goLive(u.useId(), otherEntity, other.validationId(), "release-manager");
+        assertEquals(List.of(), start(u, otherEntity).warnings());
+        assertEquals(List.of(), reviews.overdue(clock.now));
+        assertEquals(day0.plusDays(150), current(u).nextReviewDue());
     }
 
     // ---- live, rollback, scope

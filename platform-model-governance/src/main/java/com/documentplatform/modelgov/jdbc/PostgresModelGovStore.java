@@ -313,6 +313,21 @@ public final class PostgresModelGovStore implements ModelGovStore {
     }
 
     @Override
+    public List<UUID> validationEntities(UUID useId) {
+        return read("read validated entities", c -> {
+            List<UUID> out = new ArrayList<>();
+            try (PreparedStatement ps = c.prepareStatement("select distinct entity_uuid from mg_validation "
+                    + "where use_id = ? order by entity_uuid")) {
+                ps.setObject(1, useId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) out.add(rs.getObject(1, UUID.class));
+                }
+            }
+            return List.copyOf(out);
+        });
+    }
+
+    @Override
     public List<ValidationRecord> validations(UUID useId, UUID entity) {
         return read("read validations", c -> {
             List<ValidationRecord> out = new ArrayList<>();
