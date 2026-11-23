@@ -16,8 +16,8 @@ The machine-readable definition is the JSON Schema
 | `name`, `version` | The profile's name (`acme-archive-v1`: lower case, digits, `.`, `_`, `-`) and its own version (`1.2.0`). |
 | `description` | One paragraph for people. |
 | `api` | The API it describes: `title` and `version`, as in the OpenAPI file. |
-| `direction`, `kind` | `OUTBOUND` / `INBOUND`, and `API_PUSH` (or `API_POLL`). |
-| `steps` **or** `packaging` | Exactly one of them. The calls, in order: method, path, header and body templates, which values to read from the answer, the integrity check, rules per step. Or a packaging preset (`TWO_STEP`, `MULTIPART`, `FILE_PER_CALL`) with its parts; a preset expands to ordinary steps. |
+| `direction`, `kind` | `OUTBOUND` with `API_PUSH`, or (since P027) `INBOUND` with `API_POLL`. |
+| `steps` **or** `packaging` | For `API_PUSH`, exactly one of them. The calls, in order: method, path, header and body templates, which values to read from the answer, the integrity check, rules per step. Or a packaging preset (`TWO_STEP`, `MULTIPART`, `FILE_PER_CALL`) with its parts; a preset expands to ordinary steps. |
 | `signIn` | The sign-in types the API accepts (`NONE`, `BASIC`, `API_KEY`, `BEARER_FIXED`, `OAUTH2_CLIENT_CREDENTIALS`, and since P026 `MUTUAL_TLS`: the API requires a client certificate, listed together with the type used with it, if any). The certificate itself is the installation's, never in a profile. Also `installationSupplies`, the words IT recognises for what it must supply (`tokenAddress`, `clientId`, `credential`, `scope`, `apiKey`), and `apiKeyHeader` for an API key. |
 | `health` | The readiness call (`GET` / `HEAD`, path, with or without sign-in) and its own rules. For example, a 503 with a busy code or with Retry-After is BUSY, not down. |
 | `rules` | How answers are classified: status, the API's error code (exact, a prefix such as `DMS-*`, or `-` for none), optionally one field of the answer or the presence of Retry-After. The outcome is SENT, ALREADY_RECEIVED, REFUSED, SIGN_IN_FAILED, BUSY, OUTAGE, … It can also give a platform code and say whether an attempt is used. |
@@ -30,10 +30,12 @@ The machine-readable definition is the JSON Schema
 | `notes` | Notes for IT, in plain words. |
 | `testMode` | What the Test action runs: `FULL` (every step with fake data) or `CHECK_ONLY` (health and sign-in). |
 | `steps[].accepted` | Since P026, optional, last step only (run once): "accepted, check later". The API may answer **202 Accepted**. `referencePointer` (where the 202 answer holds the status reference; without it, the `Location` header), `statusMethod` (`GET` or `POST`) and `statusPath` (with `{status.reference}`; only without `Location`), `statePointer` and the state values `done`, `failed` and `working`, `defaultWaitSeconds` (when Retry-After is missing, default 30) and `read` (values from the "done" answer). The attempt ends ACCEPTED; the app asks for the status later, one call each time. |
+| `poll` | Since P027, for `API_POLL` only, in place of `steps` and `packaging` (and without `fields` and `documentAttributes`): how the API's waiting documents are fetched. `list` (the list call: `method` GET or POST, `path`, optional `headers`, `bodyTemplate`, `rules`), `itemsPointer` (where the list answer holds the items; empty when the answer is the list), `idPointer` (each item's stable ID, relative to the item), `values` (name → pointer relative to the item, handed to the app), `fileNameValue`, `paging` (`mode` NONE, CURSOR, NEXT_LINK or PAGE_NUMBER, with `pointer`, `param`, `sizeParam`, `pageSize`, `firstPage`, `maxPagesPerPass`, `resume` CONTINUE or FROM_START), `download` (its answer is the document) and the optional `acknowledge` (made only after the app took the item). The per-item calls may use `{item.id}` and `{item.<name>}`; the list call only `{correlationId}`. The engine adds the paging parameters to the list call's query string. |
 
 Templates are the same fixed building blocks as in any configuration, with no expressions or scripts:
 
-- `{package.*}`, `{doc.*}`, `{doc.attr.*}`, `{value.*}`, `{step.<step>.<value>}`, `{correlationId}`;
+- `{package.*}`, `{doc.*}`, `{doc.attr.*}`, `{value.*}`, `{step.<step>.<value>}`, `{correlationId}`; for polling
+  `{item.id}` and `{item.<name>}`;
 - in JSON only, the one list construct `{#each doc}…{/each}`;
 - in JSON only, "omit when missing": `{name?}` as the whole value of an object member leaves the member out when it
   has no value (P025; refused anywhere else with `INT_CONFIG_OMIT_PLACE`, reported here as `INT_PROFILE_TEMPLATE`).
@@ -63,7 +65,7 @@ Every problem has a code and a JSON pointer into the profile. It never repeats a
 | `INT_PROFILE_NOT_JSON` | Not one JSON object |
 | `INT_PROFILE_FORMAT_UNKNOWN` | A `format` this version does not know |
 | `INT_PROFILE_SCHEMA` | Does not fit the JSON Schema (missing, unknown, wrong type or shape) |
-| `INT_PROFILE_STEPS` | Neither steps nor a preset (or both), a preset missing its parts, steps that cannot run |
+| `INT_PROFILE_STEPS` | Neither steps nor a preset (or both), a preset missing its parts, steps that cannot run; for `API_POLL`: no `poll`, `poll` with steps, a preset, fields or document attributes, not `INBOUND`, or poll calls or paging that cannot run |
 | `INT_PROFILE_TEMPLATE` | An unknown or forbidden placeholder, one in a query string, a body that is not JSON |
 | `INT_PROFILE_HEADER` | A header only sign-in or HTTP may set (Authorization, Host, …), or a header name that is not valid |
 | `INT_PROFILE_RULE` | A rule that is not valid |
@@ -98,6 +100,7 @@ Every problem has a code and a JSON pointer into the profile. It never repeats a
   check must be healthy or busy, sign-in must work, and one empty request must be refused with a code that a rule
   names.
 
-Both report every problem. `ProfileMock` runs a mock of any profile, optionally following the OpenAPI file. Its
+Both report every problem. `MockSource.forProfile` runs a mock of a polling profile's source (its paging, download
+and acknowledge calls, with switches). `ProfileMock` runs a mock of any profile, optionally following the OpenAPI file. Its
 switches come from the profile's rules: busy, down, refused, already received, sign-in refused, health busy and health
 down.
