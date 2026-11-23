@@ -57,7 +57,7 @@ public final class ModelGate {
         }
         List<ModelGovCode> warnings = new ArrayList<>();
         LocalDate today = LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC);
-        if (use.nextReviewDue() != null && today.isAfter(use.nextReviewDue())) {
+        if (use.nextReviewDue() != null && !today.isBefore(use.nextReviewDue())) {
             if (use.reviewOverdueRefuses()) {
                 throw new ModelGovException(MOD_REVIEW_OVERDUE, Map.of("use", useId, "due", use.nextReviewDue()));
             }

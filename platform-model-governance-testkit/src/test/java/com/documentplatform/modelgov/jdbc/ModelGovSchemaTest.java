@@ -46,8 +46,12 @@ class ModelGovSchemaTest {
         older.exec("delete from mg_schema_version");
         assertEquals(ModelGovSchemaException.Problem.MG_VERSION_UNKNOWN, problem(older.owner));
 
+        Pg old = Pg.migrated();
+        old.exec("update mg_schema_version set version = 1");
+        assertEquals(ModelGovSchemaException.Problem.MG_VERSION_OLDER, problem(old.owner));
+
         Pg newer = Pg.migrated();
-        newer.exec("insert into mg_schema_version (version) values (2)");
+        newer.exec("insert into mg_schema_version (version) values (3)");
         assertEquals(ModelGovSchemaException.Problem.MG_VERSION_NEWER, problem(newer.owner));
 
         Pg incomplete = Pg.migrated();
@@ -99,6 +103,40 @@ class ModelGovSchemaTest {
         assertEquals(1, db.count("select count(*) from mg_validation"));
         assertEquals(2, db.count("select count(*) from mg_validation_measure"));
         assertFalse(s.store.validation(s.validation.validationId()).orElseThrow().passed());
+    }
+
+    @Test
+    void readingsLeaveOnlyThroughThePurgeAndMonitoringRecordsAreInsertOnly() {
+        Pg db = Pg.migrated();
+        DataSource app = db.appUser("select, insert, update, delete");
+        PostgresModelGovStore st = new PostgresModelGovStore(app);
+        Scenario s = Scenario.write(st);
+        UUID reading = UUID.randomUUID();
+        st.insertReading(new com.documentplatform.modelgov.Monitoring.Reading(reading, s.use.useId(), s.entity,
+                "correction_rate", new BigDecimal("0.2"), new com.documentplatform.modelgov.Monitoring.MeasurePeriod(
+                AT, AT, 60), "app", AT));
+        UUID drift = UUID.randomUUID();
+        st.insertDrift(new com.documentplatform.modelgov.Monitoring.Drift(drift, s.use.useId(), s.entity,
+                "correction_rate", new BigDecimal("0.2"), new BigDecimal("0.1"), Threshold.Direction.LOWER_IS_BETTER,
+                60, reading, AT));
+        st.insertDriftAction(new com.documentplatform.modelgov.Monitoring.DriftAction(drift, "Re-validated", "owner", AT));
+        assertTrue(st.insertReviewNotice(s.use.useId(), java.time.LocalDate.parse("2026-12-01"),
+                com.documentplatform.modelgov.Monitoring.ReviewStage.IN_30_DAYS, AT));
+        assertFalse(st.insertReviewNotice(s.use.useId(), java.time.LocalDate.parse("2026-12-01"),
+                com.documentplatform.modelgov.Monitoring.ReviewStage.IN_30_DAYS, AT), "once per stage");
+
+        for (DataSource who : List.of(app, db.owner)) {
+            for (String sql : List.of("update mg_measure set value = 0", "delete from mg_measure",
+                    "update mg_drift set value = 0", "delete from mg_drift_action", "update mg_drift_action set note = 'x'",
+                    "delete from mg_review_notice")) {
+                IllegalStateException e = assertThrows(IllegalStateException.class, () -> Pg.exec(who, sql), sql);
+                assertTrue(String.valueOf(e.getCause().getMessage()).contains("insert-only"), sql);
+            }
+        }
+        assertEquals(0, st.purgeReadings(AT), "nothing older than the cut-off");
+        assertEquals(1, st.purgeReadings(AT.plusSeconds(1)));
+        assertEquals(0, db.count("select count(*) from mg_measure"));
+        assertEquals(1, db.count("select count(*) from mg_drift"));
     }
 
     @Test
@@ -182,7 +220,7 @@ class ModelGovSchemaTest {
             ModelUse lived = new ModelUse(u.useId(), u.product(), u.feature(), u.entity(), u.purpose(),
                     u.materiality(), u.materialityReason(), u.humanInTheLoop(), u.vendorOwner(), u.customerOwner(),
                     u.modelId(), ConfigFingerprint.of(CONFIG_CHANGED), ModelUse.Status.LIVE, AT,
-                    java.time.LocalDate.parse("2027-05-01"), true, 1);
+                    java.time.LocalDate.parse("2027-05-01"), true, 120, 1);
             store.updateUse(lived, 1, new ModelGovStore.Change("tester", AT, List.of("configFingerprint", "status")));
             return new Scenario(store, entity, m, u, v, a, live, ch);
         }

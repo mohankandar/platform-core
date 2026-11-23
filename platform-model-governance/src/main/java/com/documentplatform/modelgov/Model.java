@@ -36,7 +36,8 @@ public record Model(UUID modelId, String name, Provider provider, String modelVe
         return new Model(modelId, name, provider, newModelVersion, newDigest, runsWhere, version);
     }
 
-    Model atVersion(long v) {
+    /** The same model at another row version (stores). */
+    public Model atVersion(long v) {
         return new Model(modelId, name, provider, modelVersion, digest, runsWhere, v);
     }
 }

@@ -40,6 +40,7 @@
         <module>platform-monitoring-spring</module>
         <module>platform-model-governance</module>
         <module>platform-model-governance-testkit</module>
+        <module>platform-model-governance-spring</module>
         <module>platform-error-catalogue</module>
     </modules>
     <properties>
@@ -54,6 +55,7 @@
         <greenmail.version>2.1.15</greenmail.version>
         <testcontainers.version>2.0.5</testcontainers.version>
         <postgresql.version>42.7.14</postgresql.version>
+        <pdfbox.version>3.0.8</pdfbox.version>
         <!-- The integrations' HTTP client (connection pinning): the version Spring Boot 3.3.x manages. -->
         <httpclient5.version>5.3.1</httpclient5.version>
     </properties>

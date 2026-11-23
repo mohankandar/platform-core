@@ -38,6 +38,18 @@ public final class ConfigFingerprint {
     }
 
     /** Whether the text has the form of a fingerprint. */
+    /** The canonical JSON of a tree of maps, lists, strings, numbers, booleans and nulls (the pack's JSON). */
+    static String canonicalOf(Object tree) {
+        StringBuilder sb = new StringBuilder();
+        write(sb, tree);
+        return sb.toString();
+    }
+
+    /** {@code sha256:} plus the SHA-256 of the text's UTF-8 bytes. */
+    static String sha256Of(String text) {
+        return "sha256:" + sha256(text);
+    }
+
     public static boolean isFingerprint(String s) {
         return s != null && s.matches("sha256:[0-9a-f]{64}");
     }
@@ -51,11 +63,13 @@ public final class ConfigFingerprint {
     }
 
     @SuppressWarnings("unchecked")
-    private static void write(StringBuilder sb, Object v) {
+    static void write(StringBuilder sb, Object v) {
         if (v == null) {
             sb.append("null");
         } else if (v instanceof Boolean b) {
             sb.append(b);
+        } else if (v instanceof Number num && !(v instanceof BigDecimal)) {
+            write(sb, new BigDecimal(num.toString()));
         } else if (v instanceof BigDecimal n) {
             BigDecimal s = n.stripTrailingZeros();
             sb.append(s.scale() <= 0 ? s.toBigIntegerExact().toString() : s.toPlainString());

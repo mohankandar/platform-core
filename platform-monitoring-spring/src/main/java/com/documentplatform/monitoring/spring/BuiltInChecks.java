@@ -39,7 +39,9 @@ final class BuiltInChecks {
             new Schema("erase-log", "com.documentplatform.eraselog.jdbc.EraseLogSchema",
                     "com.documentplatform.eraselog.ErasePosition"),
             new Schema("integration", "com.documentplatform.integration.jdbc.IntegrationSchema",
-                    "com.documentplatform.integration.store.IntegrationStore"));
+                    "com.documentplatform.integration.store.IntegrationStore"),
+            new Schema("model-governance", "com.documentplatform.modelgov.jdbc.ModelGovSchema",
+                    "com.documentplatform.modelgov.ModelGovStore"));
 
     private BuiltInChecks() {
     }

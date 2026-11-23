@@ -5,6 +5,7 @@ import com.documentplatform.modelgov.Model;
 import com.documentplatform.modelgov.ModelDigest;
 import com.documentplatform.modelgov.ModelGovStore;
 import com.documentplatform.modelgov.ModelUse;
+import com.documentplatform.modelgov.Monitoring;
 import com.documentplatform.modelgov.Threshold;
 import com.documentplatform.modelgov.ValidationRecord;
 
@@ -48,7 +49,7 @@ public final class PostgresModelGovStore implements ModelGovStore {
             + "digest_value, runs_where, version";
     private static final String USE_COLUMNS = "use_id, product_code, feature, entity_uuid, purpose, materiality, "
             + "materiality_reason, human_in_the_loop, vendor_owner, customer_owner, model_id, config_fingerprint, "
-            + "status, last_validated_at, next_review_due, review_overdue_refuses, version";
+            + "status, last_validated_at, next_review_due, review_overdue_refuses, review_every_days, version";
     private static final String VALIDATION_COLUMNS = "validation_id, use_id, entity_uuid, model_id, model_name, "
             + "model_version, provider, digest_algorithm, digest_value, config_fingerprint, test_set_name, "
             + "test_set_version, passed, ran_by, ran_at";
@@ -147,7 +148,7 @@ public final class PostgresModelGovStore implements ModelGovStore {
     public ModelUse insertUse(ModelUse u, Change change) {
         return tx("insert use", c -> {
             try (PreparedStatement ps = c.prepareStatement("insert into mg_model_use (" + USE_COLUMNS
-                    + ") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                    + ") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                 bindUse(ps, u);
                 ps.executeUpdate();
             }
@@ -159,12 +160,12 @@ public final class PostgresModelGovStore implements ModelGovStore {
     @Override
     public Optional<ModelUse> updateUse(ModelUse u, long expectedVersion, Change change) {
         return tx("update use", c -> {
-            ModelUse next = useAt(u, expectedVersion + 1);
+            ModelUse next = u.atVersion(expectedVersion + 1);
             try (PreparedStatement ps = c.prepareStatement("update mg_model_use set product_code = ?, feature = ?, "
                     + "entity_uuid = ?, purpose = ?, materiality = ?, materiality_reason = ?, human_in_the_loop = ?, "
                     + "vendor_owner = ?, customer_owner = ?, model_id = ?, config_fingerprint = ?, status = ?, "
-                    + "last_validated_at = ?, next_review_due = ?, review_overdue_refuses = ?, version = ?, "
-                    + "updated_at = now() where use_id = ? and version = ?")) {
+                    + "last_validated_at = ?, next_review_due = ?, review_overdue_refuses = ?, review_every_days = ?, "
+                    + "version = ?, updated_at = now() where use_id = ? and version = ?")) {
                 int i = 1;
                 ps.setString(i++, next.product());
                 ps.setString(i++, next.feature());
@@ -181,6 +182,7 @@ public final class PostgresModelGovStore implements ModelGovStore {
                 ps.setTimestamp(i++, ts(next.lastValidatedAt()));
                 ps.setDate(i++, next.nextReviewDue() == null ? null : Date.valueOf(next.nextReviewDue()));
                 ps.setBoolean(i++, next.reviewOverdueRefuses());
+                ps.setObject(i++, next.reviewEveryDays(), java.sql.Types.INTEGER);
                 ps.setLong(i++, next.version());
                 ps.setObject(i++, next.useId());
                 ps.setLong(i, expectedVersion);
@@ -517,6 +519,7 @@ public final class PostgresModelGovStore implements ModelGovStore {
         ps.setTimestamp(i++, ts(u.lastValidatedAt()));
         ps.setDate(i++, u.nextReviewDue() == null ? null : Date.valueOf(u.nextReviewDue()));
         ps.setBoolean(i++, u.reviewOverdueRefuses());
+        ps.setObject(i++, u.reviewEveryDays(), java.sql.Types.INTEGER);
         ps.setLong(i, u.version());
     }
 
@@ -526,13 +529,8 @@ public final class PostgresModelGovStore implements ModelGovStore {
                 rs.getString(5), ModelUse.Materiality.valueOf(rs.getString(6)), rs.getString(7), rs.getString(8),
                 rs.getString(9), rs.getString(10), rs.getObject(11, UUID.class), rs.getString(12),
                 ModelUse.Status.valueOf(rs.getString(13)), instant(rs.getTimestamp(14)),
-                due == null ? null : due.toLocalDate(), rs.getBoolean(16), rs.getLong(17));
-    }
-
-    private static ModelUse useAt(ModelUse u, long v) {
-        return new ModelUse(u.useId(), u.product(), u.feature(), u.entity(), u.purpose(), u.materiality(),
-                u.materialityReason(), u.humanInTheLoop(), u.vendorOwner(), u.customerOwner(), u.modelId(),
-                u.configFingerprint(), u.status(), u.lastValidatedAt(), u.nextReviewDue(), u.reviewOverdueRefuses(), v);
+                due == null ? null : due.toLocalDate(), rs.getBoolean(16), rs.getObject(17, Integer.class),
+                rs.getLong(18));
     }
 
     private static ValidationRecord validation(Connection c, ResultSet rs) throws SQLException {
@@ -575,8 +573,8 @@ public final class PostgresModelGovStore implements ModelGovStore {
 
     private static void useHistory(Connection c, ModelUse u, Change ch) throws SQLException {
         try (PreparedStatement ps = c.prepareStatement("insert into mg_model_use_history (use_id, version, model_id, "
-                + "config_fingerprint, materiality, status, next_review_due, changed_fields, changed_by, changed_at) "
-                + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                + "config_fingerprint, materiality, status, next_review_due, review_every_days, changed_fields, "
+                + "changed_by, changed_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
             ps.setObject(1, u.useId());
             ps.setLong(2, u.version());
             ps.setObject(3, u.modelId());
@@ -584,28 +582,278 @@ public final class PostgresModelGovStore implements ModelGovStore {
             ps.setString(5, u.materiality().name());
             ps.setString(6, u.status().name());
             ps.setDate(7, u.nextReviewDue() == null ? null : Date.valueOf(u.nextReviewDue()));
-            ps.setString(8, String.join(",", ch.changedFields()));
-            ps.setString(9, ch.changedBy());
-            ps.setTimestamp(10, ts(ch.changedAt()));
+            ps.setObject(8, u.reviewEveryDays(), java.sql.Types.INTEGER);
+            ps.setString(9, String.join(",", ch.changedFields()));
+            ps.setString(10, ch.changedBy());
+            ps.setTimestamp(11, ts(ch.changedAt()));
             ps.executeUpdate();
         }
     }
 
+    private static final String MODEL_RECORDED = "name, provider, model_version, digest_algorithm, digest_value, "
+            + "runs_where";
+    private static final String USE_RECORDED = "model_id, config_fingerprint, materiality, status, next_review_due, "
+            + "review_every_days";
+
     private List<HistoryRow> history(String table, String key, UUID id) {
+        boolean models = table.equals("mg_model_history");
         return read("read history", c -> {
             List<HistoryRow> out = new ArrayList<>();
-            try (PreparedStatement ps = c.prepareStatement("select version, changed_by, changed_at, changed_fields "
-                    + "from " + table + " where " + key + " = ? order by version")) {
+            try (PreparedStatement ps = c.prepareStatement("select version, changed_by, changed_at, changed_fields, "
+                    + (models ? MODEL_RECORDED : USE_RECORDED) + " from " + table + " where " + key
+                    + " = ? order by version")) {
                 ps.setObject(1, id);
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
                         String f = rs.getString(4);
+                        java.util.Map<String, String> rec = new java.util.LinkedHashMap<>();
+                        if (models) {
+                            rec.put("name", rs.getString(5));
+                            rec.put("provider", rs.getString(6));
+                            rec.put("modelVersion", rs.getString(7));
+                            rec.put("digest", rs.getString(8) + ":" + rs.getString(9));
+                            rec.put("runsWhere", rs.getString(10));
+                        } else {
+                            rec.put("modelId", rs.getString(5));
+                            rec.put("configFingerprint", rs.getString(6));
+                            rec.put("materiality", rs.getString(7));
+                            rec.put("status", rs.getString(8));
+                            if (rs.getDate(9) != null) rec.put("nextReviewDue", rs.getDate(9).toLocalDate().toString());
+                            if (rs.getObject(10) != null) rec.put("reviewEveryDays", String.valueOf(rs.getInt(10)));
+                        }
                         out.add(new HistoryRow(rs.getLong(1), rs.getString(2), instant(rs.getTimestamp(3)),
-                                f.isEmpty() ? List.of() : List.of(f.split(","))));
+                                f.isEmpty() ? List.of() : List.of(f.split(",")), rec));
                     }
                 }
             }
             return List.copyOf(out);
+        });
+    }
+
+    // ---- the register as a list, monitoring (P034)
+
+    @Override
+    public List<ModelUse> uses(String product) {
+        return read("read uses", c -> {
+            List<ModelUse> out = new ArrayList<>();
+            try (PreparedStatement ps = c.prepareStatement("select " + USE_COLUMNS + " from mg_model_use"
+                    + (product == null ? "" : " where product_code = ?") + " order by product_code, feature, use_id")) {
+                if (product != null) ps.setString(1, product);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) out.add(use(rs));
+                }
+            }
+            return List.copyOf(out);
+        });
+    }
+
+    @Override
+    public List<ModelUse> usesOfModel(UUID modelId) {
+        return read("read uses", c -> {
+            List<ModelUse> out = new ArrayList<>();
+            try (PreparedStatement ps = c.prepareStatement("select " + USE_COLUMNS + " from mg_model_use where "
+                    + "model_id = ? order by product_code, feature, use_id")) {
+                ps.setObject(1, modelId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) out.add(use(rs));
+                }
+            }
+            return List.copyOf(out);
+        });
+    }
+
+    @Override
+    public void putMonitorThreshold(Monitoring.MonitorThreshold t, Change change) {
+        tx("set monitoring threshold", c -> {
+            try (PreparedStatement del = c.prepareStatement("delete from mg_monitor_threshold where use_id = ? and "
+                    + "coalesce(entity_uuid, '00000000-0000-0000-0000-000000000000'::uuid) = "
+                    + "coalesce(?::uuid, '00000000-0000-0000-0000-000000000000'::uuid) and measure = ?")) {
+                del.setObject(1, t.useId());
+                del.setObject(2, t.entity());
+                del.setString(3, t.measure());
+                del.executeUpdate();
+            }
+            try (PreparedStatement ps = c.prepareStatement("insert into mg_monitor_threshold (use_id, entity_uuid, "
+                    + "measure, value, direction, min_sample, set_by, set_at) values (?, ?, ?, ?, ?, ?, ?, ?)")) {
+                ps.setObject(1, t.useId());
+                ps.setObject(2, t.entity());
+                ps.setString(3, t.measure());
+                ps.setBigDecimal(4, t.value());
+                ps.setString(5, t.direction().name());
+                ps.setLong(6, t.minSample());
+                ps.setString(7, change.changedBy());
+                ps.setTimestamp(8, ts(change.changedAt()));
+                ps.executeUpdate();
+            }
+            return null;
+        });
+    }
+
+    @Override
+    public List<Monitoring.MonitorThreshold> monitorThresholds(UUID useId) {
+        return read("read monitoring thresholds", c -> {
+            List<Monitoring.MonitorThreshold> out = new ArrayList<>();
+            try (PreparedStatement ps = c.prepareStatement("select entity_uuid, measure, value, direction, min_sample "
+                    + "from mg_monitor_threshold where use_id = ? order by measure, entity_uuid nulls first")) {
+                ps.setObject(1, useId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        out.add(new Monitoring.MonitorThreshold(useId, rs.getObject(1, UUID.class), rs.getString(2),
+                                rs.getBigDecimal(3), Threshold.Direction.valueOf(rs.getString(4)), rs.getLong(5)));
+                    }
+                }
+            }
+            return List.copyOf(out);
+        });
+    }
+
+    @Override
+    public void insertReading(Monitoring.Reading r) {
+        tx("insert reading", c -> {
+            try (PreparedStatement ps = c.prepareStatement("insert into mg_measure (reading_id, use_id, entity_uuid, "
+                    + "measure, value, period_from, period_to, samples, reported_by, reported_at) values "
+                    + "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                ps.setObject(1, r.readingId());
+                ps.setObject(2, r.useId());
+                ps.setObject(3, r.entity());
+                ps.setString(4, r.measure());
+                ps.setBigDecimal(5, r.value());
+                ps.setTimestamp(6, ts(r.period().from()));
+                ps.setTimestamp(7, ts(r.period().to()));
+                ps.setLong(8, r.period().samples());
+                ps.setString(9, r.reportedBy());
+                ps.setTimestamp(10, ts(r.reportedAt()));
+                ps.executeUpdate();
+            }
+            return null;
+        });
+    }
+
+    @Override
+    public List<Monitoring.Reading> readings(UUID useId, UUID entity, Instant from, Instant to) {
+        return read("read readings", c -> {
+            List<Monitoring.Reading> out = new ArrayList<>();
+            try (PreparedStatement ps = c.prepareStatement("select reading_id, entity_uuid, measure, value, "
+                    + "period_from, period_to, samples, reported_by, reported_at from mg_measure where use_id = ? "
+                    + (entity == null ? "" : "and entity_uuid = ? ")
+                    + "and reported_at >= ? and reported_at < ? order by reported_at, reading_id")) {
+                int i = 1;
+                ps.setObject(i++, useId);
+                if (entity != null) ps.setObject(i++, entity);
+                ps.setTimestamp(i++, ts(from));
+                ps.setTimestamp(i, ts(to));
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        out.add(new Monitoring.Reading(rs.getObject(1, UUID.class), useId, rs.getObject(2, UUID.class),
+                                rs.getString(3), rs.getBigDecimal(4), new Monitoring.MeasurePeriod(
+                                instant(rs.getTimestamp(5)), instant(rs.getTimestamp(6)), rs.getLong(7)),
+                                rs.getString(8), instant(rs.getTimestamp(9))));
+                    }
+                }
+            }
+            return List.copyOf(out);
+        });
+    }
+
+    @Override
+    public int purgeReadings(Instant before) {
+        return tx("purge readings", c -> {
+            try (PreparedStatement set = c.prepareStatement("select set_config('mg.purge_before', ?, true)")) {
+                set.setString(1, before.toString());
+                set.execute();
+            }
+            try (PreparedStatement ps = c.prepareStatement("delete from mg_measure where reported_at < ?")) {
+                ps.setTimestamp(1, ts(before));
+                return ps.executeUpdate();
+            }
+        });
+    }
+
+    @Override
+    public void insertDrift(Monitoring.Drift d) {
+        tx("insert drift", c -> {
+            try (PreparedStatement ps = c.prepareStatement("insert into mg_drift (drift_id, use_id, entity_uuid, "
+                    + "measure, value, threshold, direction, samples, reading_id, raised_at) values "
+                    + "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                ps.setObject(1, d.driftId());
+                ps.setObject(2, d.useId());
+                ps.setObject(3, d.entity());
+                ps.setString(4, d.measure());
+                ps.setBigDecimal(5, d.value());
+                ps.setBigDecimal(6, d.threshold());
+                ps.setString(7, d.direction().name());
+                ps.setLong(8, d.samples());
+                ps.setObject(9, d.readingId());
+                ps.setTimestamp(10, ts(d.raisedAt()));
+                ps.executeUpdate();
+            }
+            return null;
+        });
+    }
+
+    @Override
+    public List<Monitoring.Drift> drifts(UUID useId, UUID entity) {
+        return read("read drifts", c -> {
+            List<Monitoring.Drift> out = new ArrayList<>();
+            try (PreparedStatement ps = c.prepareStatement("select drift_id, entity_uuid, measure, value, threshold, "
+                    + "direction, samples, reading_id, raised_at from mg_drift where use_id = ? "
+                    + (entity == null ? "" : "and entity_uuid = ? ") + "order by raised_at, drift_id")) {
+                ps.setObject(1, useId);
+                if (entity != null) ps.setObject(2, entity);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        out.add(new Monitoring.Drift(rs.getObject(1, UUID.class), useId, rs.getObject(2, UUID.class),
+                                rs.getString(3), rs.getBigDecimal(4), rs.getBigDecimal(5),
+                                Threshold.Direction.valueOf(rs.getString(6)), rs.getLong(7),
+                                rs.getObject(8, UUID.class), instant(rs.getTimestamp(9))));
+                    }
+                }
+            }
+            return List.copyOf(out);
+        });
+    }
+
+    @Override
+    public void insertDriftAction(Monitoring.DriftAction a) {
+        tx("insert drift action", c -> {
+            try (PreparedStatement ps = c.prepareStatement("insert into mg_drift_action (drift_id, note, acted_by, "
+                    + "acted_at) values (?, ?, ?, ?)")) {
+                ps.setObject(1, a.driftId());
+                ps.setString(2, a.note());
+                ps.setString(3, a.actedBy());
+                ps.setTimestamp(4, ts(a.actedAt()));
+                ps.executeUpdate();
+            }
+            return null;
+        });
+    }
+
+    @Override
+    public Optional<Monitoring.DriftAction> driftAction(UUID driftId) {
+        return read("read drift action", c -> {
+            try (PreparedStatement ps = c.prepareStatement("select note, acted_by, acted_at from mg_drift_action "
+                    + "where drift_id = ?")) {
+                ps.setObject(1, driftId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) return Optional.<Monitoring.DriftAction>empty();
+                    return Optional.of(new Monitoring.DriftAction(driftId, rs.getString(1), rs.getString(2),
+                            instant(rs.getTimestamp(3))));
+                }
+            }
+        });
+    }
+
+    @Override
+    public boolean insertReviewNotice(UUID useId, java.time.LocalDate due, Monitoring.ReviewStage stage, Instant at) {
+        return tx("insert review notice", c -> {
+            try (PreparedStatement ps = c.prepareStatement("insert into mg_review_notice (use_id, due_date, stage, "
+                    + "raised_at) values (?, ?, ?, ?) on conflict do nothing")) {
+                ps.setObject(1, useId);
+                ps.setDate(2, Date.valueOf(due));
+                ps.setString(3, stage.name());
+                ps.setTimestamp(4, ts(at));
+                return ps.executeUpdate() == 1;
+            }
         });
     }
 

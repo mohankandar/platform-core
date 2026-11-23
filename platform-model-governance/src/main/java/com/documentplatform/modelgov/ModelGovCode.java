@@ -27,5 +27,9 @@ public enum ModelGovCode implements PlatformCode {
     MOD_RETIRED,
     MOD_REVIEW_OVERDUE,
     MOD_NO_ROLLBACK_TARGET,
-    MOD_WRONG_USE
+    MOD_WRONG_USE,
+    MOD_DRIFT,
+    MOD_DRIFT_UNHANDLED,
+    MOD_REVIEW_DUE,
+    MOD_ACTION_ALREADY_RECORDED
 }

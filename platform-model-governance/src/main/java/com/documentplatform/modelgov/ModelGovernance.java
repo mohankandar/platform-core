@@ -62,6 +62,9 @@ public final class ModelGovernance {
         Model stored = store.updateModel(model, expectedVersion, change(by, fields))
                 .orElseThrow(() -> new ModelGovException(MOD_VERSION_CONFLICT, Map.of("what", "model")));
         audit.modelChanged(stored, by, fields);
+        if (fields.contains("modelVersion") || fields.contains("digest") || fields.contains("runsWhere")) {
+            for (ModelUse u : store.usesOfModel(stored.modelId())) dueAtOnce(u, by);
+        }
         return stored;
     }
 
@@ -80,8 +83,12 @@ public final class ModelGovernance {
         ModelUse before = store.use(use.useId()).orElseThrow(() -> unknown("use", use.useId()));
         if (!before.modelId().equals(use.modelId())) store.model(use.modelId()).orElseThrow(() -> unknown("model",
                 use.modelId()));
-        List<String> fields = changedFields(before, use);
-        ModelUse stored = store.updateUse(use, expectedVersion, change(by, fields))
+        ModelUse next = use;
+        if (!before.modelId().equals(use.modelId()) || !before.configFingerprint().equals(use.configFingerprint())) {
+            next = dueToday(use);
+        }
+        List<String> fields = changedFields(before, next);
+        ModelUse stored = store.updateUse(next, expectedVersion, change(by, fields))
                 .orElseThrow(() -> new ModelGovException(MOD_VERSION_CONFLICT, Map.of("what", "use")));
         audit.useChanged(stored, by, fields);
         return stored;
@@ -157,7 +164,7 @@ public final class ModelGovernance {
         store.insertValidation(rec);
         audit.validationRecorded(rec);
         if (passed) {
-            LocalDate next = LocalDate.ofInstant(now, ZoneOffset.UTC).plus(settings.reviewEvery().get(use.materiality()));
+            LocalDate next = LocalDate.ofInstant(now, ZoneOffset.UTC).plus(reviewEvery(use));
             ModelUse updated = use.validated(now, next);
             store.updateUse(updated, use.version(), change(ranBy, List.of("lastValidatedAt", "nextReviewDue",
                     "status"))).ifPresent(u -> audit.useChanged(u, ranBy, List.of("lastValidatedAt", "nextReviewDue",
@@ -275,6 +282,26 @@ public final class ModelGovernance {
 
     // ---- helpers
 
+    /** How long a validation of the use lasts: its own interval, else its materiality's. */
+    public java.time.Period reviewEvery(ModelUse use) {
+        return use.reviewEveryDays() != null ? java.time.Period.ofDays(use.reviewEveryDays())
+                : settings.reviewEvery().get(use.materiality());
+    }
+
+    private ModelUse dueToday(ModelUse u) {
+        LocalDate today = LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC);
+        return u.nextReviewDue() != null && !u.nextReviewDue().isAfter(today) ? u : u.withNextReviewDue(today);
+    }
+
+    /** A change of the model's version, digest or where it runs makes each of its uses due for review at once. */
+    private void dueAtOnce(ModelUse u, String by) {
+        if (u.status() == ModelUse.Status.RETIRED) return;
+        ModelUse due = dueToday(u);
+        if (due == u) return;
+        store.updateUse(due, u.version(), change(by, List.of("nextReviewDue")))
+                .ifPresent(x -> audit.useChanged(x, by, List.of("nextReviewDue")));
+    }
+
     private void checkApprover(Approver a) {
         Objects.requireNonNull(a, "approver");
         for (String r : a.roles()) {
@@ -314,6 +341,7 @@ public final class ModelGovernance {
         if (a.status() != b.status()) f.add("status");
         if (!Objects.equals(a.nextReviewDue(), b.nextReviewDue())) f.add("nextReviewDue");
         if (a.reviewOverdueRefuses() != b.reviewOverdueRefuses()) f.add("reviewOverdueRefuses");
+        if (!Objects.equals(a.reviewEveryDays(), b.reviewEveryDays())) f.add("reviewEveryDays");
         return f;
     }
 }
