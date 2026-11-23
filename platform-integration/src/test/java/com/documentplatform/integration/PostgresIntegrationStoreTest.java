@@ -79,6 +79,31 @@ class PostgresIntegrationStoreTest {
     }
 
     @Test
+    void intakeConfigurationsAreStoredWithTheDmlOnlyUser() {
+        // P027: API polling and the watched folder are stored and versioned like every kind; nothing else is stored
+        // (the cursor state is the app's, drops and claims live in the folder).
+        Pg db = Pg.migrated();
+        DataSource app = db.appUser();
+        IntegrationSchema.verify(app);
+        IntegrationConfigs configs = new IntegrationConfigs(new PostgresIntegrationStore(app), IntegrationAudit.NONE,
+                Installation.onPremises(), Clock.systemUTC());
+        IntegrationConfig poll = IntakeConfigTest.poll();
+        IntegrationConfig watch = IntakeConfigTest.watch();
+        configs.create(poll, "alice");
+        configs.create(watch, "alice");
+        assertEquals(poll, configs.current(poll.id()).orElseThrow().config());
+        assertEquals(watch, configs.current(watch.id()).orElseThrow().config());
+        IntegrationConfig changed = poll.withPoll(poll.poll().withPaging(
+                com.documentplatform.integration.config.PollSource.Paging.nextLink("/links/next")));
+        configs.update(changed, 1, "bob");
+        assertEquals(List.of("poll.paging.mode", "poll.paging.param", "poll.paging.pageSize", "poll.paging.pointer",
+                "poll.paging.sizeParam").stream().sorted().toList(),
+                configs.history(poll.id()).get(1).changedFields().stream().filter(f -> f.startsWith("poll."))
+                        .sorted().toList());
+        assertEquals(changed, configs.current(poll.id()).orElseThrow().config());
+    }
+
+    @Test
     void theDatabaseKeepsVersionsFrozenAndTheAppUserCannotChangeTables() {
         Pg db = Pg.migrated();
         DataSource app = db.appUser();
