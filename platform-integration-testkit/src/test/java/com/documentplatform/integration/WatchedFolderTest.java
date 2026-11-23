@@ -473,6 +473,36 @@ class WatchedFolderTest {
     }
 
     @Test
+    void aFileChangedWhileTheAppReadsItGoesToProblem() {
+        // integration-module-129 / 155: the app's stream checks itself; the drop is not put back to be taken again.
+        StoredIntegration s = jsonDrops();
+        jsonDrop("changing", old, "a.pdf");
+        App app = new App();
+        WatchResult r = watcher().pass(s, d -> {
+            String claim = folder.entries(WatchSource.PROCESSING).get(0);
+            IntakeFile f = d.files().get(0);
+            try (InputStream in = f.open()) {
+                in.readNBytes(4);
+                folder.write(WatchSource.PROCESSING + "/" + claim + "/" + f.name(),
+                        "%PDF-1.4 rewritten by the customer's process while the app read it", old);
+                in.readAllBytes();
+            } catch (IOException e) {
+                assertInstanceOf(IntakeFile.Changed.class, e);
+                throw new UncheckedIOException(e);
+            }
+            return app.handle(d);
+        });
+        assertTrue(r.ok(), r.toString());
+        assertEquals(0, r.taken());
+        assertEquals(List.of(new WatchResult.Problem("changing", IntegrationCode.INT_WATCH_FILE_CHANGED)),
+                r.problems());
+        assertTrue(problem(WatchSource.PROBLEM, "changing").contains("INT_WATCH_FILE_CHANGED"));
+        assertTrue(folder.entries(WatchSource.PROCESSING).isEmpty());
+        assertFalse(folder.has("changing/manifest.json"), "not put back");
+        assertTrue(app.have.isEmpty());
+    }
+
+    @Test
     void theDropsPerPassLimit() {
         StoredIntegration s = config(WatchSource.of(folder.folder(), WatchSource.Layout.SUBFOLDER, "*.json")
                 .withMaxDropsPerPass(2));
