@@ -78,7 +78,7 @@ class CatalogueTest {
                 "com.documentplatform.outbound.spring.OutboundConfigException",
                 "com.documentplatform.integration.spring.IntegrationConfigException",
                 "com.documentplatform.crypto.spring.CryptoConfigException",
-                "com.documentplatform.licensing.spring.LicensingConfigException",
+                "com.documentplatform.licensing.spring.internal.LicensingConfigException",
                 "com.documentplatform.notifications.spring.NotificationsConfigException",
                 "com.documentplatform.eraselog.spring.EraseLogConfigException",
                 "com.documentplatform.modelgov.spring.ModelGovConfig$Invalid",

@@ -4,7 +4,7 @@ import org.springframework.boot.diagnostics.FailureAnalysis;
 import org.springframework.boot.diagnostics.FailureAnalyzer;
 
 /** Turns a wrong integration install config, or a missing app bean, into Spring Boot's "APPLICATION FAILED TO START". */
-public final class IntegrationFailureAnalyzer implements FailureAnalyzer {
+final class IntegrationFailureAnalyzer implements FailureAnalyzer {
 
     @Override
     public FailureAnalysis analyze(Throwable failure) {

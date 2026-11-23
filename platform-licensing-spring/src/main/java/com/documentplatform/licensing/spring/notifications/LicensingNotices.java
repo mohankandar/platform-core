@@ -58,7 +58,7 @@ import static com.documentplatform.licensing.spring.notifications.LicensingEvent
  *
  * <p>Logs IDs, codes and counts only.
  */
-public final class LicensingNotices {
+final class LicensingNotices {
 
     private static final System.Logger LOG = System.getLogger(LicensingNotices.class.getName());
     /** Notice claims are kept this long; longer than any period a notice is about (a year's licence bands). */

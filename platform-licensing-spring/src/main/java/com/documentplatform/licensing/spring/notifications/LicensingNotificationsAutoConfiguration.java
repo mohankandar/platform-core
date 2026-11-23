@@ -4,7 +4,7 @@ import com.documentplatform.licensing.LicenceService;
 import com.documentplatform.licensing.NoticeLog;
 import com.documentplatform.licensing.spring.LicensingAutoConfiguration;
 import com.documentplatform.licensing.spring.LicensingClock;
-import com.documentplatform.licensing.spring.LicensingConfigException;
+import com.documentplatform.licensing.spring.internal.LicensingConfigException;
 import com.documentplatform.licensing.spring.LicensingProperties;
 import com.documentplatform.notifications.EventKind;
 import com.documentplatform.notifications.NotificationSettings;

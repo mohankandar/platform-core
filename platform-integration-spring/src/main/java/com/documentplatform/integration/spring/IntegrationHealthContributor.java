@@ -39,7 +39,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>A destination that is down makes this contributor DOWN. Keep it out of the app's liveness and readiness groups
  * (the install guide says how) unless the app should stop taking work when a destination is down.
  */
-public final class IntegrationHealthContributor implements CompositeHealthContributor {
+final class IntegrationHealthContributor implements CompositeHealthContributor {
 
     /** The scanner's entry. */
     public static final String SCANNER = "scanner";

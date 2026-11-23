@@ -7,9 +7,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * The install config of licensing, prefix {@code platform.licensing}. Checked at startup by
- * {@link LicensingConfig#from}, which stops the app with a specific message for each wrong value. Only public keys
- * go here; no secret is ever needed on the app side.
+ * The install config of licensing, prefix {@code platform.licensing}. Checked at startup, which stops the app with a
+ * specific message for each wrong value. Only public keys go here; no secret is ever needed on the app side.
  */
 @ConfigurationProperties(prefix = LicensingProperties.PREFIX)
 public class LicensingProperties {

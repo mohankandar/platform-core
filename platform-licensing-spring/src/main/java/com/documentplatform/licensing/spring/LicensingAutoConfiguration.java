@@ -11,6 +11,8 @@ import com.documentplatform.licensing.jdbc.PostgresLastSeenStore;
 import com.documentplatform.licensing.jdbc.PostgresLicenceStore;
 import com.documentplatform.licensing.jdbc.PostgresNoticeLog;
 import com.documentplatform.licensing.jdbc.PostgresUsageLedger;
+import com.documentplatform.licensing.spring.internal.LicensingConfig;
+import com.documentplatform.licensing.spring.internal.LicensingConfigException;
 import com.documentplatform.licensing.usage.UsageLedger;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;

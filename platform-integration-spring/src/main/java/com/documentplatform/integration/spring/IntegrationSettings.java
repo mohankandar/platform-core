@@ -27,7 +27,7 @@ import java.util.Objects;
  * @param icapService    the ICAP service path, or null
  * @param intakeWorkFolder where downloads are kept while the app takes them, or null for the system's
  */
-public record IntegrationSettings(Installation installation, Limits defaultLimits, Path profileFolder, boolean health,
+record IntegrationSettings(Installation installation, Limits defaultLimits, Path profileFolder, boolean health,
                                   Duration healthCacheFor, IntegrationProperties.Scanner.Type scannerType,
                                   ScannerAddress scanner, String icapService, Path intakeWorkFolder) {
 

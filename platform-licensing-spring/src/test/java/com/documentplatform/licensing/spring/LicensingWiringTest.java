@@ -13,6 +13,7 @@ import com.documentplatform.licensing.LicenceVerifier;
 import com.documentplatform.licensing.inmemory.InMemoryUsageLedger;
 import com.documentplatform.licensing.inmemory.TestLicences;
 import com.documentplatform.licensing.jdbc.LicensingSchemaException;
+import com.documentplatform.licensing.spring.internal.LicensingConfigException;
 import com.documentplatform.licensing.jdbc.PostgresLastSeenStore;
 import com.documentplatform.licensing.jdbc.PostgresLicenceStore;
 import com.documentplatform.licensing.jdbc.PostgresUsageLedger;

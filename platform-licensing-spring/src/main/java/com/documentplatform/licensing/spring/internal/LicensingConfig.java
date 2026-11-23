@@ -1,8 +1,9 @@
-package com.documentplatform.licensing.spring;
+package com.documentplatform.licensing.spring.internal;
 
 import com.documentplatform.licensing.Ed25519;
 import com.documentplatform.licensing.Licence;
 import com.documentplatform.licensing.TrustedKeys;
+import com.documentplatform.licensing.spring.LicensingProperties;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -18,7 +19,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
-/** The checked licensing config. */
+/**
+ * The checked licensing config. Internal: read by the licensing and identity auto-configurations; apps set
+ * {@code platform.licensing.*} ({@link LicensingProperties}) and use {@code LicenceService}.
+ */
 public record LicensingConfig(TrustedKeys trustedKeys, String productCode, String tenantId, Duration clockTolerance) {
 
     /** Prefix of a trusted-keys file read from the classpath. */
