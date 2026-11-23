@@ -132,6 +132,34 @@ class VaultTransitSignerStubTest {
         assertFalse(calls.stream().anyMatch(c -> c.contains("/sign/")), "nothing signed: " + calls);
     }
 
+    /** A standby node's redirect is not followed: ISSUE_VAULT_ERROR, whose texts (not SEALED's) name the standby. */
+    @Test
+    void aStandbyRedirectIsAVaultErrorAndTheTextsSaySo() throws Exception {
+        HttpServer s = plain();
+        s.createContext("/", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            calls.add(exchange.getRequestMethod() + " " + exchange.getRequestURI().getPath());
+            exchange.getResponseHeaders().set("Location", "https://vault-active.example:8200"
+                    + exchange.getRequestURI().getPath());
+            exchange.sendResponseHeaders(307, -1);
+            exchange.close();
+        });
+        s.start();
+        server = s;
+        assertEquals(1, run("http://127.0.0.1:" + s.getAddress().getPort()));
+        assertTrue(err().startsWith("ISSUE_VAULT_ERROR: "), err());
+        assertTrue(err().contains("HTTP 307") && err().contains("use the active node's address"), err());
+        assertEquals(1, calls.size(), "the redirect is not followed: " + calls);
+
+        for (String text : List.of(IssueError.ISSUE_VAULT_ERROR.meaning(), IssueError.ISSUE_VAULT_ERROR.cause())) {
+            assertTrue(text.contains("standby") && text.contains("active node"), text);
+        }
+        for (String text : List.of(IssueError.ISSUE_VAULT_SEALED.meaning(), IssueError.ISSUE_VAULT_SEALED.cause())) {
+            assertTrue(text.contains("503") && text.contains("sealed"), text);
+            assertFalse(text.contains("standby"), "only HTTP 503 is SEALED; a standby redirect is ERROR: " + text);
+        }
+    }
+
     /** A throwaway self-signed server certificate for localhost, made with the JDK's keytool. */
     private SSLContext selfSigned() throws Exception {
         Path store = dir.resolve("stub-vault.p12");

@@ -28,8 +28,11 @@ public enum IssueError implements com.documentplatform.errors.PlatformCode {
     ISSUE_VAULT_UNREACHABLE("Vault could not be reached at the address given (connection refused, timeout or"
             + " unknown host)."),
     ISSUE_VAULT_TLS("The TLS connection to Vault failed: its certificate is not trusted by this Java runtime."),
-    ISSUE_VAULT_SEALED("Vault is sealed or in standby and cannot sign until it is unsealed."),
-    ISSUE_VAULT_ERROR("Vault answered with an error or a reply this command does not understand.");
+    ISSUE_VAULT_SEALED("Vault answered HTTP 503: it is sealed or not yet ready, and cannot sign until it is unsealed"
+            + " and ready."),
+    ISSUE_VAULT_ERROR("Vault answered with an error or a reply this command does not understand, or a standby node"
+            + " redirected the request to the active node (redirects are not followed: use the active node's"
+            + " address).");
 
     private final String meaning;
 
