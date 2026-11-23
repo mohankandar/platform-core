@@ -15,7 +15,7 @@ import java.util.Objects;
  */
 public record ConnectionOutcome(Result result, LoginConnection connection, TestReport test, String detail) {
 
-    public enum Result {
+    public enum Result implements com.documentplatform.errors.PlatformCode {
         /** A new DRAFT: a copy of the ACTIVE connection, or the first connection. */
         DRAFT_CREATED(false),
         /** The draft has the new values; it is DRAFT again (a VALIDATED one must be tested again). */

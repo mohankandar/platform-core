@@ -13,6 +13,11 @@
         <dependencies>
             <dependency>
                 <groupId>com.documentplatform.platform</groupId>
+                <artifactId>platform-errors</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.documentplatform.platform</groupId>
                 <artifactId>platform-identity-core</artifactId>
                 <version>${project.version}</version>
             </dependency>

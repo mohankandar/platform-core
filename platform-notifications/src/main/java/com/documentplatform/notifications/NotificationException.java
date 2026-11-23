@@ -9,7 +9,7 @@ import java.util.Objects;
 public final class NotificationException extends RuntimeException {
 
     /** Why it was refused. Stable: apps may map each reason to their own screen message. */
-    public enum Reason {
+    public enum Reason implements com.documentplatform.errors.PlatformCode {
         /** A value does not have the allowed shape (id, identifier, link, label, address). */
         INVALID_VALUE,
         /** The event type is not in the catalogue. */

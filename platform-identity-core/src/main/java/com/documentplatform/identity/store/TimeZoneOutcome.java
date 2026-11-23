@@ -9,7 +9,7 @@ package com.documentplatform.identity.store;
  */
 public record TimeZoneOutcome(Result result, String subject, EntityTimeZone zone) {
 
-    public enum Result {
+    public enum Result implements com.documentplatform.errors.PlatformCode {
         /** The zone is now the one given. */
         SET(false),
         /** The entity has no zone of its own any more: it follows the customer's. */

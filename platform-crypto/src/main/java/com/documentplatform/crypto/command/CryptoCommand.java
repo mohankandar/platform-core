@@ -65,7 +65,7 @@ public final class CryptoCommand {
     public static final int EXIT_REFUSED = 2;
 
     /** Why the command refused; printed in front of the message. */
-    public enum Code {
+    public enum Code implements com.documentplatform.errors.PlatformCode {
         CRYPTO_COMMAND_USAGE,
         /** No confirmation was typed. Nothing was destroyed. */
         CRYPTO_DESTROY_NOT_CONFIRMED,

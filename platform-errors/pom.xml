@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.documentplatform.platform</groupId>
+        <artifactId>platform-core</artifactId>
+        <version>0.4.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>platform-errors</artifactId>
+    <description>The common error-code standard (plain Java, no dependencies; package com.documentplatform.errors):
+        PlatformCode (code, kind, user message, cause, fix, support note, optional HTTP status) implemented by every
+        platform code enum, with the texts kept as data next to each enum (Enum.codes.properties); PlatformError
+        (code, safe message, cause with safe details, reference ID, time); ReferenceId; FailureLog; the generated
+        catalogue docs/errors/platform-error-codes.md and .json.</description>
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

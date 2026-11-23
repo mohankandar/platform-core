@@ -15,6 +15,12 @@
         work; replay through handlers per kind (case fields built in), the verify step, retention and pruning from a
         checkpoint.</description>
     <dependencies>
+        <!-- The common error-code standard: PlatformCode (texts in *.codes.properties next to each code enum). -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-errors</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <!-- The built-in case-fields handler; only when the app uses platform-fields. -->
         <dependency>
             <groupId>com.documentplatform.platform</groupId>

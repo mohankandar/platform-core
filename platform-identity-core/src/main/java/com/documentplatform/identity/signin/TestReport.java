@@ -16,7 +16,7 @@ import java.util.Optional;
 public record TestReport(Code failure, String message, String reason, boolean tokenChecked) {
 
     /** Why a test sign-in failed. */
-    public enum Code {
+    public enum Code implements com.documentplatform.errors.PlatformCode {
         /** The issuer's discovery document could not be fetched (connection, outbound rule, or an HTTP error). */
         IDN_TEST_ISSUER_UNREACHABLE,
         /** The discovery document is not valid JSON, or its {@code issuer} is not exactly the connection's issuer. */

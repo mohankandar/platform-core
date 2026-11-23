@@ -15,6 +15,12 @@
         match through a keyed fingerprint; one record per primary value set), search (exact, prefix, partial), and
         Postgres storage (fld_ tables, SQL in db/platform/fields, run only by the app's schema step).</description>
     <dependencies>
+        <!-- The common error-code standard: PlatformCode (texts in *.codes.properties next to each code enum). -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-errors</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <dependency>
             <groupId>com.documentplatform.platform</groupId>
             <artifactId>platform-crypto</artifactId>

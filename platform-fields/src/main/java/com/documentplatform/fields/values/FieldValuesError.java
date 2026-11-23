@@ -4,7 +4,7 @@ package com.documentplatform.fields.values;
  * Why a value storage call was refused. Stable codes; each comes with a plain message naming the record, the field's
  * key or label and the rule, never a value.
  */
-public enum FieldValuesError {
+public enum FieldValuesError implements com.documentplatform.errors.PlatformCode {
     /** The record type or record ID is not valid. */
     VALUES_RECORD_REF_INVALID,
     /** One or more values broke their field's rules; {@link FieldValuesException#problems()} lists them. */

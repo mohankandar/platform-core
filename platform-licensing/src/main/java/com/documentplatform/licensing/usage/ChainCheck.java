@@ -10,7 +10,7 @@ import java.util.Optional;
 public record ChainCheck(boolean intact, long recordsChecked, Problem problem, long brokenAtSequence, String message) {
 
     /** What is wrong with the chain. Stable codes. */
-    public enum Problem {
+    public enum Problem implements com.documentplatform.errors.PlatformCode {
         /** A record's content no longer matches its hash. */
         USAGE_CHAIN_RECORD_EDITED,
         /** A record does not point to the hash of the one before it. */

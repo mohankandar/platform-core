@@ -4,7 +4,7 @@ package com.documentplatform.eraselog;
  * Why an erase log call refused or failed, or why the guard keeps the system from taking work. Stable codes; the
  * message with each names ids (log, sequence number, kind, record) and what to do, never a value.
  */
-public enum EraseLogError {
+public enum EraseLogError implements com.documentplatform.errors.PlatformCode {
     /** A field of an entry is missing or not of its form (the message names the field, not what was given). */
     ERASE_ENTRY_INVALID,
     /** A field of an entry looks like a value (an e-mail address, sealed data, a fingerprint): the log holds no values. */

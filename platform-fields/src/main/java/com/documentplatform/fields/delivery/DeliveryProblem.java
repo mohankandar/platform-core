@@ -16,7 +16,7 @@ import java.util.Objects;
  */
 public record DeliveryProblem(Code code, Integer entry, FieldKey key, ValueError valueError, String message) {
 
-    public enum Code {
+    public enum Code implements com.documentplatform.errors.PlatformCode {
         /** Not JSON of the strict subset used. */
         DELIVERY_UNREADABLE,
         /** Larger than 2 MB or more than 1000 entries. */

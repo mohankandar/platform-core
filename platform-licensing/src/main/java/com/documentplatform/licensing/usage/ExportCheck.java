@@ -13,7 +13,7 @@ public record ExportCheck(boolean ok, Problem problem, int fileIndex, int record
                           ExportAnchor nextAnchor) {
 
     /** Stable codes. */
-    public enum Problem {
+    public enum Problem implements com.documentplatform.errors.PlatformCode {
         /** Not a readable usage export (bad JSON, missing or unknown fields). */
         EXPORT_MALFORMED,
         /** A format this version does not read. */

@@ -9,7 +9,7 @@ import java.util.Objects;
 public final class FieldDefinitionException extends IllegalArgumentException {
 
     /** Why a definition or change was refused. */
-    public enum Code {
+    public enum Code implements com.documentplatform.errors.PlatformCode {
         /** The key does not start with a letter or has other characters than letters, digits, '_', '.', '-'. */
         FIELD_KEY_INVALID,
         /** The label is blank, longer than 200 characters or has control characters. */

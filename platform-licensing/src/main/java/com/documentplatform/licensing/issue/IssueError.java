@@ -1,7 +1,7 @@
 package com.documentplatform.licensing.issue;
 
 /** Why the issuing command refused to issue. Stable codes; each has one exact cause in the message. */
-public enum IssueError {
+public enum IssueError implements com.documentplatform.errors.PlatformCode {
     ISSUE_BAD_OPTION("An option is unknown, repeated or has a value of the wrong shape."),
     ISSUE_MISSING_OPTION("A required option is missing."),
     ISSUE_INVALID_LICENCE("The options do not make a valid licence."),

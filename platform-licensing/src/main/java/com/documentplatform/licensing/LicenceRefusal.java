@@ -7,7 +7,7 @@ package com.documentplatform.licensing;
  * (see {@link ClockReading}). {@link #LICENCE_OLDER_VERSION} and {@link #LICENCE_VERSION_CONFLICT} only refuse storing a
  * new licence; the licence already stored stays in force.
  */
-public enum LicenceRefusal {
+public enum LicenceRefusal implements com.documentplatform.errors.PlatformCode {
     LICENCE_MISSING("No licence is stored. Install the licence file you received with the setup or licence command."),
     LICENCE_MALFORMED("The licence is not a readable licence file."),
     LICENCE_UNSUPPORTED_FORMAT("The licence uses a format or signature algorithm this version does not read."),
@@ -27,6 +27,12 @@ public enum LicenceRefusal {
     /** The fixed meaning of the code; {@link LicenceException#getMessage()} adds the exact cause. */
     public String meaning() {
         return meaning;
+    }
+
+    /** What IT does: the operator action of the code ({@link #action()}). */
+    @Override
+    public String fix() {
+        return action();
     }
 
     /** What the operator does about it. */

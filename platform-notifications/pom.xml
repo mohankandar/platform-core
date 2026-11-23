@@ -10,6 +10,12 @@
     <description>Notifications capability: event catalogue, settings, routing, summaries, continuous-condition alerts,
         an outbox with retries, SMTP / Teams / Slack senders and Postgres storage. Plain Java, no Spring.</description>
     <dependencies>
+        <!-- The common error-code standard: PlatformCode (texts in *.codes.properties next to each code enum). -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-errors</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <!-- SMTP sender. Jakarta Mail API + Eclipse Angus implementation (same line Spring Boot 3 uses). -->
         <dependency>
             <groupId>org.eclipse.angus</groupId>

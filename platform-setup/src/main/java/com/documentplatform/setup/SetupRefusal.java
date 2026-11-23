@@ -4,7 +4,7 @@ package com.documentplatform.setup;
  * Why setup stopped. Every code has a stable name and says what to do. Messages name files, fields, IDs and codes,
  * never secrets or file contents beyond IDs.
  */
-public enum SetupRefusal {
+public enum SetupRefusal implements com.documentplatform.errors.PlatformCode {
     SETUP_BAD_OPTION(SetupCommand.EXIT_REFUSED, "Correct the options; 'setup' without options lists them."),
     SETUP_FILE_UNREADABLE(SetupCommand.EXIT_REFUSED, "Check the path and that the file can be read."),
     SETUP_KEYS_INVALID(SetupCommand.EXIT_REFUSED, "Use the trusted-keys.json shipped with this release, unchanged."),
