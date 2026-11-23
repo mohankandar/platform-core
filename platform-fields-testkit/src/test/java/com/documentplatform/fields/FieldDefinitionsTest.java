@@ -64,6 +64,22 @@ class FieldDefinitionsTest {
         assertEquals(1, fields.find(ENTITY, LOAN).orElseThrow().version(), "nothing changed");
     }
 
+    /** xc-catalogue-4 (P037): a failing values check refuses with its own code; nothing locked changes. */
+    @Test
+    void aFailingValuesCheckRefusesWithItsCodeAndChangesNothing() {
+        FieldDefinitions failing = new FieldDefinitions(store, (scope, key) -> {
+            throw new IllegalStateException("db down: password=Planted-Check-1");
+        }, Clock.fixed(Instant.parse("2026-11-21T10:00:00Z"), ZoneOffset.UTC));
+        FieldDefinition d = loanAmount();
+        FieldDefinitionException e = refused(Code.FIELD_VALUES_CHECK_FAILED, () -> failing.change(ENTITY,
+                builder("loan_amount", "Loan amount", FieldType.NUMBER).build(), d.version(), "u-admin"));
+        assertFalse(e.getMessage().contains("Planted-Check-1"), e.getMessage());
+        assertEquals(Code.FIELD_VALUES_CHECK_FAILED, e.platformCode());
+        assertEquals(1, fields.find(ENTITY, LOAN).orElseThrow().version(), "nothing changed");
+        // A change that touches no locked setting needs no answer from the check.
+        assertEquals("Amount borrowed", failing.relabel(ENTITY, LOAN, "Amount borrowed", "u-admin").spec().label());
+    }
+
     @Test
     void theSensitiveFlagIsLockedOnceValuesExist() {
         FieldKey name = FieldKey.of("borrower_name");
@@ -135,7 +151,7 @@ class FieldDefinitionsTest {
     void whenTheAppCannotSayIfValuesExistTheTypeChangeIsRefused() {
         FieldDefinition d = loanAmount();
         values.unavailable(true);
-        assertThrows(IllegalStateException.class, () -> fields.change(ENTITY,
+        refused(Code.FIELD_VALUES_CHECK_FAILED, () -> fields.change(ENTITY,
                 builder("loan_amount", "Loan amount", FieldType.NUMBER).build(), d.version(), "u-admin"));
         assertEquals(FieldType.MONEY, fields.find(ENTITY, LOAN).orElseThrow().type());
         assertEquals("Amount", fields.relabel(ENTITY, LOAN, "Amount", "u-admin").spec().label(),

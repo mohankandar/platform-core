@@ -65,7 +65,9 @@ public final class FieldDefinitionException extends IllegalArgumentException imp
         /** Values exist for the field, so it cannot become a primary identifier or stop being one: add a new field. */
         FIELD_PRIMARY_LOCKED,
         /** Someone else changed the field since it was read: read it again. */
-        FIELD_CHANGED_MEANWHILE
+        FIELD_CHANGED_MEANWHILE,
+        /** The app's values check could not say whether values exist (it failed): nothing locked was changed. */
+        FIELD_VALUES_CHECK_FAILED
     }
 
     private final Code code;
