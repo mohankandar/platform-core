@@ -5,9 +5,9 @@ import com.documentplatform.fields.FieldSpec;
 import com.documentplatform.fields.FieldType;
 import com.documentplatform.fields.Normalisation;
 import com.documentplatform.fields.SearchMode;
-import com.documentplatform.fields.json.Json;
-import com.documentplatform.fields.json.JsonException;
-import com.documentplatform.fields.json.JsonFields;
+import com.documentplatform.fields.json.internal.Json;
+import com.documentplatform.fields.json.internal.JsonException;
+import com.documentplatform.fields.json.internal.JsonFields;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -23,7 +23,7 @@ import java.util.TreeMap;
 
 /**
  * The field list file, format {@code platform-fields/1}: one product exports an entity's field definitions, another
- * imports them, so nobody types them twice. JSON (the strict subset of {@link Json}), for example:
+ * imports them, so nobody types them twice. JSON (the strict subset the licence files use too), for example:
  *
  * <pre>{@code
  * {

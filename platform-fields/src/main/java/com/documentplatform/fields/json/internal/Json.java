@@ -1,4 +1,4 @@
-package com.documentplatform.fields.json;
+package com.documentplatform.fields.json.internal;
 
 import java.util.ArrayList;
 import java.util.Collections;
