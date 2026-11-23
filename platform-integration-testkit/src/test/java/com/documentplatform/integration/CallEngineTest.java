@@ -1,8 +1,17 @@
 package com.documentplatform.integration;
 
+import com.documentplatform.fields.FieldSet;
+import com.documentplatform.fields.FieldSpec;
+import com.documentplatform.fields.FieldType;
+import com.documentplatform.fields.FieldValue;
+import com.documentplatform.fields.ValidatedFields;
+import com.documentplatform.integration.config.CallStep;
+import com.documentplatform.integration.config.ConfigCheck;
+import com.documentplatform.integration.config.HttpMethod;
 import com.documentplatform.integration.config.IntegrationConfig;
 import com.documentplatform.integration.config.Limits;
 import com.documentplatform.integration.config.SignIn;
+import com.documentplatform.integration.engine.CaseFields;
 import com.documentplatform.integration.engine.Delivery;
 import com.documentplatform.integration.result.AttemptResult;
 import com.documentplatform.integration.result.Outcome;
@@ -155,5 +164,37 @@ class CallEngineTest {
         AttemptResult without = fx.engine.attempt(Fx.stored(integration.config().withSendCorrelationId(false)), d);
         assertNull(without.correlationId());
         assertTrue(fx.mock.calls().stream().noneMatch(c -> c.header("x-correlation-id").isPresent()));
+    }
+
+    @Test
+    void aSensitiveFieldIsRefusedAtSendTimeWhereTheConfigurationDoesNotAllowIt() {
+        // integration-module-153d / xc-never-leak-75: a stored configuration that skipped the save-time check (no
+        // field list then); the delivery's own sensitive flag decides at send time.
+        String planted = "SSN-planted-9c9c";
+        FieldSet list = FieldSet.of(List.of(FieldSpec.builder("ssn", "SSN", FieldType.TEXT).sensitive(true).build()));
+        ValidatedFields v = list.validate(Map.of("ssn", List.of(new FieldValue.Text(planted))));
+        assertTrue(v.accepted(), v.problems().toString());
+        Delivery d = Fx.delivery(1).withFields(CaseFields.of(list, v));
+        fx.mock.recordValues(true);
+        IntegrationConfig base = integration.config();
+        CallStep json = CallStep.of("send", HttpMethod.POST, "/api/notice").withJsonBody("{\"ssn\":\"{field:ssn}\"}");
+        Map<String, IntegrationConfig> refused = Map.of(
+                "path", base.withSteps(List.of(CallStep.of("send", HttpMethod.POST, "/api/people/{field:ssn}")
+                        .withJsonBody("{}"))).withAllowedSensitiveFields(Set.of("ssn")),
+                "header", base.withSteps(List.of(CallStep.of("send", HttpMethod.POST, "/api/notice")
+                        .withHeader("X-Ssn", "{field:ssn}").withJsonBody("{}"))).withAllowedSensitiveFields(Set.of("ssn")),
+                "json without the allow-list", base.withSteps(List.of(json)));
+        for (Map.Entry<String, IntegrationConfig> e : refused.entrySet()) {
+            assertTrue(ConfigCheck.check(e.getValue(), fx.installation).ok(), "the run-time re-check passes: " + e.getKey());
+            AttemptResult r = fx.engine.attempt(Fx.stored(e.getValue()), d);
+            assertEquals(Outcome.NOT_CONFIGURED, r.outcome(), e.getKey() + " " + r);
+            assertEquals(IntegrationCode.INT_SENSITIVE_FIELD_NOT_ALLOWED, r.code(), e.getKey());
+            assertTrue(fx.mock.received().isEmpty(), "nothing sent: " + e.getKey());
+        }
+        // Allowed, in a JSON body: sent (and the mock does record the value when it gets it).
+        AttemptResult allowed = fx.engine.attempt(Fx.stored(base.withSteps(List.of(json))
+                .withAllowedSensitiveFields(Set.of("ssn"))), d);
+        assertEquals(Outcome.SENT, allowed.outcome(), allowed.toString());
+        assertEquals(planted, fx.mock.calls().get(0).fields().get("ssn"));
     }
 }
