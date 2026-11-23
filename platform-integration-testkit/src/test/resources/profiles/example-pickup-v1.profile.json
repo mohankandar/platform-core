@@ -1,0 +1,30 @@
+{
+  "format": "platform-integration-profile/1",
+  "name": "example-pickup-v1",
+  "version": "1.0.0",
+  "description": "A made-up pickup API for tests: documents waiting for pickup, listed with a cursor, downloaded one by one and acknowledged once taken.",
+  "api": {"title": "Example Pickup API", "version": "1.0"},
+  "direction": "INBOUND",
+  "kind": "API_POLL",
+  "poll": {
+    "list": {"method": "GET", "path": "/v1/pickups?state=waiting"},
+    "itemsPointer": "/data/pickups",
+    "idPointer": "/pickupId",
+    "values": {"fileName": "/document/fileName", "sender": "/sender/reference"},
+    "fileNameValue": "fileName",
+    "paging": {"mode": "CURSOR", "pointer": "/paging/nextCursor", "param": "cursor", "sizeParam": "limit", "pageSize": 2, "maxPagesPerPass": 5},
+    "download": {"method": "GET", "path": "/v1/pickups/{item.id}/document", "headers": {"Accept": "application/pdf"}},
+    "acknowledge": {
+      "method": "POST", "path": "/v1/pickups/{item.id}/acknowledgement",
+      "bodyTemplate": "{\"pickupId\":\"{item.id}\",\"correlationId\":\"{correlationId}\"}",
+      "rules": [{"status": "409", "code": "PICKUP-ALREADY-ACKNOWLEDGED", "outcome": "ALREADY_RECEIVED"}]
+    }
+  },
+  "signIn": {"types": ["OAUTH2_CLIENT_CREDENTIALS", "API_KEY"], "apiKeyHeader": "X-Api-Key", "installationSupplies": ["tokenAddress", "clientId", "credential"]},
+  "health": {"method": "GET", "path": "/health", "signIn": false},
+  "rules": [{"status": "503", "retryAfter": true, "outcome": "BUSY"}],
+  "errorCodePointer": "/code",
+  "testMode": "CHECK_ONLY",
+  "limits": {"maxFileBytes": 10485760},
+  "notes": ["Acknowledge only after the document is stored: the pickup then leaves the list."]
+}

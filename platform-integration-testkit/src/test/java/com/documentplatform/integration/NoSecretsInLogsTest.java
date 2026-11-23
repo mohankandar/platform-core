@@ -250,6 +250,96 @@ class NoSecretsInLogsTest {
      * service down), the Test action of NEXT, the switch, the expiry check, callbacks (sent, refused, given up) and the
      * verifier; none of it reaches a log line, a result, a view, an exception's text or the mock's records.
      */
+
+    @Test
+    void nothingSecretOrContentFromIntake(@TempDir Path dir) throws Exception {
+        // P027: polling (every outcome a switch gives), the watched folder (taken, refused, unreadable, attack and
+        // incomplete drops), and the scanner (infected, failed).
+        List<String> outputs = new ArrayList<>();
+        com.documentplatform.integration.config.PollSource src = PollingTest.source(
+                com.documentplatform.integration.config.PollSource.Paging.cursor("/paging/next", "cursor", null, 2));
+        try (com.documentplatform.integration.testkit.MockSource source =
+                     com.documentplatform.integration.testkit.MockSource.start(src);
+             com.documentplatform.integration.engine.CallEngine calls = new com.documentplatform.integration.engine
+                     .CallEngine(new com.documentplatform.integration.http.Outbound(fx.installation), fx.secrets,
+                     Clock.systemUTC());
+             com.documentplatform.integration.testkit.MockScanner scanner =
+                     com.documentplatform.integration.testkit.MockScanner.clamd()) {
+            for (int i = 1; i <= 3; i++) {
+                source.add("item-" + i, (TEXT + i).getBytes(), java.util.Map.of("fileName", VALUE + i, "kind", VALUE));
+            }
+            source.expectBearer(BEARER);
+            IntegrationConfig c = IntegrationConfig.apiPoll(Fx.ENTITY, Fx.PRODUCT, "Source",
+                    new com.documentplatform.integration.config.Endpoint(source.address(), true),
+                    new SignIn.BearerFixed(SecretRef.of("int/bearer")), src).withErrorCodePointer("/code");
+            com.documentplatform.integration.store.StoredIntegration s = Fx.stored(c);
+            PollingTest.App app = new PollingTest.App();
+            com.documentplatform.integration.scan.Scanning scanning = new com.documentplatform.integration.scan.Scanning(
+                    new com.documentplatform.integration.scan.ClamdScanner(new com.documentplatform.integration.scan
+                            .ScannerAddress(scanner.host(), scanner.port(), Duration.ofSeconds(2)),
+                            new com.documentplatform.integration.safety.AddressGuard(true)),
+                    com.documentplatform.integration.scan.ScanEvents.NONE);
+            com.documentplatform.integration.engine.PollEngine poll =
+                    new com.documentplatform.integration.engine.PollEngine(calls, scanning, dir);
+            outputs.add(poll.pass(s, com.documentplatform.integration.intake.CursorState.START, i -> {
+                outputs.add(i.toString() + i.file());
+                return app.handle(i);
+            }).toString());
+            scanner.infected(true);
+            outputs.add(poll.pass(s, com.documentplatform.integration.intake.CursorState.START, app).toString());
+            scanner.working().down(true);
+            outputs.add(poll.pass(s, com.documentplatform.integration.intake.CursorState.START, app).toString());
+            scanner.down(false);
+            source.refuseDownload("item-1", 403, "MOCK-SRC-NO").failAcknowledge("item-2");
+            outputs.add(poll.pass(s, com.documentplatform.integration.intake.CursorState.of("c0"), app).toString());
+            source.working().expectBearer(BEARER + "-other");
+            outputs.add(poll.pass(s, com.documentplatform.integration.intake.CursorState.START, app).toString());
+            source.working().brokenPage(0);
+            outputs.add(poll.pass(s, com.documentplatform.integration.intake.CursorState.START, app).toString());
+
+            // The watched folder.
+            com.documentplatform.integration.testkit.MockFolder folder =
+                    com.documentplatform.integration.testkit.MockFolder.watched(dir);
+            java.time.Instant old = java.time.Instant.now().minus(Duration.ofMinutes(90));
+            folder.write("drop-1/a.pdf", TEXT, old).write("drop-1/manifest.json", "{\"loan\":\"" + VALUE + "\"}", old);
+            folder.write("drop-2/a.pdf", TEXT, old).write("drop-2/manifest.json", "{\"loan\":" + VALUE, old);
+            folder.write("drop-3/a.pdf", TEXT, old).write("drop-3/manifest.json", "{\"loan\":\"x\"}", old);
+            folder.write("drop-4/a.pdf", TEXT, old);
+            IntegrationConfig w = IntegrationConfig.watchedFolder(Fx.ENTITY, Fx.PRODUCT, "Inbox",
+                    com.documentplatform.integration.config.WatchSource.of(folder.folder(),
+                            com.documentplatform.integration.config.WatchSource.Layout.SUBFOLDER, "*.json")
+                            .mapping("loan", "/loan"));
+            com.documentplatform.integration.watch.WatchedFolder watched =
+                    new com.documentplatform.integration.watch.WatchedFolder(folder,
+                            com.documentplatform.integration.safety.Installation.onPremises(), scanning,
+                            Clock.systemUTC());
+            outputs.add(watched.pass(Fx.stored(w), d -> {
+                outputs.add(d.toString() + d.trigger() + d.files());
+                return d.dropId().equals("drop-3")
+                        ? com.documentplatform.integration.intake.IntakeAnswer.refused("APP-NO")
+                        : com.documentplatform.integration.intake.IntakeAnswer.TAKEN;
+            }).toString());
+            outputs.add(watched.health(Fx.stored(w)).toString());
+            for (String area : List.of("_problem", "_archive")) {
+                for (String drop : folder.entries(area)) {
+                    if (folder.has(area + "/" + drop + "/problem.json")) {
+                        outputs.add(new String(folder.read(area + "/" + drop, "problem.json")));
+                    }
+                }
+            }
+        }
+        List<String> all = new ArrayList<>(outputs);
+        synchronized (lines) {
+            all.addAll(lines);
+        }
+        assertTrue(lines.stream().anyMatch(l -> l.contains("poll:")), "the poll passes log");
+        assertTrue(lines.stream().anyMatch(l -> l.contains("watch:")), "the watch passes log");
+        for (String line : all) {
+            for (String p : List.of(BEARER, TEXT, VALUE)) {
+                assertFalse(line.contains(p), "found " + p + " in: " + line);
+            }
+        }
+    }
     @Test
     void nothingSecretFromCertificatesOrCallbacks(@TempDir Path dir) throws Exception {
         String p12Password = "P12PW-planted-4d4d";
