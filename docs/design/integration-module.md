@@ -184,3 +184,17 @@ P025 accepted (1048 tests on CI, 0 skipped; the test-count question was a counti
 **Callbacks.** Kind `CALLBACK`: the receiver address (the full address), a sign-in (NONE is allowed for this kind everywhere, the signature proves the sender), limits, rules and `CallbackTarget(signingSecret)`. `Platform-Signature: t=<unix>,v1=<hex HMAC-SHA256(secret, t + "." + body)>` and `Platform-Callback-Id` (the outbox entry's UUID, the same for every attempt). Outbox `int_callback_outbox` as in notifications: claims with `FOR UPDATE SKIP LOCKED` and a lease; back-off with the notifications `RetryPolicy` (1 min doubling to 6 h, given up 24 h after creation or the last resend), a Retry-After replaces the back-off up to the longest delay. SENT and ALREADY_RECEIVED are done; REFUSED gives up at once (the receiver said no); everything else is retried until the window ends. The body must be one JSON object of at most 64 KiB; the platform cannot tell document content from a JSON value, so "never document content" is the app's rule, stated in the API. `CallbackVerifier` checks the signature (constant time, every pair compared), then the time window, then the ID; an ID is recorded only after the first two pass. The Spring `IntegrationWorker` sends due callbacks and makes timed certificate switches.
 
 **Accepted, check later.** `CallStep.Accepted` only on the last step, run once (a later step would need the work done; resuming after a 202 is not built). A 202 classified as SENT on such a step ends the attempt with `Outcome.ACCEPTED` (no attempt used) and a `PendingStatus` the app stores (`toJson`/`fromJson`); a 202 on a step without the declaration is SENT as before. `checkStatus` makes one call: a 202 or a "working" state is ACCEPTED again, "done" is SENT (with the values read), "failed" is REFUSED `INT_STATUS_FAILED`, any other state UNCLEAR `INT_STATUS_UNKNOWN`; a non-2xx status answer is classified by the step's and the integration's rules. A Location reference must stay on the base address's scheme, host and port. A rule can never give ACCEPTED. The profile format gets `steps[].accepted` and the sign-in type `MUTUAL_TLS` (additions only), and `ProfileContract` checks the 202 answer and the status operation.
+
+## Decisions on the P026 report (shared-capabilities thread, 2026-11-22)
+
+P026 accepted (1085 tests on CI, 0 skipped). Its decisions stand, including:
+- Apache HttpClient 5 for connection pinning;
+- the certificate is the integration's credential, with its own history;
+- a retired certificate keeps its details but not its key;
+- callbacks: REFUSED gives up at once, everything else is retried;
+- "accepted, check later" only on the last step;
+- a refused client certificate under TLS 1.3 is identified by one extra TLS 1.2 handshake.
+
+1. **`INT_PROXY_SIGN_IN_DISABLED_BY_JVM` and the `JvmProxySignIn` constructor are removed in P027.** They were never released, and nothing is in production, so no old code lines.
+2. **Switching a certificate drops the held token at once** (P027).
+3. **Expiry notices are app side:** the wording, and remembering (credential ID, threshold) so each warning is sent once. Passed to the app threads on the board.
