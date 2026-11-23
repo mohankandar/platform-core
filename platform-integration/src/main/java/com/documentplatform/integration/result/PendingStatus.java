@@ -1,6 +1,6 @@
 package com.documentplatform.integration.result;
 
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;

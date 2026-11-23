@@ -1,6 +1,6 @@
 package com.documentplatform.integration.folder;
 
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 
 import java.util.Map;
 import java.util.Objects;

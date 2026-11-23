@@ -1,10 +1,11 @@
-package com.documentplatform.integration.signin;
+package com.documentplatform.integration.engine;
 
 import com.documentplatform.integration.IntegrationCode;
 import com.documentplatform.integration.config.Limits;
 import com.documentplatform.outbound.ClientCertificate;
 import com.documentplatform.integration.config.SignIn;
 import com.documentplatform.integration.result.Outcome;
+import com.documentplatform.integration.signin.ClientCredentialsTokens;
 import com.documentplatform.outbound.Installation;
 import com.documentplatform.notifications.secret.Secret;
 import com.documentplatform.notifications.secret.SecretRef;
@@ -20,12 +21,13 @@ import java.util.Optional;
 
 /**
  * Turns the sign-in bundle into request headers, reading secrets for each attempt. Sign-in always goes in headers,
- * never in the address.
+ * never in the address. Package-private: {@link Prepared#headers()} holds the resolved secret values, which never
+ * leave the call engine.
  */
-public final class SignInHeaders {
+final class SignInHeaders {
 
     /** The headers, or why sign-in could not be prepared (as an outcome and a code). */
-    public record Prepared(List<Map.Entry<String, String>> headers, Outcome failure, IntegrationCode code) {
+    record Prepared(List<Map.Entry<String, String>> headers, Outcome failure, IntegrationCode code) {
         static Prepared ok(List<Map.Entry<String, String>> h) {
             return new Prepared(h, null, null);
         }
@@ -48,13 +50,13 @@ public final class SignInHeaders {
     private final SecretResolver secrets;
     private final ClientCredentialsTokens tokens;
 
-    public SignInHeaders(Installation installation, SecretResolver secrets, ClientCredentialsTokens tokens) {
+    SignInHeaders(Installation installation, SecretResolver secrets, ClientCredentialsTokens tokens) {
         this.installation = Objects.requireNonNull(installation, "installation");
         this.secrets = Objects.requireNonNull(secrets, "secrets");
         this.tokens = Objects.requireNonNull(tokens, "tokens");
     }
 
-    public Prepared prepare(SignIn signIn, Limits limits, boolean useProxy) {
+    Prepared prepare(SignIn signIn, Limits limits, boolean useProxy) {
         return prepare(signIn, limits, useProxy, List.of());
     }
 
@@ -62,7 +64,7 @@ public final class SignInHeaders {
      * @param requiredClaims claims an OAuth 2.0 access token must carry (it must then be a JWT); checked for presence
      *                       only, from the token's payload, which is read here and kept nowhere
      */
-    public Prepared prepare(SignIn signIn, Limits limits, boolean useProxy, List<String> requiredClaims) {
+    Prepared prepare(SignIn signIn, Limits limits, boolean useProxy, List<String> requiredClaims) {
         return prepare(signIn, limits, useProxy, requiredClaims, null);
     }
 
@@ -70,7 +72,7 @@ public final class SignInHeaders {
      * @param certificate the integration's client certificate (mutual TLS), presented on the token request when the
      *                    configuration says so; else null
      */
-    public Prepared prepare(SignIn signIn, Limits limits, boolean useProxy, List<String> requiredClaims,
+    Prepared prepare(SignIn signIn, Limits limits, boolean useProxy, List<String> requiredClaims,
                             ClientCertificate certificate) {
         ClientCertificate forToken = signIn instanceof SignIn.MutualTls m && m.certificateForToken() ? certificate
                 : null;
@@ -91,14 +93,14 @@ public final class SignInHeaders {
         String[] parts = token.split("\\.");
         if (parts.length != 3) return false;
         try {
-            java.util.Map<String, Object> payload = com.documentplatform.integration.json.Json.object(
+            java.util.Map<String, Object> payload = com.documentplatform.integration.json.internal.Json.object(
                     new String(java.util.Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8));
             for (String c : claims) {
                 Object v = payload.get(c);
                 if (v == null || (v instanceof String s && s.isBlank())) return false;
             }
             return true;
-        } catch (com.documentplatform.integration.json.Json.Invalid | IllegalArgumentException e) {
+        } catch (com.documentplatform.integration.json.internal.Json.Invalid | IllegalArgumentException e) {
             return false;
         }
     }
@@ -131,7 +133,7 @@ public final class SignInHeaders {
     }
 
     /** The result class of a token failure. */
-    public static Outcome outcomeOf(IntegrationCode tokenFailure) {
+    static Outcome outcomeOf(IntegrationCode tokenFailure) {
         return switch (tokenFailure) {
             case INT_SECRET_NOT_FOUND, INT_ADDRESS_NOT_SECURE -> Outcome.NOT_CONFIGURED;
             case INT_SECRET_UNAVAILABLE, INT_TOKEN_UNREACHABLE, INT_ADDRESS_BLOCKED, INT_TLS_FAILED,
@@ -142,7 +144,7 @@ public final class SignInHeaders {
     }
 
     /** After the destination refused the sign-in: an OAuth 2.0 token is dropped so the next attempt gets a new one. */
-    public void refused(SignIn signIn) {
+    void refused(SignIn signIn) {
         if (SignIn.headerSignIn(signIn) instanceof SignIn.OAuth2ClientCredentials o) tokens.invalidate(o);
     }
 

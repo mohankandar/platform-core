@@ -8,7 +8,7 @@ import com.documentplatform.integration.config.Kind;
 import com.documentplatform.integration.config.Template;
 import com.documentplatform.integration.engine.CaseFields;
 import com.documentplatform.integration.engine.Delivery;
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 import com.documentplatform.integration.result.AttemptResult;
 import com.documentplatform.integration.result.HealthResult;
 import com.documentplatform.integration.result.Outcome;

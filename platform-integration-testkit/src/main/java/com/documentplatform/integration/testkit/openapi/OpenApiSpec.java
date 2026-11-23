@@ -1,6 +1,6 @@
 package com.documentplatform.integration.testkit.openapi;
 
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

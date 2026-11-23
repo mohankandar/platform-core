@@ -931,9 +931,9 @@ public abstract class ModelGovContract {
         assertEquals(p.fingerprint(), ConfigFingerprint.of(p.json()), "the JSON is already in canonical form");
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> json = (Map<String, Object>) com.documentplatform.integration.json.Json.parse(p.json());
+        Map<String, Object> json = (Map<String, Object>) com.documentplatform.integration.json.internal.Json.parse(p.json());
         @SuppressWarnings("unchecked")
-        Map<String, Object> schema = (Map<String, Object>) com.documentplatform.integration.json.Json.parse(
+        Map<String, Object> schema = (Map<String, Object>) com.documentplatform.integration.json.internal.Json.parse(
                 new String(ModelPack.class.getClassLoader().getResourceAsStream(
                         "schema/platform-model-pack-1.schema.json").readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
         var problems = new com.documentplatform.integration.json.JsonSchema(schema).check(json, schema);

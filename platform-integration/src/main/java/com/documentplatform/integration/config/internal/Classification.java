@@ -1,14 +1,15 @@
-package com.documentplatform.integration.config;
+package com.documentplatform.integration.config.internal;
 
 import com.documentplatform.integration.IntegrationCode;
+import com.documentplatform.integration.config.Rule;
 import com.documentplatform.integration.result.Outcome;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Classifies an answer: the integration's (or profile's) rules first, in order, then the {@link #DEFAULTS}. The first
- * rule that matches decides.
+ * Classifies an answer: the integration's (or profile's) rules first, in order, then {@link Rule#DEFAULTS}. The first
+ * rule that matches decides. Internal: used by the call and poll engines; apps write {@link Rule}s.
  */
 public final class Classification {
 
@@ -16,27 +17,11 @@ public final class Classification {
     public record Decision(Outcome outcome, IntegrationCode code, boolean attemptUsed) {
     }
 
-    /**
-     * Applied after the configured rules: 2xx sent; 3xx refused as a redirect (never followed); 401 and 403 sign-in;
-     * 404 without a destination code is a wrong address (a set-up fault, not a refusal); 408 and 429 busy; other 4xx
-     * refused; 5xx outage; anything else unclear.
-     */
-    public static final List<Rule> DEFAULTS = List.of(
-            Rule.of("2xx", null, Outcome.SENT),
-            Rule.of("3xx", null, Outcome.NOT_CONFIGURED).withPlatformCode(IntegrationCode.INT_REDIRECT_REFUSED),
-            Rule.of("401", null, Outcome.SIGN_IN_FAILED),
-            Rule.of("403", null, Outcome.SIGN_IN_FAILED),
-            Rule.of("404", "-", Outcome.NOT_CONFIGURED).withPlatformCode(IntegrationCode.INT_ADDRESS_NOT_FOUND),
-            Rule.of("408", null, Outcome.BUSY),
-            Rule.of("429", null, Outcome.BUSY),
-            Rule.of("4xx", null, Outcome.REFUSED),
-            Rule.of("5xx", null, Outcome.OUTAGE));
-
     private final List<Rule> rules;
 
     private Classification(List<Rule> configured) {
         List<Rule> all = new ArrayList<>(configured);
-        all.addAll(DEFAULTS);
+        all.addAll(Rule.DEFAULTS);
         this.rules = List.copyOf(all);
     }
 

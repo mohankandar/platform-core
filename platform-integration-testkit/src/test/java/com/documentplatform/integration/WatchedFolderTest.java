@@ -6,7 +6,7 @@ import com.documentplatform.integration.config.WatchSource;
 import com.documentplatform.integration.intake.IntakeAnswer;
 import com.documentplatform.integration.intake.IntakeFile;
 import com.documentplatform.integration.intake.IntakeHandler;
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 import com.documentplatform.integration.result.HealthResult;
 import com.documentplatform.integration.result.Outcome;
 import com.documentplatform.outbound.AddressGuard;

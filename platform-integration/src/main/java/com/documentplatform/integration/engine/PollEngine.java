@@ -2,7 +2,7 @@ package com.documentplatform.integration.engine;
 
 import com.documentplatform.integration.IntegrationCode;
 import com.documentplatform.integration.config.CallStep;
-import com.documentplatform.integration.config.Classification;
+import com.documentplatform.integration.config.internal.Classification;
 import com.documentplatform.integration.config.ConfigCheck;
 import com.documentplatform.integration.config.FolderTarget;
 import com.documentplatform.integration.config.IntegrationConfig;
@@ -18,7 +18,7 @@ import com.documentplatform.integration.intake.IntakeHandler;
 import com.documentplatform.integration.intake.LogRef;
 import com.documentplatform.integration.intake.PollResult;
 import com.documentplatform.integration.intake.PolledItem;
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 import com.documentplatform.integration.result.Outcome;
 import com.documentplatform.integration.scan.ScanEvents;
 import com.documentplatform.integration.scan.ScanResult;

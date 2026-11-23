@@ -1,6 +1,6 @@
 package com.documentplatform.integration.testkit;
 
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 import com.documentplatform.integration.testkit.openapi.OpenApiSpec;
 import com.documentplatform.integration.json.JsonSchema;
 import com.sun.net.httpserver.HttpExchange;
@@ -1198,7 +1198,7 @@ public final class MockDestination implements AutoCloseable {
 
     /** Where error answers put their code (default {@code /code}). */
     public MockDestination errorCodePointer(String pointer) {
-        if (!com.documentplatform.integration.json.Json.isPointer(pointer)) throw new IllegalArgumentException("not a pointer");
+        if (!com.documentplatform.integration.json.internal.Json.isPointer(pointer)) throw new IllegalArgumentException("not a pointer");
         errorCodePointer = pointer;
         return this;
     }

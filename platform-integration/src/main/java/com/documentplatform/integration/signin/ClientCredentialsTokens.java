@@ -5,7 +5,7 @@ import com.documentplatform.integration.config.Limits;
 import com.documentplatform.integration.config.SignIn.OAuth2ClientCredentials;
 import com.documentplatform.outbound.Outbound;
 import com.documentplatform.outbound.RetryAfter;
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 import com.documentplatform.notifications.secret.Secret;
 import com.documentplatform.notifications.secret.SecretResolver;
 

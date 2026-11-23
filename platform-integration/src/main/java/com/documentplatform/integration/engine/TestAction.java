@@ -10,7 +10,6 @@ import com.documentplatform.integration.folder.FolderExport;
 import com.documentplatform.integration.result.AttemptResult;
 import com.documentplatform.integration.result.HealthResult;
 import com.documentplatform.integration.result.Outcome;
-import com.documentplatform.integration.signin.SignInHeaders;
 import com.documentplatform.integration.store.IntegrationAudit;
 import com.documentplatform.integration.store.StoredIntegration;
 

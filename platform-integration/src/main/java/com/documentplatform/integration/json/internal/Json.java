@@ -1,4 +1,4 @@
-package com.documentplatform.integration.json;
+package com.documentplatform.integration.json.internal;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -11,7 +11,8 @@ import java.util.Optional;
  * A small, strict JSON reader and writer: objects ({@code Map}, keys in order), arrays ({@code List}), strings, numbers
  * ({@code Long} or {@code Double}), booleans and null (Java {@code null}). Used for destination answers and the stored
  * configuration. A failure says only that the text is not valid JSON, never what it contained (an answer may hold a
- * token or a value).
+ * token or a value). Internal: shared by this module's packages and its testkit; apps read profiles with
+ * {@code ProfileLoader} and check JSON with {@code JsonSchema}.
  */
 public final class Json {
 
