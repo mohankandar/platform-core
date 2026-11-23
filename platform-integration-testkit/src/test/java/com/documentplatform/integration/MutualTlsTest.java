@@ -406,8 +406,12 @@ class MutualTlsTest {
         // The mock requires the certificate on every connection, also the token request's.
         StoredIntegration presenting = Fx.stored(config(new SignIn.MutualTls(oauth, true)));
         StoredIntegration notPresenting = Fx.stored(config(new SignIn.MutualTls(oauth, false)));
+        for (StoredIntegration s : List.of(presenting, notPresenting)) { // each integration has its own certificate
+            credentials.upload(s, TestCertificates.pkcs12(good, P12_PASSWORD), P12_PASSWORD.toCharArray(), null, "a");
+        }
         assumeFalse(intercepted, "TLS to 127.0.0.1 is intercepted on this machine");
-        assertEquals(Outcome.SENT, engine.attempt(presenting, Fx.delivery(1)).outcome());
+        AttemptResult with = engine.attempt(presenting, Fx.delivery(1));
+        assertEquals(Outcome.SENT, with.outcome(), with.toString());
         AttemptResult without = engine.attempt(notPresenting, Fx.delivery(1));
         assertEquals(Outcome.CANT_CONNECT, without.outcome(), without.toString());
         assertEquals(IntegrationCode.INT_TLS_FAILED, without.code());
