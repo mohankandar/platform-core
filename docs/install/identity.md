@@ -14,6 +14,9 @@ Three rules hold throughout:
   `NOT_IN_LICENCE`; nobody can sign in to it, and it comes back as it was if a later licence lists it again (a
   suspended entity comes back suspended, never active).
 
+All identity codes (`IDN_*`, the test sign-in's `IDN_TEST_*`, push callers' `IDN_PUSH_*`), with their message, cause and
+what to do, are in the generated catalogue `docs/errors/platform-error-codes.md`.
+
 ## 1. Database
 
 The identity tables all start with `idn_`:
