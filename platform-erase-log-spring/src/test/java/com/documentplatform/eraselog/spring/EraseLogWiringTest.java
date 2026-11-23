@@ -79,6 +79,64 @@ class EraseLogWiringTest {
                 });
     }
 
+    /**
+     * The health details, exactly: IDs, the location, positions, counts, the code and its message, retention days and
+     * the time checked. Never what an entry names (record type or ID, kind, rule, audit ID) or anything of the record.
+     */
+    @Test
+    void healthDetailsAreExactlyTheSafeOnes(@TempDir Path dir) {
+        Path location = dir.resolve("log");
+        String record = "PLANTED-RECORD-77";
+        List<String> never = List.of(record, "AUD-" + record, "RET-7Y", "document", "case", ENTITY.toString(),
+                "PRODUCT_A");
+        RecordingEraseHandler documents = new RecordingEraseHandler("document").store(record);
+        app(location)
+                .withBean(ErasePosition.class, InMemoryErasePosition::new)
+                .withBean(RecordingEraseHandler.class, () -> documents)
+                .run(ctx -> {
+                    assertTrue(ctx.getStartupFailure() == null, () -> String.valueOf(ctx.getStartupFailure()));
+                    ctx.getBean(Eraser.class).erase(document(record));
+                    ctx.getBean(EraseLogWorker.class).recheck();
+                    EraseGuard.State s = ctx.getBean(EraseGuard.class).state();
+                    Health h = ctx.getBean(EraseLogHealthIndicator.class).health();
+                    assertEquals(Status.UP, h.getStatus());
+                    assertEquals(java.util.Map.of(
+                            "mayTakeWork", true,
+                            "message", "The database is in step with the erase log",
+                            "logId", s.logId().toString(),
+                            "location", location.toAbsolutePath().normalize().toString(),
+                            "logHead", 1L,
+                            "applied", 1L,
+                            "pending", 0L,
+                            "backupRetentionDays", 35,
+                            "logRetentionDays", 65,
+                            "checkedAt", s.checkedAt().toString()), h.getDetails());
+                    for (String text : never) {
+                        assertFalse(h.getDetails().toString().contains(text), text + " in: " + h.getDetails());
+                    }
+                });
+
+        // The same log, a restored (empty) database: out of service with the code, still nothing of the entry.
+        app(location)
+                .withBean(ErasePosition.class, InMemoryErasePosition::new)
+                .withBean(RecordingEraseHandler.class, () -> new RecordingEraseHandler("document").store(record))
+                .run(ctx -> {
+                    EraseGuard.State s = ctx.getBean(EraseGuard.class).state();
+                    Health h = ctx.getBean(EraseLogHealthIndicator.class).health();
+                    assertEquals(Status.OUT_OF_SERVICE, h.getStatus());
+                    assertEquals(java.util.Set.of("mayTakeWork", "code", "message", "logId", "location", "logHead",
+                            "applied", "pending", "backupRetentionDays", "logRetentionDays", "checkedAt"),
+                            h.getDetails().keySet());
+                    assertEquals(false, h.getDetails().get("mayTakeWork"));
+                    assertEquals("ERASE_LOG_RESTORE_DETECTED", h.getDetails().get("code"));
+                    assertEquals(s.message(), h.getDetails().get("message"));
+                    assertEquals(1L, h.getDetails().get("pending"));
+                    for (String text : never) {
+                        assertFalse(h.getDetails().toString().contains(text), text + " in: " + h.getDetails());
+                    }
+                });
+    }
+
     @Test
     void badSettingsStopTheAppWithEveryProblemListed() {
         new ApplicationContextRunner()
