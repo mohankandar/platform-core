@@ -22,6 +22,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.scheduling.annotation.ScheduledAnnotationBeanPostProcessor;
 
 import javax.sql.DataSource;
 import java.time.Duration;
@@ -106,6 +107,18 @@ class WiringTest {
             // Nobody calls tick here: the scheduled tick raises the alert once the threshold has passed.
             await(Duration.ofSeconds(10), "the alert", () -> mail.getReceivedMessages().length == 1);
             assertEquals("Store down: store-1", mail.getReceivedMessages()[0].getSubject());
+
+            // notifications-85: the module imposes nothing on the app's scheduling. There is no @EnableScheduling
+            // here (no ScheduledAnnotationBeanPostProcessor), yet the tick ran; it and the sender are the module's
+            // own daemon threads, one each for this instance.
+            assertTrue(ctx.getBeansOfType(ScheduledAnnotationBeanPostProcessor.class).isEmpty(),
+                    "the context has no @EnableScheduling");
+            for (String name : List.of("platform-notifications-tick", "platform-notifications-sender")) {
+                List<Thread> threads = Thread.getAllStackTraces().keySet().stream()
+                        .filter(t -> t.getName().equals(name) && t.isAlive()).toList();
+                assertEquals(1, threads.size(), "one " + name + " thread: " + threads);
+                assertTrue(threads.get(0).isDaemon(), name + " is a daemon thread");
+            }
         });
     }
 
