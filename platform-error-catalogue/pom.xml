@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.documentplatform.platform</groupId>
         <artifactId>platform-core</artifactId>
-        <version>0.6.0</version>
+        <version>0.7.0-SNAPSHOT</version>
     </parent>
     <artifactId>platform-error-catalogue</artifactId>
     <description>Build check only (never deployed, not in the BOM): every platform code enum implements PlatformCode
