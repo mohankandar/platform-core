@@ -56,6 +56,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -332,6 +333,39 @@ class BuiltInChecksTest {
         }
         assertResult(CheckState.DOWN, MonitoringCode.MON_HTTP_ADDRESS_INVALID, run(new HttpServiceCheck("ocr",
                 URI.create("ftp://files.example.test/health"), 200, Duration.ofSeconds(1), false)));
+    }
+
+    @Test
+    void httpServiceNeverShowsUserInfoOrQueryOfTheAddress() {
+        List<String> planted = List.of("planted-user", "PLANTED-PW", "PLANTED-TOKEN", "token=");
+        List<CheckResult> results = new ArrayList<>();
+        try (MockHttpService ocr = MockHttpService.start()) {
+            URI health = ocr.health();
+            URI withSecrets = URI.create("http://planted-user:PLANTED-PW@" + health.getHost() + ":" + health.getPort()
+                    + health.getPath() + "?token=PLANTED-TOKEN");
+            HttpServiceCheck check = new HttpServiceCheck("ocr", withSecrets, 200, Duration.ofSeconds(1), true);
+            ocr.answering(503);
+            CheckResult bad = run(check);
+            assertResult(CheckState.DOWN, MonitoringCode.MON_HTTP_UNEXPECTED_ANSWER, bad);
+            assertTrue(bad.cause().contains(health.toString()), bad.cause());
+            results.add(bad);
+            ocr.answering(200).slow(Duration.ofSeconds(3));
+            results.add(run(check));
+            ocr.down();
+            results.add(run(check));
+        }
+        results.add(run(new HttpServiceCheck("ocr", URI.create("ftp://planted-user:PLANTED-PW@files.example.test/"
+                + "health?token=PLANTED-TOKEN"), 200, Duration.ofSeconds(1), false)));
+        assertEquals(List.of(MonitoringCode.MON_HTTP_UNEXPECTED_ANSWER, MonitoringCode.MON_HTTP_TIMEOUT,
+                MonitoringCode.MON_HTTP_UNREACHABLE, MonitoringCode.MON_HTTP_ADDRESS_INVALID),
+                results.stream().map(CheckResult::code).toList());
+        for (CheckResult r : results) {
+            for (String text : List.of(r.cause(), r.line(), r.toString())) {
+                for (String secret : planted) {
+                    assertFalse(text.contains(secret), secret + " in: " + text);
+                }
+            }
+        }
     }
 
     @Test
