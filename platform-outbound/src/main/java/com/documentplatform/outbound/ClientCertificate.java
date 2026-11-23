@@ -1,4 +1,4 @@
-package com.documentplatform.integration.credential;
+package com.documentplatform.outbound;
 
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.X509ExtendedKeyManager;
@@ -47,7 +47,7 @@ public final class ClientCertificate {
     }
 
     /** Whether the private key belongs to the public key: a random challenge signed and verified. */
-    static boolean matches(PrivateKey key, PublicKey pub) {
+    public static boolean matches(PrivateKey key, PublicKey pub) {
         String alg = switch (key.getAlgorithm()) {
             case "RSA" -> "SHA256withRSA";
             case "EC" -> "SHA256withECDSA";
@@ -78,12 +78,16 @@ public final class ClientCertificate {
         return info;
     }
 
-    /** For the stored form only (sealed before it leaves this package). */
-    PrivateKey key() {
+    /**
+     * For the stored form only: the integrations seal it under the customer's keys before it is stored
+     * ({@code credential.CredentialFiles}). Never logged, never put in a result.
+     */
+    public PrivateKey key() {
         return key;
     }
 
-    X509Certificate[] chain() {
+    /** The certificate chain, the client's certificate first. */
+    public X509Certificate[] chain() {
         return chain.clone();
     }
 
@@ -93,7 +97,7 @@ public final class ClientCertificate {
 
     /**
      * A key manager that always offers this certificate, whatever authorities the server names: a server that does
-     * not trust it then refuses it (a TLS alert, {@code INT_CREDENTIAL_REFUSED}) instead of the client sending none.
+     * not trust it then refuses it (a TLS alert, {@code OUT_CREDENTIAL_REFUSED}) instead of the client sending none.
      */
     public X509KeyManager keyManager() {
         return new X509ExtendedKeyManager() {

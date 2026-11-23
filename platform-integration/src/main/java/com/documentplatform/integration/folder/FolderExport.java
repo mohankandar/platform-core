@@ -1,6 +1,5 @@
 package com.documentplatform.integration.folder;
 
-import com.documentplatform.identity.EntityUuid;
 import com.documentplatform.integration.IntegrationCode;
 import com.documentplatform.integration.config.ConfigCheck;
 import com.documentplatform.integration.config.FolderTarget;
@@ -13,7 +12,7 @@ import com.documentplatform.integration.json.Json;
 import com.documentplatform.integration.result.AttemptResult;
 import com.documentplatform.integration.result.HealthResult;
 import com.documentplatform.integration.result.Outcome;
-import com.documentplatform.integration.safety.Installation;
+import com.documentplatform.outbound.Installation;
 import com.documentplatform.integration.store.StoredIntegration;
 
 import java.io.IOException;
@@ -93,7 +92,7 @@ public final class FolderExport {
     public AttemptResult attempt(StoredIntegration integration, Delivery delivery, ExportInfo info) {
         Objects.requireNonNull(info, "info");
         IntegrationConfig c = integration.config();
-        if (c.kind() == Kind.FOLDER_EXPORT && !EntityUuid.fromSlotId(info.entitySlotId()).equals(c.entity())) {
+        if (c.kind() == Kind.FOLDER_EXPORT && !SlotIds.entityUuid(info.entitySlotId()).equals(c.entity())) {
             throw new IllegalArgumentException("The entity slot ID is not this integration's entity");
         }
         return logged(new Run(integration, delivery, info, null).go());

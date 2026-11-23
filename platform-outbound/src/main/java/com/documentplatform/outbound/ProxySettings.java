@@ -1,4 +1,4 @@
-package com.documentplatform.integration.safety;
+package com.documentplatform.outbound;
 
 import com.documentplatform.notifications.secret.SecretRef;
 

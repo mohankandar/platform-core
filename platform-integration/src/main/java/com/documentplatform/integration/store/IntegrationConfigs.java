@@ -5,7 +5,7 @@ import com.documentplatform.integration.config.ConfigCheck;
 import com.documentplatform.integration.config.ConfigJson;
 import com.documentplatform.integration.config.ConfigProblem;
 import com.documentplatform.integration.config.IntegrationConfig;
-import com.documentplatform.integration.safety.Installation;
+import com.documentplatform.outbound.Installation;
 
 import java.time.Clock;
 import java.util.List;

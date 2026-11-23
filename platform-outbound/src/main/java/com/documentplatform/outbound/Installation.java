@@ -1,4 +1,4 @@
-package com.documentplatform.integration.safety;
+package com.documentplatform.outbound;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -12,8 +12,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Settings of the whole installation that every integration runs under (from the app's configuration; Spring
- * properties come in a later task).
+ * Settings of the whole installation that every outbound call runs under (from the app's configuration; Spring
+ * properties {@code platform.outbound.*} in platform-outbound-spring).
  *
  * @param hosted                 our hosted service: internal addresses and sign-in NONE are never allowed
  * @param allowInternalAddresses on premises only: loopback and private addresses (and plain http) may be called.

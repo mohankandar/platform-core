@@ -7,10 +7,11 @@
         <version>0.3.0-SNAPSHOT</version>
     </parent>
     <artifactId>platform-identity-spring</artifactId>
-    <description>Spring adapters for identity: JWT normalizer, audience validator, caching binding resolver; and, when
-        the app has platform-identity-jdbc and a DataSource, the login-connection drafts (LoginConnections on the
-        Postgres store, after the identity startup check), with the issuer fetch over platform-integration's outbound
-        rules (OutboundIssuerFetch) when platform-integration-spring is there.</description>
+    <description>Spring adapters for identity: JWT normalizer, audience validator, caching binding resolver, push-API
+        callers (PushCaller, platform.identity.push.*); and, when the app has platform-identity-jdbc and a DataSource,
+        the login-connection drafts (LoginConnections on the Postgres store, after the identity startup check), with
+        the issuer fetch over the shared outbound rules (OutboundIssuerFetch on platform-outbound, platform.outbound.*)
+        without platform-integration.</description>
     <dependencies>
         <dependency>
             <groupId>com.documentplatform.platform</groupId>
@@ -39,11 +40,11 @@
             <version>${project.version}</version>
             <optional>true</optional>
         </dependency>
+        <!-- The test sign-in reads the issuer through the shared outbound rules (platform.outbound.*). -->
         <dependency>
             <groupId>com.documentplatform.platform</groupId>
-            <artifactId>platform-integration</artifactId>
+            <artifactId>platform-outbound-spring</artifactId>
             <version>${project.version}</version>
-            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>com.documentplatform.platform</groupId>
@@ -60,12 +61,6 @@
         </dependency>
         <dependency>
             <groupId>com.documentplatform.platform</groupId>
-            <artifactId>platform-integration-spring</artifactId>
-            <version>${project.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.documentplatform.platform</groupId>
             <artifactId>platform-identity-testkit</artifactId>
             <version>${project.version}</version>
             <scope>test</scope>
@@ -78,6 +73,7 @@
         </dependency>
         <dependency>
             <groupId>com.documentplatform.platform</groupId>
+            <!-- Only TestCertificates (a private CA and a localhost server certificate for the https issuer test). -->
             <artifactId>platform-integration-testkit</artifactId>
             <version>${project.version}</version>
             <scope>test</scope>

@@ -32,7 +32,7 @@ import java.util.Objects;
  * issuer answers and, optionally, that a real token from it fits the product.
  * <ol>
  *   <li>Fetches {@code <issuer>/.well-known/openid-configuration} through the {@link IssuerFetch} (in production the
- *       integration module's outbound rules) and checks that its {@code issuer} is exactly the connection's.</li>
+ *       platform's outbound rules, platform-outbound) and checks that its {@code issuer} is exactly the connection's.</li>
  *   <li>Fetches the key set at its {@code jwks_uri} (same rules; https, or http on this machine only for an allowed
  *       local test issuer) and checks it holds at least one usable signing key (RSA or EC).</li>
  *   <li>With a token: the signature (RS256/384/512, PS256/384/512, ES256/384/512; never {@code none} or a shared

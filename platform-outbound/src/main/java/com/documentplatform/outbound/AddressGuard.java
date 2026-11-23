@@ -1,6 +1,5 @@
-package com.documentplatform.integration.safety;
+package com.documentplatform.outbound;
 
-import com.documentplatform.integration.IntegrationCode;
 
 import java.net.Inet4Address;
 import java.net.Inet6Address;
@@ -52,23 +51,23 @@ public final class AddressGuard {
     /**
      * @param host     the address's host (an IPv6 literal may keep its brackets)
      * @param viaProxy whether the call goes through the outbound proxy
-     * @return empty when the call may go ahead; else {@code INT_ADDRESS_BLOCKED} or {@code INT_HOST_UNKNOWN}
+     * @return empty when the call may go ahead; else {@code OUT_ADDRESS_BLOCKED} or {@code OUT_HOST_UNKNOWN}
      */
-    public Optional<IntegrationCode> check(String host, boolean viaProxy) {
+    public Optional<OutboundCode> check(String host, boolean viaProxy) {
         return checked(host, viaProxy).refused();
     }
 
     /**
      * The result of one check: refused with a code, or allowed with the addresses that were checked (empty behind a
      * proxy when the local resolver does not know the name). The connection is made to exactly these addresses
-     * (connection pinning, {@code http.Outbound}): never to a fresh lookup.
+     * (connection pinning, {@link Outbound}): never to a fresh lookup.
      */
-    public record Checked(IntegrationCode code, List<InetAddress> addresses) {
+    public record Checked(OutboundCode code, List<InetAddress> addresses) {
         public Checked {
             addresses = addresses == null ? List.of() : List.copyOf(addresses);
         }
 
-        public Optional<IntegrationCode> refused() {
+        public Optional<OutboundCode> refused() {
             return Optional.ofNullable(code);
         }
 
@@ -80,24 +79,24 @@ public final class AddressGuard {
 
     /** {@link #check}, keeping the addresses the name resolved to. */
     public Checked checked(String host, boolean viaProxy) {
-        if (host == null || host.isEmpty()) return refuse(IntegrationCode.INT_HOST_UNKNOWN);
+        if (host == null || host.isEmpty()) return refuse(OutboundCode.OUT_HOST_UNKNOWN);
         String h = normalise(host);
-        if (METADATA_NAMES.contains(h)) return refuse(IntegrationCode.INT_ADDRESS_BLOCKED);
+        if (METADATA_NAMES.contains(h)) return refuse(OutboundCode.OUT_ADDRESS_BLOCKED);
         if (!allowInternal && (h.equals("localhost") || h.endsWith(".localhost"))) {
-            return refuse(IntegrationCode.INT_ADDRESS_BLOCKED);
+            return refuse(OutboundCode.OUT_ADDRESS_BLOCKED);
         }
         InetAddress[] all;
         try {
             all = resolver.resolve(h);
         } catch (UnknownHostException | SecurityException e) {
-            return viaProxy ? new Checked(null, List.of()) : refuse(IntegrationCode.INT_HOST_UNKNOWN);
+            return viaProxy ? new Checked(null, List.of()) : refuse(OutboundCode.OUT_HOST_UNKNOWN);
         }
         if (all == null || all.length == 0) {
-            return viaProxy ? new Checked(null, List.of()) : refuse(IntegrationCode.INT_HOST_UNKNOWN);
+            return viaProxy ? new Checked(null, List.of()) : refuse(OutboundCode.OUT_HOST_UNKNOWN);
         }
         for (InetAddress a : all) {
             if (alwaysBlocked(a) || (!allowInternal && internal(a))) {
-                return refuse(IntegrationCode.INT_ADDRESS_BLOCKED);
+                return refuse(OutboundCode.OUT_ADDRESS_BLOCKED);
             }
         }
         return new Checked(null, List.of(all));
@@ -111,7 +110,7 @@ public final class AddressGuard {
         return h;
     }
 
-    private static Checked refuse(IntegrationCode code) {
+    private static Checked refuse(OutboundCode code) {
         return new Checked(code, List.of());
     }
 

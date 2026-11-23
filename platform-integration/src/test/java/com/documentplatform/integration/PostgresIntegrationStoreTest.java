@@ -5,7 +5,7 @@ import com.documentplatform.integration.config.SignIn;
 import com.documentplatform.integration.jdbc.IntegrationSchema;
 import com.documentplatform.integration.jdbc.IntegrationSchemaException;
 import com.documentplatform.integration.jdbc.PostgresIntegrationStore;
-import com.documentplatform.integration.safety.Installation;
+import com.documentplatform.outbound.Installation;
 import com.documentplatform.integration.store.ConfigChange;
 import com.documentplatform.integration.store.IntegrationAudit;
 import com.documentplatform.integration.store.IntegrationConfigs;

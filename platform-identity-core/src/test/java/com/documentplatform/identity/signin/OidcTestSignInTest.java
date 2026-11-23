@@ -43,7 +43,7 @@ class OidcTestSignInTest {
     final IssuerFetch fetch = (uri, max, local) -> {
         fetched.add(uri + (local ? " local" : ""));
         Object[] page = pages.get(uri.toString());
-        if (page == null) throw new IssuerFetch.Refused("INT_CANT_CONNECT");
+        if (page == null) throw new IssuerFetch.Refused("OUT_CANT_CONNECT");
         return new IssuerFetch.Response((Integer) page[0], ((String) page[1]).getBytes(StandardCharsets.UTF_8));
     };
 
@@ -100,7 +100,7 @@ class OidcTestSignInTest {
         pages.clear();
         TestReport r = run(TestSignIn.issuerOnly());
         assertEquals(Code.IDN_TEST_ISSUER_UNREACHABLE, r.failure());
-        assertEquals("INT_CANT_CONNECT", r.reason());
+        assertEquals("OUT_CANT_CONNECT", r.reason());
         pages.put(ISSUER + "/.well-known/openid-configuration", new Object[]{503, "{}"});
         r = run(TestSignIn.issuerOnly());
         assertEquals(Code.IDN_TEST_ISSUER_UNREACHABLE, r.failure());
@@ -136,7 +136,7 @@ class OidcTestSignInTest {
         pages.remove(ISSUER + "/v1/keys");
         TestReport r = run(TestSignIn.issuerOnly());
         assertEquals(Code.IDN_TEST_KEYS_MISSING, r.failure());
-        assertEquals("INT_CANT_CONNECT", r.reason());
+        assertEquals("OUT_CANT_CONNECT", r.reason());
     }
 
     @Test

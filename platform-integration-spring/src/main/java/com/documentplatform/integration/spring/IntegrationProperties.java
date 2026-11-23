@@ -5,22 +5,17 @@ import org.springframework.util.unit.DataSize;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The install's integration settings ({@code platform.integration.*}), checked at startup by
  * {@link IntegrationSettings#from}. Secrets never go here: the proxy password is a reference into the secret store.
  *
  * <pre>
- * platform.integration.installation=ON_PREMISES               # required: ON_PREMISES or HOSTED
- * platform.integration.allow-internal-addresses=false         # on premises only: loopback/private addresses, http
- * platform.integration.allow-sign-in-none=false               # on premises only: sign-in NONE (warned, audited)
- * platform.integration.private-ca-file=/etc/app/private-ca.pem
- * platform.integration.proxy.host=proxy.corp.example
- * platform.integration.proxy.port=3128
- * platform.integration.proxy.bypass=.corp.example,files01
- * platform.integration.proxy.user=svc-app
- * platform.integration.proxy.password-secret=integration/proxy-password
+ * (The installation, internal addresses, sign-in NONE, private CA and proxy are platform.outbound.* since P028:
+ * platform-outbound-spring. The old names here are refused at startup, naming the new one.)
  * platform.integration.limits.connect-timeout=10s
  * platform.integration.limits.read-timeout=120s
  * platform.integration.limits.max-file-size=250MB
@@ -50,20 +45,14 @@ public class IntegrationProperties {
 
     public static final String PREFIX = "platform.integration";
 
-    /** Where the app runs: our hosted service, or the customer's own systems. */
-    public enum InstallationMode { ON_PREMISES, HOSTED }
-
     /** Switches the module off when false. */
     private boolean enabled = true;
-    /** Required: ON_PREMISES or HOSTED. */
-    private InstallationMode installation;
-    /** On premises only: loopback and private addresses (and plain http) may be called. */
-    private boolean allowInternalAddresses = false;
-    /** On premises only: sign-in NONE may be configured. */
-    private boolean allowSignInNone = false;
-    /** The customer's private certificate authorities (a PEM file), trusted in addition to the system's. */
+    /** Moved to platform.outbound.* (P028): set here, startup refuses, naming the new property. */
+    private String installation;
+    private String allowInternalAddresses;
+    private String allowSignInNone;
     private String privateCaFile;
-    private final Proxy proxy = new Proxy();
+    private Map<String, String> proxy = new LinkedHashMap<>();
     private final Limits limits = new Limits();
     /** Where the installation's IT puts the published profile files. */
     private String profileFolder;
@@ -240,56 +229,6 @@ public class IntegrationProperties {
         return worker;
     }
 
-    public static class Proxy {
-        private String host;
-        private Integer port;
-        /** Hosts that do not use the proxy: exact names or suffixes starting with a dot. */
-        private List<String> bypass = new ArrayList<>();
-        /** The proxy's Basic sign-in user, when it needs one. */
-        private String user;
-        /** Where the proxy password is kept in the secret store (a reference, never the password). */
-        private String passwordSecret;
-
-        public String getHost() {
-            return host;
-        }
-
-        public void setHost(String host) {
-            this.host = host;
-        }
-
-        public Integer getPort() {
-            return port;
-        }
-
-        public void setPort(Integer port) {
-            this.port = port;
-        }
-
-        public List<String> getBypass() {
-            return bypass;
-        }
-
-        public void setBypass(List<String> bypass) {
-            this.bypass = bypass;
-        }
-
-        public String getUser() {
-            return user;
-        }
-
-        public void setUser(String user) {
-            this.user = user;
-        }
-
-        public String getPasswordSecret() {
-            return passwordSecret;
-        }
-
-        public void setPasswordSecret(String passwordSecret) {
-            this.passwordSecret = passwordSecret;
-        }
-    }
 
     /** The default limits for new integrations (each configuration keeps its own copy). */
     public static class Limits {
@@ -380,40 +319,44 @@ public class IntegrationProperties {
         this.enabled = enabled;
     }
 
-    public InstallationMode getInstallation() {
+    public String getInstallation() {
         return installation;
     }
 
-    public void setInstallation(InstallationMode installation) {
-        this.installation = installation;
+    public void setInstallation(String v) {
+        this.installation = v;
     }
 
-    public boolean isAllowInternalAddresses() {
+    public String getAllowInternalAddresses() {
         return allowInternalAddresses;
     }
 
-    public void setAllowInternalAddresses(boolean allowInternalAddresses) {
-        this.allowInternalAddresses = allowInternalAddresses;
+    public void setAllowInternalAddresses(String v) {
+        this.allowInternalAddresses = v;
     }
 
-    public boolean isAllowSignInNone() {
+    public String getAllowSignInNone() {
         return allowSignInNone;
     }
 
-    public void setAllowSignInNone(boolean allowSignInNone) {
-        this.allowSignInNone = allowSignInNone;
+    public void setAllowSignInNone(String v) {
+        this.allowSignInNone = v;
     }
 
     public String getPrivateCaFile() {
         return privateCaFile;
     }
 
-    public void setPrivateCaFile(String privateCaFile) {
-        this.privateCaFile = privateCaFile;
+    public void setPrivateCaFile(String v) {
+        this.privateCaFile = v;
     }
 
-    public Proxy getProxy() {
+    public Map<String, String> getProxy() {
         return proxy;
+    }
+
+    public void setProxy(Map<String, String> v) {
+        this.proxy = v == null ? new LinkedHashMap<>() : v;
     }
 
     public Limits getLimits() {

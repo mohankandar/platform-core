@@ -1,8 +1,9 @@
-package com.documentplatform.integration.http;
+package com.documentplatform.identity.spring;
 
 import com.documentplatform.identity.signin.IssuerFetch;
 import com.documentplatform.identity.signin.LocalTestIssuers;
-import com.documentplatform.integration.safety.Installation;
+import com.documentplatform.outbound.Installation;
+import com.documentplatform.outbound.Outbound;
 
 import java.io.IOException;
 import java.net.URI;
@@ -12,9 +13,9 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * The login-connection test sign-in's {@link IssuerFetch} over the integrations' outbound rules ({@link Outbound}):
+ * The login-connection test sign-in's {@link IssuerFetch} over the platform's outbound rules ({@link Outbound}, platform-outbound):
  * https only, the address guard before each call, the installation's proxy and private certificate authority, no
- * redirects, timeouts and size limits. Failures are the outbound rule's code ({@code INT_…}); no address, header or
+ * redirects, timeouts and size limits. Failures are the outbound rule's code ({@code OUT_…}); no address, header or
  * body reaches a message.
  *
  * <p>A local test issuer ({@code http} on {@code localhost}, {@code 127.0.0.1} or {@code [::1]}, which the test

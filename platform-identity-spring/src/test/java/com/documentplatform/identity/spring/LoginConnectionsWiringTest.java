@@ -11,12 +11,8 @@ import com.documentplatform.identity.store.ConnectionValues;
 import com.documentplatform.identity.store.LoginConnectionStore;
 import com.documentplatform.identity.store.LoginConnections;
 import com.documentplatform.identity.testkit.MockIssuer;
-import com.documentplatform.integration.http.OutboundIssuerFetch;
-import com.documentplatform.integration.spring.IntegrationAutoConfiguration;
-import com.documentplatform.integration.store.IntegrationAudit;
-import com.documentplatform.integration.store.IntegrationStore;
-import com.documentplatform.integration.testkit.InMemoryIntegrationStore;
 import com.documentplatform.notifications.inmemory.InMemorySecretResolver;
+import com.documentplatform.outbound.spring.OutboundAutoConfiguration;
 import com.documentplatform.notifications.secret.SecretResolver;
 import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
@@ -31,24 +27,24 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** B1 (identity, while here): the LoginConnections bean on the identity stores, with the issuer fetch over the outbound rules. */
+/** The LoginConnections bean on the identity stores, with the issuer fetch over the shared outbound rules (P031 B1, P028 B4). */
 class LoginConnectionsWiringTest {
 
     static final String TENANT = "TEN-TEST-0001";
 
     private static ApplicationContextRunner runner() {
         return new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(IntegrationAutoConfiguration.class,
+                .withConfiguration(AutoConfigurations.of(OutboundAutoConfiguration.class,
                         IdentityIssuerFetchAutoConfiguration.class, IdentityLoginConnectionStoreAutoConfiguration.class,
                         IdentityLoginConnectionsAutoConfiguration.class))
-                .withPropertyValues("platform.integration.installation=ON_PREMISES")
-                .withBean(SecretResolver.class, InMemorySecretResolver::new)
-                .withBean(IntegrationAudit.class, () -> IntegrationAudit.NONE)
-                .withBean(IntegrationStore.class, InMemoryIntegrationStore::new);
+                .withPropertyValues("platform.outbound.installation=ON_PREMISES")
+                // Identity alone: platform-integration is not needed for the test sign-in (P028 B4).
+                .withClassLoader(new FilteredClassLoader("com.documentplatform.integration"))
+                .withBean(SecretResolver.class, InMemorySecretResolver::new);
     }
 
     @Test
-    void withTheIntegrationModuleTheTestSignInGoesThroughTheOutboundRules() {
+    void identityAloneTestsTheSignInThroughTheSharedOutboundRules() {
         InMemoryIdentityStore store = new InMemoryIdentityStore();
         store.saveCustomer(TENANT, "Test Customer");
         try (MockIssuer issuer = MockIssuer.start()) {
@@ -79,9 +75,10 @@ class LoginConnectionsWiringTest {
             assertTrue(ctx.containsBean("identityIssuerFetch"));
             assertSame(DevelopmentLicence.NONE, ctx.getBean(DevelopmentLicence.class));
         });
-        // A store, but platform-integration is not on the classpath and the app gives no fetch: nothing.
+        // A store, but no outbound settings (platform.outbound.installation) and the app gives no fetch: nothing.
         new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(IdentityIssuerFetchAutoConfiguration.class,
+                .withConfiguration(AutoConfigurations.of(OutboundAutoConfiguration.class,
+                        IdentityIssuerFetchAutoConfiguration.class,
                         IdentityLoginConnectionStoreAutoConfiguration.class,
                         IdentityLoginConnectionsAutoConfiguration.class))
                 .withClassLoader(new FilteredClassLoader("com.documentplatform.integration"))
@@ -93,7 +90,8 @@ class LoginConnectionsWiringTest {
         // The app's own fetch is used.
         IssuerFetch own = MockIssuer.fetch();
         new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(IdentityIssuerFetchAutoConfiguration.class,
+                .withConfiguration(AutoConfigurations.of(OutboundAutoConfiguration.class,
+                        IdentityIssuerFetchAutoConfiguration.class,
                         IdentityLoginConnectionStoreAutoConfiguration.class,
                         IdentityLoginConnectionsAutoConfiguration.class))
                 .withClassLoader(new FilteredClassLoader("com.documentplatform.integration"))

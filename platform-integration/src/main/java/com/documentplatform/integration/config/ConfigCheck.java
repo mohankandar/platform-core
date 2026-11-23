@@ -5,8 +5,8 @@ import com.documentplatform.fields.FieldSet;
 import com.documentplatform.fields.FieldSpec;
 import com.documentplatform.integration.IntegrationCode;
 import com.documentplatform.integration.json.Json;
-import com.documentplatform.integration.safety.AddressGuard;
-import com.documentplatform.integration.safety.Installation;
+import com.documentplatform.outbound.AddressGuard;
+import com.documentplatform.outbound.Installation;
 
 import java.net.InetAddress;
 import java.net.URI;
@@ -153,7 +153,7 @@ public final class ConfigCheck {
             if (host.matches("[0-9.]+") || host.contains(":")) return InetAddress.getAllByName(host);
             throw new UnknownHostException();
         });
-        Optional<IntegrationCode> blocked = literalOnly.check(uri.getHost(), true);
+        Optional<com.documentplatform.outbound.OutboundCode> blocked = literalOnly.check(uri.getHost(), true);
         if (blocked.isPresent()) {
             errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_ADDRESS_INVALID, where, null));
         }

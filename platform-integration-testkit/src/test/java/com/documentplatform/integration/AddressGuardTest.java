@@ -1,14 +1,15 @@
 package com.documentplatform.integration;
 
+import com.documentplatform.outbound.OutboundCode;
 import com.documentplatform.integration.config.ConfigCheck;
 import com.documentplatform.integration.config.IntegrationConfig;
 import com.documentplatform.integration.config.SignIn;
 import com.documentplatform.integration.engine.CallEngine;
-import com.documentplatform.integration.http.Outbound;
+import com.documentplatform.outbound.Outbound;
 import com.documentplatform.integration.result.AttemptResult;
 import com.documentplatform.integration.result.Outcome;
-import com.documentplatform.integration.safety.AddressGuard;
-import com.documentplatform.integration.safety.Installation;
+import com.documentplatform.outbound.AddressGuard;
+import com.documentplatform.outbound.Installation;
 import com.documentplatform.integration.config.SignIn.OAuth2ClientCredentials;
 import com.documentplatform.notifications.inmemory.InMemorySecretResolver;
 import com.documentplatform.notifications.secret.SecretRef;
@@ -32,8 +33,8 @@ class AddressGuardTest {
         for (String host : new String[]{"169.254.169.254", "[fd00:ec2::254]", "168.63.129.16", "100.100.100.200",
                 "metadata.google.internal", "METADATA.google.internal.", "169.254.10.1", "[fe80::1]", "0.0.0.0",
                 "[::]", "[::ffff:169.254.169.254]", "224.0.0.1"}) {
-            assertEquals(Optional.of(IntegrationCode.INT_ADDRESS_BLOCKED), ON_PREM_INTERNAL.check(host, false), host);
-            assertEquals(Optional.of(IntegrationCode.INT_ADDRESS_BLOCKED), HOSTED.check(host, false), host);
+            assertEquals(Optional.of(OutboundCode.OUT_ADDRESS_BLOCKED), ON_PREM_INTERNAL.check(host, false), host);
+            assertEquals(Optional.of(OutboundCode.OUT_ADDRESS_BLOCKED), HOSTED.check(host, false), host);
         }
     }
 
@@ -41,7 +42,7 @@ class AddressGuardTest {
     void internalAddressesOnlyWhereAllowed() {
         for (String host : new String[]{"127.0.0.1", "10.1.2.3", "172.16.0.9", "192.168.1.1", "[::1]", "[fd12::1]",
                 "100.64.0.1", "localhost"}) {
-            assertEquals(Optional.of(IntegrationCode.INT_ADDRESS_BLOCKED), HOSTED.check(host, false), host);
+            assertEquals(Optional.of(OutboundCode.OUT_ADDRESS_BLOCKED), HOSTED.check(host, false), host);
             assertEquals(Optional.empty(), ON_PREM_INTERNAL.check(host, false), host);
         }
         assertEquals(Optional.empty(), HOSTED.check("8.8.8.8", false));
@@ -51,13 +52,13 @@ class AddressGuardTest {
     void aNameIsBlockedIfAnyOfItsAddressesIs() {
         AddressGuard g = new AddressGuard(false, host -> new InetAddress[]{
                 InetAddress.getByName("93.184.216.34"), InetAddress.getByName("169.254.169.254")});
-        assertEquals(Optional.of(IntegrationCode.INT_ADDRESS_BLOCKED), g.check("rebind.example", false));
+        assertEquals(Optional.of(OutboundCode.OUT_ADDRESS_BLOCKED), g.check("rebind.example", false));
         AddressGuard inside = new AddressGuard(false, host -> new InetAddress[]{InetAddress.getByName("10.0.0.5")});
-        assertEquals(Optional.of(IntegrationCode.INT_ADDRESS_BLOCKED), inside.check("intranet.example", false));
+        assertEquals(Optional.of(OutboundCode.OUT_ADDRESS_BLOCKED), inside.check("intranet.example", false));
         AddressGuard unknown = new AddressGuard(false, host -> {
             throw new java.net.UnknownHostException();
         });
-        assertEquals(Optional.of(IntegrationCode.INT_HOST_UNKNOWN), unknown.check("nowhere.example", false));
+        assertEquals(Optional.of(OutboundCode.OUT_HOST_UNKNOWN), unknown.check("nowhere.example", false));
         assertEquals(Optional.empty(), unknown.check("nowhere.example", true), "behind a proxy the proxy resolves it");
     }
 

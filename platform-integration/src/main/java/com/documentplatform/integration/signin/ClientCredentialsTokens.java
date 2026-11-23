@@ -3,8 +3,8 @@ package com.documentplatform.integration.signin;
 import com.documentplatform.integration.IntegrationCode;
 import com.documentplatform.integration.config.Limits;
 import com.documentplatform.integration.config.SignIn.OAuth2ClientCredentials;
-import com.documentplatform.integration.http.Outbound;
-import com.documentplatform.integration.http.RetryAfter;
+import com.documentplatform.outbound.Outbound;
+import com.documentplatform.outbound.RetryAfter;
 import com.documentplatform.integration.json.Json;
 import com.documentplatform.notifications.secret.Secret;
 import com.documentplatform.notifications.secret.SecretResolver;
@@ -95,7 +95,7 @@ public final class ClientCredentialsTokens {
 
     /** As above; the token request presents {@code certificate} (mutual TLS) when it is not null. */
     public Fetch token(OAuth2ClientCredentials client, SecretResolver secrets, Limits limits, boolean useProxy,
-                       com.documentplatform.integration.credential.ClientCertificate certificate) {
+                       com.documentplatform.outbound.ClientCertificate certificate) {
         return token(client, secrets, limits, useProxy, certificate,
                 certificate == null ? null : certificate.fingerprint());
     }
@@ -107,7 +107,7 @@ public final class ClientCredentialsTokens {
      * time, or on another instance of the app) drops the held token at once.
      */
     public Fetch token(OAuth2ClientCredentials client, SecretResolver secrets, Limits limits, boolean useProxy,
-                       com.documentplatform.integration.credential.ClientCertificate certificate,
+                       com.documentplatform.outbound.ClientCertificate certificate,
                        String certificateInUse) {
         Objects.requireNonNull(client, "client");
         Held h = held.get(client);
@@ -151,7 +151,7 @@ public final class ClientCredentialsTokens {
     }
 
     private Fetch fetch(OAuth2ClientCredentials client, SecretResolver secrets, Limits limits, boolean useProxy,
-                        Instant now, com.documentplatform.integration.credential.ClientCertificate certificate,
+                        Instant now, com.documentplatform.outbound.ClientCertificate certificate,
                         String certificateInUse) {
         Optional<Secret> credential;
         try {
@@ -200,7 +200,7 @@ public final class ClientCredentialsTokens {
                     limits.connectTimeout(), MAX_REPLY, useProxy, certificate);
         } catch (Outbound.Failure f) {
             // Blocked addresses and plain http keep their own codes; anything else is "unreachable".
-            IntegrationCode c = f.code();
+            IntegrationCode c = IntegrationCode.of(f.code());
             return Fetch.failed(c == IntegrationCode.INT_ADDRESS_BLOCKED || c == IntegrationCode.INT_ADDRESS_NOT_SECURE
                     || c == IntegrationCode.INT_TLS_FAILED || c == IntegrationCode.INT_PROXY_REFUSED
                     || c == IntegrationCode.INT_PROXY_SIGN_IN_REFUSED

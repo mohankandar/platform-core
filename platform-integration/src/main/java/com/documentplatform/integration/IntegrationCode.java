@@ -54,7 +54,7 @@ public enum IntegrationCode {
     INT_PROXY_REFUSED,
     /** The outbound proxy asked for sign-in (407): the proxy user or password is wrong, or none is set. */
     INT_PROXY_SIGN_IN_REFUSED("The outbound proxy refused the sign-in (407). Check the proxy user and the password in "
-            + "the secret store (platform.integration.proxy.user, platform.integration.proxy.password-secret)."),
+            + "the secret store (platform.outbound.proxy.user, platform.outbound.proxy.password-secret)."),
     // ---- Client certificates (mutual TLS) ----
     /** The uploaded file is not a PKCS#12 or PEM file with one certificate and its private key (or it is too large). */
     INT_CREDENTIAL_FILE_INVALID("The certificate file is not a PKCS#12 (.p12, .pfx) or PEM file holding the client "
@@ -369,5 +369,28 @@ public enum IntegrationCode {
     /** Whether {@link #message()} is more than the name. */
     public boolean hasMessage() {
         return message != null;
+    }
+
+    /**
+     * The integration code of an outbound failure ({@code platform-outbound}): the code of the same name, so the
+     * integrations' results are what they were before the outbound rules became their own module.
+     */
+    public static IntegrationCode of(com.documentplatform.outbound.OutboundCode code) {
+        return switch (code) {
+            case OUT_CANT_CONNECT -> INT_CANT_CONNECT;
+            case OUT_HOST_UNKNOWN -> INT_HOST_UNKNOWN;
+            case OUT_CONNECT_TIMEOUT -> INT_CONNECT_TIMEOUT;
+            case OUT_TIMEOUT -> INT_TIMEOUT;
+            case OUT_CONNECTION_LOST -> INT_CONNECTION_LOST;
+            case OUT_TLS_FAILED -> INT_TLS_FAILED;
+            case OUT_ADDRESS_BLOCKED -> INT_ADDRESS_BLOCKED;
+            case OUT_ADDRESS_NOT_SECURE -> INT_ADDRESS_NOT_SECURE;
+            case OUT_PROXY_REFUSED -> INT_PROXY_REFUSED;
+            case OUT_PROXY_SIGN_IN_REFUSED -> INT_PROXY_SIGN_IN_REFUSED;
+            case OUT_CREDENTIAL_REFUSED -> INT_CREDENTIAL_REFUSED;
+            case OUT_SECRET_NOT_FOUND -> INT_SECRET_NOT_FOUND;
+            case OUT_SECRET_UNAVAILABLE -> INT_SECRET_UNAVAILABLE;
+            case OUT_VALUE_NOT_ALLOWED -> INT_VALUE_NOT_ALLOWED;
+        };
     }
 }

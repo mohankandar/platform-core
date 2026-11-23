@@ -2,10 +2,10 @@ package com.documentplatform.integration.signin;
 
 import com.documentplatform.integration.IntegrationCode;
 import com.documentplatform.integration.config.Limits;
-import com.documentplatform.integration.credential.ClientCertificate;
+import com.documentplatform.outbound.ClientCertificate;
 import com.documentplatform.integration.config.SignIn;
 import com.documentplatform.integration.result.Outcome;
-import com.documentplatform.integration.safety.Installation;
+import com.documentplatform.outbound.Installation;
 import com.documentplatform.notifications.secret.Secret;
 import com.documentplatform.notifications.secret.SecretRef;
 import com.documentplatform.notifications.secret.SecretResolver;

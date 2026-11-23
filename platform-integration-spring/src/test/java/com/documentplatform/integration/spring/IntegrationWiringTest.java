@@ -1,6 +1,8 @@
 package com.documentplatform.integration.spring;
 
-import com.documentplatform.identity.EntityUuid;
+import com.documentplatform.outbound.spring.OutboundAutoConfiguration;
+import com.documentplatform.outbound.spring.OutboundConfigException;
+import com.documentplatform.integration.folder.SlotIds;
 import com.documentplatform.integration.IntegrationCode;
 import com.documentplatform.integration.config.CallStep;
 import com.documentplatform.integration.config.Endpoint;
@@ -16,13 +18,13 @@ import com.documentplatform.integration.engine.TestAction;
 import com.documentplatform.integration.folder.ExportFiles;
 import com.documentplatform.integration.folder.ExportInfo;
 import com.documentplatform.integration.folder.FolderExport;
-import com.documentplatform.integration.http.Outbound;
+import com.documentplatform.outbound.Outbound;
 import com.documentplatform.integration.jdbc.IntegrationSchemaException;
 import com.documentplatform.integration.jdbc.PostgresIntegrationStore;
 import com.documentplatform.integration.profile.ProfileFolder;
 import com.documentplatform.integration.result.AttemptResult;
 import com.documentplatform.integration.result.Outcome;
-import com.documentplatform.integration.safety.Installation;
+import com.documentplatform.outbound.Installation;
 import com.documentplatform.integration.store.ConfigChange;
 import com.documentplatform.integration.store.IntegrationAudit;
 import com.documentplatform.integration.store.IntegrationConfigs;
@@ -60,7 +62,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class IntegrationWiringTest {
 
     static final String SLOT = "ENT-0001";
-    static final UUID ENTITY = EntityUuid.fromSlotId(SLOT);
+    static final UUID ENTITY = SlotIds.entityUuid(SLOT);
 
     /** The app's audit: records what it gets. */
     static final class Audit implements IntegrationAudit {
@@ -80,7 +82,8 @@ class IntegrationWiringTest {
 
     private static ApplicationContextRunner runner(String... properties) {
         return new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(IntegrationAutoConfiguration.class))
+                .withConfiguration(AutoConfigurations.of(OutboundAutoConfiguration.class,
+                        IntegrationAutoConfiguration.class))
                 .withPropertyValues(properties);
     }
 
@@ -94,6 +97,7 @@ class IntegrationWiringTest {
 
     private static Throwable root(Throwable t) {
         while (t != null && !(t instanceof IntegrationConfigException) && !(t instanceof IntegrationSchemaException)
+                && !(t instanceof OutboundConfigException)
                 && t.getCause() != null) {
             t = t.getCause();
         }
@@ -102,7 +106,7 @@ class IntegrationWiringTest {
 
     @Test
     void withoutTheAppsBeansStartupRefusesNamingEachOne() {
-        runner("platform.integration.installation=ON_PREMISES")
+        runner("platform.outbound.installation=ON_PREMISES")
                 .withBean(IntegrationStore.class, InMemoryIntegrationStore::new)
                 .run(ctx -> {
                     IntegrationConfigException e = assertInstanceOf(IntegrationConfigException.class,
@@ -112,7 +116,7 @@ class IntegrationWiringTest {
                     assertTrue(e.getMessage().contains("IntegrationAudit bean is missing"));
                     assertNotNull(new IntegrationFailureAnalyzer().analyze(ctx.getStartupFailure()));
                 });
-        runner("platform.integration.installation=ON_PREMISES")
+        runner("platform.outbound.installation=ON_PREMISES")
                 .withBean(SecretResolver.class, InMemorySecretResolver::new)
                 .withBean(IntegrationStore.class, InMemoryIntegrationStore::new)
                 .run(ctx -> {
@@ -122,7 +126,7 @@ class IntegrationWiringTest {
                             + "Test action goes to the app's audit)"), e.problems());
                 });
         // Without a DataSource or an IntegrationStore.
-        runner("platform.integration.installation=ON_PREMISES")
+        runner("platform.outbound.installation=ON_PREMISES")
                 .withBean(SecretResolver.class, InMemorySecretResolver::new)
                 .withBean(IntegrationAudit.class, () -> IntegrationAudit.NONE)
                 .run(ctx -> assertTrue(root(ctx.getStartupFailure()).getMessage().contains("needs the app's DataSource")));
@@ -132,7 +136,7 @@ class IntegrationWiringTest {
     void withTheAppsBeansEverythingIsWiredAndAFolderExportRuns(@TempDir Path dir) {
         MockFolder folder = MockFolder.in(dir);
         Audit audit = new Audit();
-        app(new InMemorySecretResolver(), audit, "platform.integration.installation=ON_PREMISES",
+        app(new InMemorySecretResolver(), audit, "platform.outbound.installation=ON_PREMISES",
                 "platform.integration.limits.read-timeout=30s", "platform.integration.limits.max-file-size=10MB")
                 .withBean(ExportFiles.class, () -> folder)
                 .run(ctx -> {
@@ -197,13 +201,13 @@ class IntegrationWiringTest {
              MockProxy proxy = MockProxy.start().requireBasic("svc-app", "proxy-pass")) {
             InMemorySecretResolver secrets = new InMemorySecretResolver().put(SecretRef.of("int/proxy"), "proxy-pass")
                     .put(SecretRef.of("int/t"), "tok-1");
-            app(secrets, new Audit(), "platform.integration.installation=ON_PREMISES",
-                    "platform.integration.allow-internal-addresses=true",
-                    "platform.integration.proxy.host=" + proxy.host(),
-                    "platform.integration.proxy.port=" + proxy.port(),
-                    "platform.integration.proxy.bypass=.corp.example,files01",
-                    "platform.integration.proxy.user=svc-app",
-                    "platform.integration.proxy.password-secret=int/proxy")
+            app(secrets, new Audit(), "platform.outbound.installation=ON_PREMISES",
+                    "platform.outbound.allow-internal-addresses=true",
+                    "platform.outbound.proxy.host=" + proxy.host(),
+                    "platform.outbound.proxy.port=" + proxy.port(),
+                    "platform.outbound.proxy.bypass=.corp.example,files01",
+                    "platform.outbound.proxy.user=svc-app",
+                    "platform.outbound.proxy.password-secret=int/proxy")
                     .run(ctx -> {
                         assertNull(ctx.getStartupFailure(), () -> String.valueOf(ctx.getStartupFailure()));
                         Installation inst = ctx.getBean(Installation.class);
@@ -233,11 +237,26 @@ class IntegrationWiringTest {
     @Test
     void badSettingsStopTheAppWithEveryProblemListed(@TempDir Path dir) throws Exception {
         Path notPem = Files.writeString(dir.resolve("ca.pem"), "not a certificate");
+        // Outbound settings without the installation: refused by platform-outbound-spring, every problem listed.
         app(new InMemorySecretResolver(), new Audit(),
-                "platform.integration.allow-internal-addresses=true",
-                "platform.integration.private-ca-file=relative/ca.pem",
-                "platform.integration.proxy.host=proxy.corp.example",
-                "platform.integration.proxy.user=svc",
+                "platform.outbound.allow-internal-addresses=true",
+                "platform.outbound.private-ca-file=relative/ca.pem",
+                "platform.outbound.proxy.host=proxy.corp.example",
+                "platform.outbound.proxy.user=svc")
+                .run(ctx -> {
+                    OutboundConfigException e = assertInstanceOf(OutboundConfigException.class,
+                            root(ctx.getStartupFailure()));
+                    String m = e.getMessage();
+                    assertTrue(m.startsWith("OUTBOUND_SETTINGS_INVALID"), m);
+                    assertTrue(m.contains("platform.outbound.installation is required: ON_PREMISES or HOSTED"), m);
+                    assertTrue(m.contains("private-ca-file must be an absolute path"), m);
+                    assertTrue(m.contains("proxy.port is required"), m);
+                    assertEquals(3, e.problems().size(), m);
+                    assertNotNull(new com.documentplatform.outbound.spring.OutboundFailureAnalyzer()
+                            .analyze(ctx.getStartupFailure()));
+                });
+        // No outbound settings at all: integration refuses, naming the setting, with its own problems.
+        app(new InMemorySecretResolver(), new Audit(),
                 "platform.integration.limits.max-documents=0",
                 "platform.integration.profile-folder=" + dir.resolve("missing").toAbsolutePath(),
                 "platform.integration.health.cache-for=1s")
@@ -245,22 +264,40 @@ class IntegrationWiringTest {
                     IntegrationConfigException e = assertInstanceOf(IntegrationConfigException.class,
                             root(ctx.getStartupFailure()));
                     String m = e.getMessage();
-                    assertTrue(m.contains("installation is required: ON_PREMISES or HOSTED"), m);
-                    assertTrue(m.contains("private-ca-file must be an absolute path"), m);
-                    assertTrue(m.contains("proxy.port is required"), m);
+                    assertTrue(m.contains("platform.outbound.installation is required: ON_PREMISES or HOSTED"), m);
                     assertTrue(m.contains("limits: Most documents must be between 1 and 100000"), m);
                     assertTrue(m.contains("profile-folder is not a folder"), m);
                     assertTrue(m.contains("health.cache-for must be 5 seconds to 1 hour"), m);
-                    assertEquals(6, e.problems().size(), m);
+                    assertEquals(4, e.problems().size(), m);
                 });
-        app(new InMemorySecretResolver(), new Audit(), "platform.integration.installation=HOSTED",
-                "platform.integration.allow-internal-addresses=true", "platform.integration.allow-sign-in-none=true",
-                "platform.integration.private-ca-file=" + notPem.toAbsolutePath(),
-                "platform.integration.proxy.host=proxy.corp.example", "platform.integration.proxy.port=3128",
-                "platform.integration.proxy.user=svc",
-                "platform.integration.proxy.password-secret=https://pasted-password-instead")
+        // The names before P028 are refused, each naming its new place; the value is never repeated.
+        app(new InMemorySecretResolver(), new Audit(), "platform.outbound.installation=ON_PREMISES",
+                "platform.integration.installation=ON_PREMISES",
+                "platform.integration.allow-internal-addresses=true",
+                "platform.integration.allow-sign-in-none=true",
+                "platform.integration.private-ca-file=/etc/ca.pem",
+                "platform.integration.proxy.host=proxy.corp.example",
+                "platform.integration.proxy.password-secret=old/secret-ref")
                 .run(ctx -> {
                     IntegrationConfigException e = assertInstanceOf(IntegrationConfigException.class,
+                            root(ctx.getStartupFailure()));
+                    String m = e.getMessage();
+                    assertTrue(m.contains("platform.integration.installation moved to platform.outbound.installation"),
+                            m);
+                    assertTrue(m.contains("platform.integration.allow-internal-addresses moved to "
+                            + "platform.outbound.allow-internal-addresses"), m);
+                    assertTrue(m.contains("platform.integration.proxy.host moved to platform.outbound.proxy.host"), m);
+                    assertFalse(m.contains("old/secret-ref"), m);
+                    assertEquals(6, e.problems().size(), m);
+                });
+        app(new InMemorySecretResolver(), new Audit(), "platform.outbound.installation=HOSTED",
+                "platform.outbound.allow-internal-addresses=true", "platform.outbound.allow-sign-in-none=true",
+                "platform.outbound.private-ca-file=" + notPem.toAbsolutePath(),
+                "platform.outbound.proxy.host=proxy.corp.example", "platform.outbound.proxy.port=3128",
+                "platform.outbound.proxy.user=svc",
+                "platform.outbound.proxy.password-secret=https://pasted-password-instead")
+                .run(ctx -> {
+                    OutboundConfigException e = assertInstanceOf(OutboundConfigException.class,
                             root(ctx.getStartupFailure()));
                     String m = e.getMessage();
                     assertTrue(m.contains("allow-internal-addresses is never allowed on the hosted service"), m);
@@ -270,9 +307,9 @@ class IntegrationWiringTest {
                     assertFalse(m.contains("pasted-password-instead"), "a value is never repeated");
                     assertEquals(4, e.problems().size(), m);
                 });
-        app(new InMemorySecretResolver(), new Audit(), "platform.integration.installation=ON_PREMISES",
-                "platform.integration.proxy.host=proxy.corp.example", "platform.integration.proxy.port=3128",
-                "platform.integration.proxy.user=svc")
+        app(new InMemorySecretResolver(), new Audit(), "platform.outbound.installation=ON_PREMISES",
+                "platform.outbound.proxy.host=proxy.corp.example", "platform.outbound.proxy.port=3128",
+                "platform.outbound.proxy.user=svc")
                 .run(ctx -> assertTrue(root(ctx.getStartupFailure()).getMessage()
                         .contains("user and password-secret go together")));
         runner("platform.integration.enabled=false").run(ctx -> {
@@ -289,9 +326,9 @@ class IntegrationWiringTest {
         com.documentplatform.integration.testkit.TestCertificates.Ca ca =
                 com.documentplatform.integration.testkit.TestCertificates.ca(dir, "it-ca");
         Path pem = Files.writeString(dir.resolve("private-ca.pem"), ca.pem());
-        app(new InMemorySecretResolver(), new Audit(), "platform.integration.installation=ON_PREMISES",
+        app(new InMemorySecretResolver(), new Audit(), "platform.outbound.installation=ON_PREMISES",
                 "platform.integration.profile-folder=" + profiles.toAbsolutePath(),
-                "platform.integration.private-ca-file=" + pem.toAbsolutePath())
+                "platform.outbound.private-ca-file=" + pem.toAbsolutePath())
                 .run(ctx -> {
                     assertNull(ctx.getStartupFailure(), () -> String.valueOf(ctx.getStartupFailure()));
                     ProfileFolder f = ctx.getBean(ProfileFolder.class);
@@ -304,13 +341,13 @@ class IntegrationWiringTest {
 
     @Test
     void withoutActuatorThereIsNoHealthContributor() {
-        app(new InMemorySecretResolver(), new Audit(), "platform.integration.installation=ON_PREMISES")
+        app(new InMemorySecretResolver(), new Audit(), "platform.outbound.installation=ON_PREMISES")
                 .withClassLoader(new FilteredClassLoader("org.springframework.boot.actuate"))
                 .run(ctx -> {
                     assertNull(ctx.getStartupFailure(), () -> String.valueOf(ctx.getStartupFailure()));
                     assertFalse(ctx.containsBean("integrationsHealthContributor"));
                 });
-        app(new InMemorySecretResolver(), new Audit(), "platform.integration.installation=ON_PREMISES",
+        app(new InMemorySecretResolver(), new Audit(), "platform.outbound.installation=ON_PREMISES",
                 "platform.integration.health.enabled=false")
                 .run(ctx -> assertFalse(ctx.containsBean("integrationsHealthContributor")));
     }
@@ -318,7 +355,7 @@ class IntegrationWiringTest {
     @Test
     void onTheAppsDataSourceWithTheDmlOnlyUser() {
         DataSource ds = Pg.migrated().appUser();
-        runner("platform.integration.installation=ON_PREMISES")
+        runner("platform.outbound.installation=ON_PREMISES")
                 .withBean(SecretResolver.class, InMemorySecretResolver::new)
                 .withBean(IntegrationAudit.class, () -> IntegrationAudit.NONE)
                 .withBean(DataSource.class, () -> ds)
@@ -355,7 +392,7 @@ class IntegrationWiringTest {
                 });
         // The tables missing: the app does not start (the schema step has not run).
         DataSource none = Pg.empty().appUser();
-        runner("platform.integration.installation=ON_PREMISES")
+        runner("platform.outbound.installation=ON_PREMISES")
                 .withBean(SecretResolver.class, InMemorySecretResolver::new)
                 .withBean(IntegrationAudit.class, () -> IntegrationAudit.NONE)
                 .withBean(DataSource.class, () -> none)
@@ -365,7 +402,7 @@ class IntegrationWiringTest {
     @Test
     void intakeBeansTheScannerAndTheirHealth(@TempDir Path dir) throws Exception {
         // Off by default: polling and the watched folder are wired, scanning is off, no scanner health entry.
-        app(new InMemorySecretResolver(), new Audit(), "platform.integration.installation=ON_PREMISES")
+        app(new InMemorySecretResolver(), new Audit(), "platform.outbound.installation=ON_PREMISES")
                 .run(ctx -> {
                     assertNull(ctx.getStartupFailure(), () -> String.valueOf(ctx.getStartupFailure()));
                     assertNotNull(ctx.getBean(com.documentplatform.integration.engine.PollEngine.class));
@@ -380,8 +417,8 @@ class IntegrationWiringTest {
         try (com.documentplatform.integration.testkit.MockScanner scanner =
                      com.documentplatform.integration.testkit.MockScanner.clamd()) {
             MockFolder inbox = MockFolder.watched(dir);
-            app(new InMemorySecretResolver(), new Audit(), "platform.integration.installation=ON_PREMISES",
-                    "platform.integration.allow-internal-addresses=true", "platform.integration.scanner.type=clamd",
+            app(new InMemorySecretResolver(), new Audit(), "platform.outbound.installation=ON_PREMISES",
+                    "platform.outbound.allow-internal-addresses=true", "platform.integration.scanner.type=clamd",
                     "platform.integration.scanner.host=" + scanner.host(),
                     "platform.integration.scanner.port=" + scanner.port(),
                     "platform.integration.intake.work-folder=" + dir.toAbsolutePath())
@@ -406,8 +443,8 @@ class IntegrationWiringTest {
                     });
             // The scanner down: its entry is DOWN with the code, nothing else changes.
             scanner.down(true);
-            app(new InMemorySecretResolver(), new Audit(), "platform.integration.installation=ON_PREMISES",
-                    "platform.integration.allow-internal-addresses=true", "platform.integration.scanner.type=CLAMD",
+            app(new InMemorySecretResolver(), new Audit(), "platform.outbound.installation=ON_PREMISES",
+                    "platform.outbound.allow-internal-addresses=true", "platform.integration.scanner.type=CLAMD",
                     "platform.integration.scanner.host=" + scanner.host(),
                     "platform.integration.scanner.port=" + scanner.port(),
                     "platform.integration.scanner.timeout=2s")
@@ -420,7 +457,7 @@ class IntegrationWiringTest {
                     });
         }
         // An ICAP scanner without a host, a bad service and a relative work folder: every problem listed.
-        app(new InMemorySecretResolver(), new Audit(), "platform.integration.installation=ON_PREMISES",
+        app(new InMemorySecretResolver(), new Audit(), "platform.outbound.installation=ON_PREMISES",
                 "platform.integration.scanner.type=ICAP", "platform.integration.scanner.icap-service=a b",
                 "platform.integration.intake.work-folder=relative/tmp")
                 .run(ctx -> {

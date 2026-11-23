@@ -1,7 +1,7 @@
 package com.documentplatform.integration.scan;
 
 import com.documentplatform.integration.IntegrationCode;
-import com.documentplatform.integration.safety.AddressGuard;
+import com.documentplatform.outbound.AddressGuard;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -44,7 +44,7 @@ public record ScannerAddress(String host, int port, Duration timeout) {
 
     Socket connect(AddressGuard guard) throws Unreachable {
         AddressGuard.Checked checked = guard.checked(host, false);
-        if (checked.refused().isPresent()) throw new Unreachable(checked.refused().get());
+        if (checked.refused().isPresent()) throw new Unreachable(IntegrationCode.of(checked.refused().get()));
         if (checked.addresses().isEmpty()) throw new Unreachable(IntegrationCode.INT_SCAN_UNREACHABLE);
         Socket s = new Socket();
         try {

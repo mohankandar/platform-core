@@ -16,7 +16,7 @@ import java.time.Clock;
 /**
  * {@link LoginConnections} (the IT Admin screen's drafts, test sign-in, activate, rollback, discard) when there is a
  * {@link LoginConnectionStore} (the identity JDBC store, or the app's) and an {@link IssuerFetch} (over
- * platform-integration's outbound rules, or the app's). Backs off for an app-defined bean.
+ * shared outbound rules, platform-outbound, or the app's). Backs off for an app-defined bean.
  */
 @AutoConfiguration(after = {IdentityIssuerFetchAutoConfiguration.class,
         IdentityLoginConnectionStoreAutoConfiguration.class})

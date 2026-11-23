@@ -1,5 +1,6 @@
 package com.documentplatform.integration.credential;
 
+import com.documentplatform.outbound.CertificateInfo;
 import java.time.Instant;
 import java.util.UUID;
 
