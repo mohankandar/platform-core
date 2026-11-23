@@ -39,6 +39,12 @@ public enum SetupRefusal {
             + "roleMappingFile) to the sign-in file."),
     SETUP_PRODUCT_ROLES_INVALID(SetupCommand.EXIT_REFUSED, "Use the product-roles.json shipped with this product's "
             + "release, for the product given with --product."),
+    /** A platform role on an entity row of the role mapping file (it goes on a row with entity_id *). */
+    SETUP_PLATFORM_ROLE_ON_ENTITY(SetupCommand.EXIT_REFUSED, "Grant the platform role on a row with entity_id * "
+            + "(platform-wide for this customer and product), not on an entity's row. Nothing was written."),
+    /** An entity role on a row with entity_id * of the role mapping file (only platform roles are platform-wide). */
+    SETUP_ENTITY_ROLE_PLATFORM_WIDE(SetupCommand.EXIT_REFUSED, "A row with entity_id * takes only the product's "
+            + "platformRoles; grant entity roles per entity slot (ENT-...). Nothing was written."),
     SETUP_MAPPING_INVALID(SetupCommand.EXIT_REFUSED, "Correct the role mapping file at the lines listed; nothing was "
             + "written."),
     /** The client-binding file has errors (each with its line number and code), or a client is bound elsewhere. */

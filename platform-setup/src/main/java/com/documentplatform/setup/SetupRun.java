@@ -114,7 +114,8 @@ final class SetupRun {
         planTimeZones(p, licensed, stored);
         List<MappingRow> rows = readMapping(licensed, stored);
         planConnection(p);
-        planGrants(p, rows);
+        planGrants(p, rows.stream().filter(r -> !r.platformWide()).toList());
+        planPlatformGrants(p, rows.stream().filter(MappingRow::platformWide).toList());
         planClientBindings(p, licensed);
         for (SetupInputs.CheckedProfile cp : in.profiles()) {
             p.add(CHECKED, "integration profile " + cp.name() + " " + cp.version() + " (tag " + cp.tag() + ", file "
@@ -152,6 +153,11 @@ final class SetupRun {
         for (String slot : slots) {
             grants.change(slot, product, in.signin().issuer(), p.grantsToAdd.getOrDefault(slot, Set.of()),
                     in.removeUnlistedGrants() ? p.grantsToRemove.getOrDefault(slot, Set.of()) : Set.of(), author);
+        }
+        // Platform-wide grants (* rows): one change, so one group's role change is one CHANGED history row.
+        Set<Grant> platformRemove = in.removeUnlistedGrants() ? p.platformToRemove : Set.of();
+        if (!p.platformToAdd.isEmpty() || !platformRemove.isEmpty()) {
+            grants.changePlatform(tenant, product, in.signin().issuer(), p.platformToAdd, platformRemove, author);
         }
         for (MachineBinding b : p.bindingsToInsert) {
             bindings.insertBinding(b, ChangeSource.SETUP, CHANGED_BY);
@@ -325,7 +331,12 @@ final class SetupRun {
         if (!r.valid()) {
             List<String> lines = r.errors().stream().map(MappingError::display).toList();
             List<String> codes = r.errors().stream().map(e -> e.code().name()).distinct().toList();
-            throw new SetupException(SetupRefusal.SETUP_MAPPING_INVALID, "The role mapping file "
+            // A role of the wrong kind on an entity or a * row has its own code; any other error is the general one.
+            SetupRefusal refusal = codes.contains(MappingError.Code.PLATFORM_ROLE_ON_ENTITY.name())
+                    ? SetupRefusal.SETUP_PLATFORM_ROLE_ON_ENTITY
+                    : codes.contains(MappingError.Code.ENTITY_ROLE_PLATFORM_WIDE.name())
+                    ? SetupRefusal.SETUP_ENTITY_ROLE_PLATFORM_WIDE : SetupRefusal.SETUP_MAPPING_INVALID;
+            throw new SetupException(refusal, "The role mapping file "
                     + in.mappingName() + " has " + r.errors().size() + " error(s) " + codes + ".", lines);
         }
         return r.rows();
@@ -473,6 +484,42 @@ final class SetupRun {
      * of the product off. A client already ACTIVE for another entity or source is refused: it is switched off first
      * (line removed, setup run), then bound again.
      */
+    /**
+     * The {@code *} rows: the customer's complete platform-wide grant list for this product and login system. Missing
+     * grants are added; stored ones not in the file are listed for removal (removed only with
+     * --remove-unlisted-grants).
+     */
+    private void planPlatformGrants(Plan p, List<MappingRow> rows) {
+        String product = in.product();
+        Set<Grant> stored = grants.platformGrants(tenant, product, in.signin().issuer());
+        Set<Grant> inFile = new LinkedHashSet<>();
+        for (MappingRow r : rows) inFile.add(r.grant());
+        int unchanged = 0;
+        for (Grant g : sorted(inFile)) {
+            if (stored.contains(g)) {
+                unchanged++;
+            } else {
+                p.platformToAdd.add(g);
+                p.add(CREATE, "platform grant " + product + " (every entity): group \"" + g.group() + "\" -> "
+                        + g.role());
+            }
+        }
+        for (Grant g : sorted(stored)) {
+            if (inFile.contains(g)) continue;
+            p.platformToRemove.add(g);
+            String text = "platform grant " + product + " (every entity): group \"" + g.group() + "\" -> " + g.role()
+                    + " (not in the mapping file)";
+            if (in.removeUnlistedGrants()) {
+                p.add(REMOVE, text);
+            } else {
+                p.add(NOT_REMOVED, text + "; kept. Run again with --remove-unlisted-grants to remove it.");
+            }
+        }
+        if (unchanged > 0) {
+            p.add(UNCHANGED, "platform grants " + product + ": " + unchanged + (unchanged == 1 ? " grant" : " grants"));
+        }
+    }
+
     private void planClientBindings(Plan p, Set<String> licensed) {
         String product = in.product();
         Map<String, MachineBinding> stored = new TreeMap<>();

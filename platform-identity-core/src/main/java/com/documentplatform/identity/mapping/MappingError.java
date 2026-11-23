@@ -32,7 +32,11 @@ public record MappingError(int line, Code code, String message) {
         /** The slot is known, but the licence in force does not list it. */
         SLOT_NOT_IN_LICENCE,
         /** A {@code # Product:} comment names another product than the one the file is read for. */
-        WRONG_PRODUCT
+        WRONG_PRODUCT,
+        /** A platform role on an entity row: platform roles are granted on a row with entity_id {@code *}. */
+        PLATFORM_ROLE_ON_ENTITY,
+        /** An entity role on a {@code *} row: a platform-wide row takes only the product's platform roles. */
+        ENTITY_ROLE_PLATFORM_WIDE
     }
 
     /** The message as an installer sees it: {@code line 6: unknown role "DOCUMENT_PROCESOR"}. */

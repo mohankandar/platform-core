@@ -27,12 +27,14 @@ The identity tables all start with `idn_`:
 | `idn_group_grant` | Which group of your login system gets which role, per entity and product |
 | `idn_machine_binding` | Integration client bindings (version 2): which client ID of your login system may send to which entity, as which system, per product; ACTIVE or INACTIVE (never deleted). Loaded by the setup command from the client-binding file (`docs/install/setup.md` section 3a). Client IDs only, never secrets |
 | `idn_machine_binding_history` | Every version of each client binding, with who changed it |
-| `idn_grant_history` | Every grant added, removed or changed (version 3), by setup or in the app, with who, when and the setup run. Insert only: the database refuses changes and deletes, even by the schema owner |
+| `idn_platform_grant` | Platform-wide grants (version 4): which group gets which platform role (for example an operations admin) in every entity, per product. Loaded by the setup command from the role mapping file's `*` rows (`docs/install/setup.md` section 3) |
+| `idn_grant_history` | Every grant added, removed or changed (version 3; since version 4 also platform-wide grants, scope `PLATFORM`), by setup or in the app, with who, when and the setup run. Insert only: the database refuses changes and deletes, even by the schema owner |
 | `idn_schema_version` | The version of the tables |
 
 1. **Run the identity schema step as its own Flyway run,** apart from the app's other tables:
    - location `classpath:db/platform/identity` (files `V1__identity.sql`, `V2__machine_binding.sql`,
-     `V3__grant_history.sql`; a database that ran only the earlier files gets the later ones at the next schema step,
+     `V3__grant_history.sql`, `V4__platform_grants.sql`; a database that ran only the earlier files gets the later ones
+     at the next schema step,
      and the app refuses to start with `IDN_VERSION_OLDER` until then)
    - history table `idn_schema_history`
    - run it as the schema owner, in the same schema the app connects to.
@@ -107,8 +109,9 @@ active connection keeps working the whole time; the change is prepared, tested, 
    edits it, for example a new issuer address or API audience. There is at most one draft per product.
 2. **Test sign-in.** The app then checks the draft against your login system:
    - it reads the issuer's discovery document (`<issuer>/.well-known/openid-configuration`) and its signing keys, over
-     the same safe outbound rules as the integrations (https only, your proxy and private certificate authority if
-     set, no internal or cloud-metadata addresses, no redirects);
+     the platform's safe outbound rules (`platform.outbound.*`, `docs/install/integration.md` section 1: https only,
+     your proxy and private certificate authority if set, no internal or cloud-metadata addresses, no redirects).
+     The app needs only the outbound settings for this, not the integrations module;
    - optionally, it checks a token the admin pastes or gets from a test sign-in: its signature, issuer, the API
      audience the product expects, that it has not expired, and that it carries the groups claim.
 
@@ -117,7 +120,7 @@ active connection keeps working the whole time; the change is prepared, tested, 
 
    | Code | Means |
    |---|---|
-   | `IDN_TEST_ISSUER_UNREACHABLE` | The discovery document could not be fetched (the reason code says why, for example `INT_TLS_FAILED` or `HTTP_404`) |
+   | `IDN_TEST_ISSUER_UNREACHABLE` | The discovery document could not be fetched (the reason code says why, for example `OUT_TLS_FAILED` or `HTTP_404`) |
    | `IDN_TEST_DISCOVERY_MISMATCH` | The document is not readable, or names another issuer: copy the issuer address exactly |
    | `IDN_TEST_KEYS_MISSING` | No key address, the keys could not be fetched, or no usable signing key |
    | `IDN_TEST_TOKEN_UNREADABLE` | The pasted text is not a signed token |
@@ -155,3 +158,69 @@ customer, product, entity, the group (and its login system), the role before and
 for setup the run ID (as in setup's run log). The table only grows: the database refuses to change or delete its
 rows, even for the schema owner. The app's audit page reads it per entity and period; the app's everyday database
 user is enough.
+
+Since version 4 the same table also holds the **platform-wide grants** (section 8): those rows have the scope
+`PLATFORM` and no entity. The app's audit page reads them per customer, product and period.
+
+## 8. Platform-wide grants (platform roles)
+
+Some roles work across every entity of your organisation, for example a platform operations admin. The product lists
+them as its platform roles. They are never granted per entity: a row of the role mapping file with `*` as its
+`entity_id` grants one of them to a group for your whole organisation and this product (`docs/install/setup.md`
+section 3). Setup stores those rows in `idn_platform_grant` (schema version 4).
+
+When someone signs in, the app asks which platform roles their groups have under your active login connection for
+the product. Nobody gets a platform role through an entity's grants, and an entity role is never platform-wide.
+
+## 9. Push-API callers (other systems that send to the product)
+
+Some of your systems send documents to the product's own API (a push). The product's server checks the caller's token
+(signed by your login system) or its client certificate, as usual. Then it asks the identity tables who the caller is:
+which entity it sends for, and as which of your systems (its source). The answer comes from the client-binding file
+that setup loads (`docs/install/setup.md` section 3a).
+
+**How the caller is found.**
+
+- **With a token:** the token's issuer must be your active login connection for the product, and the token must be
+  for the product's API audience. The client ID is read from the token's claims, in this order by default:
+  `client_id`, `azp`, `cid`, `sub` (login systems differ; the first one present is used). That client ID must be
+  bound (and switched on) to an active entity.
+- **With a client certificate:** the client ID in the client-binding file is `cert-sha256:` followed by the
+  certificate's SHA-256 fingerprint. No token is needed. Your login connection for the product must still be active.
+- A product may require **both**. Then the token and the certificate must point to the same entity and source.
+
+**Settings** (the product's install config):
+
+| Property | Default | |
+|---|---|---|
+| `platform.identity.push.product-code` | none | the product; without it there is no push-caller check |
+| `platform.identity.push.client-id-claims` | `client_id,azp,cid,sub` | the claims the client ID is read from, first present wins |
+| `platform.identity.push.entity-claim` | none | optional: a claim that, when the token has it, must name the bound entity (its `ENT-…` slot ID or entity UUID) |
+| `platform.identity.push.source-claim` | none | optional: a claim that, when the token has it, must name the bound source |
+| `platform.identity.push.require-token-and-certificate` | `false` | both a token and a client certificate |
+| `platform.identity.push.cache-for` | `30s` | how long an answer is kept (0 seconds to 10 minutes) |
+
+**Switching a caller off.** Remove its line from the client-binding file and run setup (or switch it off in the IT
+Admin's integration page). The change takes effect within the cache time (`cache-for`, 30 seconds by default).
+
+**Refusals.** The calling system only hears that it is not allowed. The product's log, and its IT Admin, get the
+exact cause (and a certificate's fingerprint; no token or certificate content):
+
+| Code | Means | What to do |
+|---|---|---|
+| `IDN_PUSH_NO_CONNECTION` | No active login connection for the product with the token's issuer (or, for a certificate, for your organisation) | Check the issuer the sending system's token comes from, and that the connection is active |
+| `IDN_PUSH_AUDIENCE` | The token is not for the product's API audience | Have the login system issue the sending system's tokens for that audience |
+| `IDN_PUSH_NO_CLIENT_ID` | The token has none of the client ID claims (or no token where both are required) | Check the claim settings above |
+| `IDN_PUSH_NOT_BOUND` | The client ID is not in the client-binding file | Add its line and run setup |
+| `IDN_PUSH_BINDING_OFF` | The binding is switched off | Add the line back, if the system should send again |
+| `IDN_PUSH_ENTITY_NOT_ACTIVE` | The bound entity is not active (not activated yet, suspended, or no longer in the licence) | Have the Business Admin activate or resume it |
+| `IDN_PUSH_CLAIM_MISMATCH` | The token names another entity or source than the binding | Correct the binding, or the sending system's token |
+| `IDN_PUSH_CERT_NOT_BOUND` | The certificate's fingerprint is not in the client-binding file (or no certificate where both are required) | Add a `cert-sha256:` line (`docs/install/setup.md` section 3a) |
+| `IDN_PUSH_TOKEN_AND_CERT_DIFFER` | The token and the certificate are bound to different entities or sources | Bind both to the same entity and source |
+
+**A certificate forwarded by a proxy.** If a proxy in front of the product ends TLS and passes the client certificate
+on in a header, the product reads that header only from its own proxy (the product's install guide says how). The
+platform itself never reads such a header.
+
+The app's database user needs nothing new for this: it only reads `idn_login_connection`, `idn_machine_binding` and
+`idn_entity`.

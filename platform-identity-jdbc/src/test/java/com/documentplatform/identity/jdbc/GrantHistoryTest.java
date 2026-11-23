@@ -120,15 +120,24 @@ class GrantHistoryTest {
     }
 
     @Test
-    void aVersion2DatabaseIsRefusedUntilV3IsRunAndKeepsItsData() {
+    void aVersion2DatabaseIsRefusedUntilV3AndV4AreRunAndKeepsItsData() {
         Pg db = Pg.empty();
         db.exec(IdentitySchema.script("V1__identity.sql"), IdentitySchema.script("V2__machine_binding.sql"));
         db.exec("insert into idn_customer (tenant_id, name) values ('" + TENANT + "', 'Kept')");
         IdentitySchemaException older = assertThrows(IdentitySchemaException.class, () -> IdentitySchema.verify(db.owner));
         assertEquals(IdentitySchemaException.Problem.IDN_VERSION_OLDER, older.problem());
         db.exec(IdentitySchema.script("V3__grant_history.sql"));
+        // A history row written at V3 is an ENTITY row after V4; the V4 step changes no row.
+        db.exec("insert into idn_grant_history (tenant_id, product_code, slot_id, entity_uuid, issuer_uri, "
+                + "external_group, role_after, change, change_source, changed_by) values ('" + TENANT + "', "
+                + "'PRODUCT_A', 'ENT-TEST-0001', gen_random_uuid(), 'https://login.example.test/', 'g', 'READER', "
+                + "'ADDED', 'APP', 'app')");
+        assertEquals(IdentitySchemaException.Problem.IDN_VERSION_OLDER,
+                assertThrows(IdentitySchemaException.class, () -> IdentitySchema.verify(db.owner)).problem());
+        db.exec(IdentitySchema.script("V4__platform_grants.sql"));
         IdentitySchema.verify(db.owner);
         assertEquals(1, db.count("select count(*) from idn_customer"));
-        assertEquals(3, IdentitySchema.VERSION);
+        assertEquals(1, db.count("select count(*) from idn_grant_history where scope = 'ENTITY'"));
+        assertEquals(4, IdentitySchema.VERSION);
     }
 }

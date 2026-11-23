@@ -128,9 +128,11 @@ public final class RoleMappingFile {
             }
             boolean rowOk = true;
             boolean slotRow = slots != null && EntityUuid.isSlotId(f.get(0));
+            boolean platformRow = slots != null && productCode != null
+                    && MappingRow.PLATFORM_WIDE.equals(f.get(0));
             for (int c = 0; c < f.size(); c++) {
                 String value = f.get(c);
-                if (value.isEmpty() && c == 1 && slotRow) continue; // the name is optional for a slot ID
+                if (value.isEmpty() && c == 1 && (slotRow || platformRow)) continue; // optional for these
                 if (value.isEmpty()) {
                     errors.add(new MappingError(line, MappingError.Code.BLANK_VALUE, HEADER.get(c) + " is empty"));
                     rowOk = false;
@@ -146,6 +148,48 @@ public final class RoleMappingFile {
             if (!rowOk) continue;
 
             String rawId = f.get(0), name = f.get(1), group = f.get(2), role = f.get(3);
+            if (platformRow) {
+                if (!name.isEmpty()) {
+                    errors.add(new MappingError(line, MappingError.Code.ENTITY_NAME_MISMATCH, "a * row (platform-wide) "
+                            + "names no entity; leave entity_name empty"));
+                    rowOk = false;
+                }
+                String alias = null;
+                Optional<String> aliased = roles.aliasTarget(role);
+                if (aliased.isPresent()) {
+                    alias = role;
+                    role = aliased.get();
+                }
+                Optional<String> canonical = roles.canonicalEntityRole(role);
+                if (canonical.isEmpty()) {
+                    errors.add(new MappingError(line, MappingError.Code.UNKNOWN_ROLE, "unknown role \"" + role + "\""));
+                    rowOk = false;
+                } else if (!canonical.get().equals(role)) {
+                    errors.add(new MappingError(line, MappingError.Code.ROLE_NOT_WRITTEN_CANONICALLY,
+                            "role \"" + role + "\" must be written exactly as \"" + canonical.get() + "\""));
+                    rowOk = false;
+                } else if (!roles.isPlatformRole(role)) {
+                    errors.add(new MappingError(line, MappingError.Code.ENTITY_ROLE_PLATFORM_WIDE, "role \"" + role
+                            + "\" is an entity role; a * row (platform-wide) takes only the product's platform roles"));
+                    rowOk = false;
+                }
+                if (group.length() > MAX_GROUP_LENGTH) {
+                    errors.add(new MappingError(line, MappingError.Code.GROUP_TOO_LONG,
+                            "group is " + group.length() + " characters; the most accepted is " + MAX_GROUP_LENGTH));
+                    rowOk = false;
+                }
+                Integer firstPlatform = seen.putIfAbsent(MappingRow.PLATFORM_WIDE + "\u0000" + group + "\u0000" + role,
+                        line);
+                if (firstPlatform != null) {
+                    errors.add(new MappingError(line, MappingError.Code.DUPLICATE_ROW, "the same row as line " + firstPlatform));
+                    rowOk = false;
+                }
+                if (rowOk) {
+                    rows.add(new MappingRow(line, null, null, group, role, MappingRow.PLATFORM_WIDE, productCode,
+                            alias));
+                }
+                continue;
+            }
             EntityId entity;
             Optional<MappingTargets.Target> target = Optional.empty();
             if (slotRow) {
@@ -212,8 +256,13 @@ public final class RoleMappingFile {
                         "role \"" + role + "\" must be written exactly as \"" + canonical.get() + "\""));
                 rowOk = false;
             } else if (roles.isPlatformRole(role)) {
-                errors.add(new MappingError(line, MappingError.Code.PLATFORM_ROLE,
-                        "role \"" + role + "\" is the platform role; it is set for the installation, never in this file"));
+                if (slots != null && productCode != null) {
+                    errors.add(new MappingError(line, MappingError.Code.PLATFORM_ROLE_ON_ENTITY, "role \"" + role
+                            + "\" is a platform role; grant it platform-wide on a row with entity_id *"));
+                } else {
+                    errors.add(new MappingError(line, MappingError.Code.PLATFORM_ROLE,
+                            "role \"" + role + "\" is the platform role; it is set for the installation, never in this file"));
+                }
                 rowOk = false;
             }
 

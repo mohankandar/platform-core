@@ -109,6 +109,20 @@ ENT-…,,Finance Readers,READER
   same transaction, with the setup run's ID (shown on the first line of the output and in the run log as `run=…`).
   A group whose role changes from one role to another in one run is one `CHANGED` row. The app's audit page shows
   the history per entity; see `docs/install/identity.md` section 7.
+- **Roles for your whole organisation: `*` rows.** Some products have platform roles (`platformRoles` in
+  `product-roles.json`), for example a platform operations admin who looks after every entity. Such a role is
+  granted once, for all entities, on a row with `*` as its `entity_id` (leave `entity_name` empty):
+
+  ```
+  *,,Platform Operations,PLATFORM_ADMIN
+  ```
+
+  Give platform roles only to the small group of people who run the product for the whole organisation, never to
+  a department's group. A `*` row takes only a platform role (`SETUP_ENTITY_ROLE_PLATFORM_WIDE` otherwise), and a
+  platform role is never granted on an entity's row (`SETUP_PLATFORM_ROLE_ON_ENTITY`); both refuse the whole file.
+  The plan shows `platform grant PRODUCT_A (every entity): group "…" -> PLATFORM_ADMIN`. `*` rows follow the same
+  rules as the other rows: a `*` grant no longer in the file is kept unless you add `--remove-unlisted-grants`, and
+  every change is in the grant history (scope `PLATFORM`) with the run's ID. Needs identity schema version 4.
 
 ## 3a. The client-binding file (only if other systems send to the product)
 
@@ -163,6 +177,38 @@ line number, for example `line 4: SOURCE_UNKNOWN`; nothing is written):
 | `SOURCE_UNKNOWN` | The source is not listed under the product's `sources` in the sign-in file |
 | `SLOT_UNKNOWN` | The entity slot is not in your licence |
 | `CLIENT_BOUND_ELSEWHERE` | The client is already set up for another entity or system |
+
+**Systems that sign in with a client certificate.** A system that calls the product with a client certificate
+(mutual TLS) instead of a token from your login system gets a line too. Its `client_id` is `cert-sha256:` followed
+by the certificate's SHA-256 fingerprint: 64 characters, digits and lower-case `a`–`f`, no colons. It is not a
+secret: the fingerprint is public, the certificate's private key never leaves the sending system. Get it from the
+certificate file (`.cer`, `.crt` or `.pem`; not the private key):
+
+- **Windows** (PowerShell):
+
+  ```powershell
+  $c = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 'C:\certs\loan-system.cer'
+  'cert-sha256:' + (([System.Security.Cryptography.SHA256]::Create().ComputeHash($c.RawData) |
+      ForEach-Object { $_.ToString('x2') }) -join '')
+  ```
+
+- **Linux:**
+
+  ```sh
+  echo "cert-sha256:$(openssl x509 -in loan-system.pem -noout -fingerprint -sha256 | cut -d= -f2 | tr -d ':' | tr 'A-F' 'a-f')"
+  ```
+
+```
+cert-sha256:9664be3e90949f0310cf8428d15808bcc134b3f52c85cbfa55af328a3c19a5ab,ENT-…,loan-system,Loan system certificate 2026
+```
+
+The plan marks these lines `(client certificate)`. A `cert-sha256:` value that is not 64 lower-case hex characters is
+refused (`CLIENT_ID_INVALID`).
+
+**Renewing a certificate without a break.** Before the old certificate ends, add a second line with the new
+certificate's fingerprint, for the same entity and source, and run setup. Both certificates are accepted. Once the
+sending system uses the new one, remove the old line and run setup again: the old certificate is switched off
+(within the product's cache time, 30 seconds by default).
 
 **Changes.** The file is the complete list for the product. A new line is created; a line you remove switches that
 client off (it is kept as INACTIVE, never deleted, and the plan shows `switch off`); a line you add back switches it
@@ -260,7 +306,9 @@ Refusal codes: `SETUP_BAD_OPTION`, `SETUP_FILE_UNREADABLE`, `SETUP_KEYS_INVALID`
 licence code, for example `LICENCE_UNKNOWN_KEY_ID`), `SETUP_SIGNIN_INVALID`, `SETUP_MODE_NOT_SUPPORTED`,
 `SETUP_HTTP_ISSUER_NOT_ALLOWED` (section 2), `SETUP_WRONG_TENANT`, `SETUP_PRODUCT_NOT_IN_LICENCE`,
 `SETUP_PRODUCT_NOT_IN_SIGNIN`, `SETUP_PRODUCT_ROLES_INVALID` (also a bad alias or `customerKeys` value),
-`SETUP_MAPPING_INVALID` (with every bad line), `SETUP_CLIENT_BINDINGS_INVALID` (with every bad line, section 3a), `SETUP_PROFILE_INVALID` and `SETUP_PROFILE_TAG_MISSING` (section 3b),
+`SETUP_MAPPING_INVALID` (with every bad line), `SETUP_PLATFORM_ROLE_ON_ENTITY` and `SETUP_ENTITY_ROLE_PLATFORM_WIDE`
+(a role of the wrong kind on an entity or a `*` row, section 3), `SETUP_CLIENT_BINDINGS_INVALID` (with every bad line,
+section 3a), `SETUP_PROFILE_INVALID` and `SETUP_PROFILE_TAG_MISSING` (section 3b),
 `SETUP_DB_SETTINGS_MISSING`, `SETUP_DB_UNREACHABLE`,
 `SETUP_TABLES_NOT_READY`, `SETUP_OTHER_CUSTOMER_INSTALLED`, `SETUP_LICENCE_OLDER`, `SETUP_LICENCE_VERSION_CONFLICT`,
 `SETUP_CONFIG_OTHER_TENANT`, `SETUP_KEY_SERVICE_SETTINGS_MISSING`, `SETUP_KEY_SERVICE_FAILED`,

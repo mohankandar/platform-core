@@ -30,6 +30,8 @@ public final class IdentityAdmissionException extends RuntimeException {
         UNKNOWN_ROLE,
         /** A membership carries no role, or the platform role (checked by {@link SharedIssuerPreflight}). */
         INVALID_ROLE_GRANT,
+        /** A platform-wide grant gives a role that is not one of the product's platform roles. */
+        ENTITY_ROLE_IN_PLATFORM_GRANT,
         /** A grant gives the product's platform role through an entity group. */
         PLATFORM_ROLE_IN_ENTITY_GRANT,
         /** The verified groups claim is not a list. */

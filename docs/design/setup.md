@@ -123,6 +123,7 @@ Fixed now because Vero task 0041 builds its own loader to the same format (on En
 - **Header (exact, required):** `client_id,entity_slot,source,description`
 - **Columns:**
   - `client_id`: the verified token's client principal exactly as the customer's login system issues it (e.g. the Okta client ID). 1–255 characters, no spaces, commas, quotes or control characters. Compared as given (case-sensitive).
+    **Additive (P028):** a client ID `cert-sha256:<64 lowercase hex>` is the SHA-256 fingerprint (DER) of a caller's client certificate; such a caller needs no token. Two lines with two fingerprints for the same entity and source are a rotation overlap. The reader and its rules are unchanged; setup refuses a `cert-sha256:` value of another form (`CLIENT_ID_INVALID`) and marks these lines `(client certificate)` in the plan.
   - `entity_slot`: the licence slot ID (`ENT-…`) the client may deliver to. Must be a slot of this customer's licence (it need not be activated yet; it is used only once ACTIVE).
   - `source`: the product's sending-system key, `[a-z0-9][a-z0-9._-]{0,63}`. Must be listed in the sign-in file under the product's `"sources"` (optional list of `{ "key": "…", "name": "…" }`; added to `platform-signin/1` as an optional field, so older files still work).
   - `description`: optional free text for people (up to 200 characters); never shown to callers; no secrets.
@@ -139,8 +140,8 @@ Fixed now because Vero task 0041 builds its own loader to the same format (on En
 Decided by the LexaVault design chat (board LV-6, LV-14); built in P031 (`docs/work/P031-report.md`).
 
 - **Login-connection drafts** (`LoginConnections`, identity-core): draft (copy of the ACTIVE connection, or the
-  first one), test sign-in (`OidcTestSignIn` over an `IssuerFetch`; production: `OutboundIssuerFetch` in
-  platform-integration, the integrations' outbound rules), activate (VALIDATED only; old ACTIVE → DISABLED in one
+  first one), test sign-in (`OidcTestSignIn` over an `IssuerFetch`; production: `OutboundIssuerFetch`, since P028 in
+  platform-identity-spring on platform-outbound), activate (VALIDATED only; old ACTIVE → DISABLED in one
   transaction), rollback (previous ACTIVE values as a new version). At most one DRAFT or VALIDATED per customer and
   product (index in identity V3). Setup reads only ACTIVE/DISABLED connections; drafts are the app's.
 - **Local test issuers:** `http` only on `localhost`, `127.0.0.1`, `[::1]` and only under a licence signed by a key
@@ -152,3 +153,25 @@ Decided by the LexaVault design chat (board LV-6, LV-14); built in P031 (`docs/w
   by `GroupGrantStore`; read with `GrantHistory.forEntity`.
 - **Customer-keys guard:** `"customerKeys": "required"` in `product-roles.json` refuses `--no-customer-keys`
   (`SETUP_CUSTOMER_KEYS_REQUIRED`).
+
+## 8. P028 (2026-11-22): push-API callers and platform-wide grants
+
+Built in P028 (`docs/work/P028-report.md`).
+
+- **Push-API callers** (`identity.push.PushCaller`, identity-core; Postgres `PostgresPushCallerDirectory`, in-memory
+  `InMemoryIdentityStore.pushCallerDirectory()`; Spring bean from `platform.identity.push.*`). An app's push API has
+  verified the caller's token or client certificate; the controller asks who the caller is. Token: issuer → the
+  customer's ACTIVE connection for the product; audiences must hold its `apiAudience`; client ID from the configured
+  claims (default `client_id`, `azp`, `cid`, `sub`); the client's binding under that customer ACTIVE, its entity
+  ACTIVE; optional entity and source claims must equal the binding when present. Certificate: the binding
+  `cert-sha256:<hex>` (section 6.1, additive), the customer's connection ACTIVE. Both (or `requireTokenAndCertificate`):
+  the same customer, entity and source. Refusals `IDN_PUSH_*` (neutral to the caller); answers kept 30 s per caller;
+  a database error throws. `admission.MachineSourceBindings` (entity and source) beside `MachineEntityBindings`
+  (unchanged).
+- **Platform-wide grants.** A role-mapping row with `entity_id` `*` grants one of the product's `platformRoles` to a
+  group for the customer and product (`SETUP_ENTITY_ROLE_PLATFORM_WIDE` for an entity role on it,
+  `SETUP_PLATFORM_ROLE_ON_ENTITY` for a platform role on an entity row). Stored in `idn_platform_grant` (identity
+  **V4**); `idn_grant_history` gains `scope` (ENTITY or PLATFORM; PLATFORM rows have no entity). Setup plans, applies,
+  removes (only with `--remove-unlisted-grants`) and records them like entity grants. `PlatformGroupAuthorization`
+  gives a signed-in person's platform roles from `PlatformGroupGrants` (customer's ACTIVE connection and product);
+  `EntityGroupAuthorization` keeps refusing platform roles through entity grants.

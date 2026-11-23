@@ -9,6 +9,7 @@ import com.documentplatform.identity.admission.ConnectionKey;
 import com.documentplatform.identity.admission.EntityGroupGrants;
 import com.documentplatform.identity.admission.EntityId;
 import com.documentplatform.identity.admission.MachineEntityBindings;
+import com.documentplatform.identity.admission.PlatformGroupGrants;
 import com.documentplatform.identity.mapping.Grant;
 import com.documentplatform.identity.store.ActivationOutcome;
 import com.documentplatform.identity.store.ChangeSource;
@@ -29,6 +30,8 @@ import com.documentplatform.identity.store.MachineBinding;
 import com.documentplatform.identity.store.MachineBindingChange;
 import com.documentplatform.identity.store.MachineBindingStatus;
 import com.documentplatform.identity.store.MachineBindingStore;
+import com.documentplatform.identity.store.PlatformGrantChange;
+import com.documentplatform.identity.store.PlatformGrantStore;
 import com.documentplatform.identity.store.SlotSync;
 
 import java.net.URI;
@@ -58,7 +61,7 @@ import static com.documentplatform.identity.store.ActivationOutcome.Result.*;
  * Thread safe (one lock).
  */
 public final class InMemoryIdentityStore implements EntityStore, LoginConnectionStore, GroupGrantStore,
-        MachineBindingStore, GrantHistory {
+        MachineBindingStore, GrantHistory, PlatformGrantStore {
 
     private record GrantKey(String slotId, String productCode, String issuer) {
     }
@@ -442,6 +445,55 @@ public final class InMemoryIdentityStore implements EntityStore, LoginConnection
         return added.size() + removed.size();
     }
 
+    // ---- platform-wide grants (identity V4)
+
+    private record PlatformKey(String tenantId, String productCode, String issuer) {
+    }
+
+    private final Map<PlatformKey, Set<Grant>> platformGrants = new LinkedHashMap<>();
+    private final List<PlatformGrantChange> platformHistory = new ArrayList<>();
+
+    @Override
+    public synchronized Set<Grant> platformGrants(String tenantId, String productCode, URI issuer) {
+        return Set.copyOf(platformGrants.getOrDefault(new PlatformKey(tenantId, productCode, issuer.toString()),
+                Set.of()));
+    }
+
+    @Override
+    public synchronized int changePlatform(String tenantId, String productCode, URI issuer, Collection<Grant> add,
+                                           Collection<Grant> remove, GrantAuthor author) {
+        EntityUuid.requireTenantId(tenantId);
+        LoginConnection.requireProductCode(productCode);
+        Objects.requireNonNull(issuer, "issuer");
+        Objects.requireNonNull(author, "author");
+        if (add.isEmpty() && remove.isEmpty()) return 0;
+        if (!customers.containsKey(tenantId)) throw new IllegalStateException("customer is not stored");
+        Set<Grant> set = platformGrants.computeIfAbsent(new PlatformKey(tenantId, productCode, issuer.toString()),
+                k -> new LinkedHashSet<>());
+        List<Grant> removed = new ArrayList<>();
+        for (Grant g : new LinkedHashSet<>(remove)) {
+            if (set.remove(g)) removed.add(g);
+        }
+        List<Grant> added = new ArrayList<>();
+        for (Grant g : new LinkedHashSet<>(add)) {
+            if (set.add(g)) added.add(g);
+        }
+        Instant at = clock.instant();
+        for (GrantStep step : GrantStep.of(added, removed)) {
+            platformHistory.add(new PlatformGrantChange(tenantId, productCode, issuer, step.group(), step.roleBefore(),
+                    step.roleAfter(), step.kind(), author.source(), author.changedBy(), at, author.setupRunId()));
+        }
+        return added.size() + removed.size();
+    }
+
+    @Override
+    public synchronized List<PlatformGrantChange> forPlatform(String tenantId, String productCode, Instant from,
+                                                              Instant to) {
+        return platformHistory.stream().filter(g -> g.tenantId().equals(tenantId)
+                && g.productCode().equals(productCode) && !g.changedAt().isBefore(from) && g.changedAt().isBefore(to))
+                .toList();
+    }
+
     // ---- grant history
 
     @Override
@@ -592,7 +644,8 @@ public final class InMemoryIdentityStore implements EntityStore, LoginConnection
         };
     }
 
-    public final class Lookup implements ActiveEntityCandidates, EntityGroupGrants, OidcConnectionBindingResolver {
+    public final class Lookup implements ActiveEntityCandidates, EntityGroupGrants, PlatformGroupGrants,
+            OidcConnectionBindingResolver {
 
         private final String productCode;
 
@@ -623,6 +676,35 @@ public final class InMemoryIdentityStore implements EntityStore, LoginConnection
                 }
             }
             return Map.copyOf(out);
+        }
+
+        @Override
+        public Map<String, Set<String>> activePlatformGrants(ConnectionKey key) {
+            if (key == null || key.issuer() == null || key.providerId() == null || key.providerId().isBlank()
+                    || key.audience() == null || key.audience().isBlank()) {
+                return Map.of();
+            }
+            synchronized (InMemoryIdentityStore.this) {
+                Map<String, Map<String, Set<String>>> byTenant = new LinkedHashMap<>();
+                for (LoginConnection c : connections.values()) {
+                    if (c.status() != IdentityConnectionStatus.ACTIVE || !c.productCode().equals(productCode)
+                            || !c.providerId().equals(key.providerId())
+                            || !c.issuer().toString().equals(key.issuer().toString())
+                            || !c.apiAudience().equals(key.audience())) {
+                        continue;
+                    }
+                    Set<Grant> set = platformGrants.getOrDefault(new PlatformKey(c.tenantId(), productCode,
+                            c.issuer().toString()), Set.of());
+                    for (Grant g : set) {
+                        byTenant.computeIfAbsent(c.tenantId(), t -> new LinkedHashMap<>())
+                                .computeIfAbsent(g.group(), x -> new LinkedHashSet<>()).add(g.role());
+                    }
+                }
+                if (byTenant.size() > 1) return null; // as Postgres: never merged across customers
+                Map<String, Set<String>> out = new LinkedHashMap<>();
+                byTenant.values().forEach(m -> m.forEach((g, r) -> out.put(g, Set.copyOf(r))));
+                return Map.copyOf(out);
+            }
         }
 
         @Override

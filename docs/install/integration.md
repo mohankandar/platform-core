@@ -12,19 +12,19 @@ Secrets never go into these settings or into an integration's configuration. Onl
 name under which the secret is kept in your secret store, for example `integration/proxy-password`. The app reads the
 secret at the moment it is needed, so a changed password works without a restart.
 
-## 1. App settings (`platform.integration.*`)
+## 1. App settings (`platform.outbound.*` and `platform.integration.*`)
 
 | Property | Default | |
 |---|---|---|
 | `platform.integration.enabled` | `true` | `false` switches integrations off |
-| `platform.integration.installation` | — | **required**: `ON_PREMISES` (your own systems) or `HOSTED` (our hosted service) |
-| `platform.integration.allow-internal-addresses` | `false` | on premises only: the app may call addresses on your internal network (loopback and private ranges) and plain `http` there |
-| `platform.integration.allow-sign-in-none` | `false` | on premises only: an integration may call without signing in (warned and audited) |
-| `platform.integration.private-ca-file` | none | your private certificate authorities, one PEM file (section 3) |
-| `platform.integration.proxy.host`, `.port` | none | your outbound proxy (section 2) |
-| `platform.integration.proxy.bypass` | none | hosts that do not use the proxy, comma-separated: an exact name (`files01`) or a suffix (`.corp.example`) |
-| `platform.integration.proxy.user` | none | the proxy's sign-in user, when the proxy asks for one |
-| `platform.integration.proxy.password-secret` | none | where the proxy password is kept in the secret store (a reference, never the password) |
+| `platform.outbound.installation` | — | **required**: `ON_PREMISES` (your own systems) or `HOSTED` (our hosted service) |
+| `platform.outbound.allow-internal-addresses` | `false` | on premises only: the app may call addresses on your internal network (loopback and private ranges) and plain `http` there |
+| `platform.outbound.allow-sign-in-none` | `false` | on premises only: an integration may call without signing in (warned and audited) |
+| `platform.outbound.private-ca-file` | none | your private certificate authorities, one PEM file (section 3) |
+| `platform.outbound.proxy.host`, `.port` | none | your outbound proxy (section 2) |
+| `platform.outbound.proxy.bypass` | none | hosts that do not use the proxy, comma-separated: an exact name (`files01`) or a suffix (`.corp.example`) |
+| `platform.outbound.proxy.user` | none | the proxy's sign-in user, when the proxy asks for one |
+| `platform.outbound.proxy.password-secret` | none | where the proxy password is kept in the secret store (a reference, never the password) |
 | `platform.integration.limits.connect-timeout` | `10s` | default for new integrations: 1 second to 2 minutes |
 | `platform.integration.limits.read-timeout` | `120s` | default: 1 second to 30 minutes. For a folder export, this is the time allowed for writing one file |
 | `platform.integration.limits.max-file-size` | `250MB` | default: the largest document |
@@ -46,8 +46,15 @@ secret at the moment it is needed, so a changed password works without a restart
 
 The limits are defaults: each integration keeps its own copy, which the integration screens can change.
 
-If a setting is wrong, the app does not start. Its log then shows `INTEGRATION_SETTINGS_INVALID` with every problem
-at once, for example `platform.integration.installation is required: ON_PREMISES or HOSTED`.
+**The outbound settings** (`platform.outbound.*`, module `platform-outbound-spring`) are shared: the test sign-in of a
+new login connection (`docs/install/identity.md` section 6) goes through the same installation, proxy and private
+certificate authority. Before platform-core 0.3.0 (never released) they were named
+`platform.integration.installation`, `.allow-internal-addresses`, `.allow-sign-in-none`, `.private-ca-file` and
+`.proxy.*`. The old names now stop the app with `platform.integration.… moved to platform.outbound.…`. Wrong
+outbound settings stop the app with `OUTBOUND_SETTINGS_INVALID` and every problem listed.
+
+If an integration setting is wrong, the app does not start. Its log then shows `INTEGRATION_SETTINGS_INVALID` with
+every problem at once, for example `platform.outbound.installation is required: ON_PREMISES or HOSTED`.
 
 The app's database user needs only these rights on the integration tables (created by the app's schema step, never
 at startup; schema version 2):
@@ -69,11 +76,11 @@ The app's own logs never hold a secret.
 ## 2. The outbound proxy
 
 ```properties
-platform.integration.proxy.host=proxy.corp.example
-platform.integration.proxy.port=3128
-platform.integration.proxy.bypass=.corp.example,files01
-platform.integration.proxy.user=svc-documents
-platform.integration.proxy.password-secret=integration/proxy-password
+platform.outbound.proxy.host=proxy.corp.example
+platform.outbound.proxy.port=3128
+platform.outbound.proxy.bypass=.corp.example,files01
+platform.outbound.proxy.user=svc-documents
+platform.outbound.proxy.password-secret=integration/proxy-password
 ```
 
 Every call of an integration that uses the proxy goes through it, including the calls that fetch sign-in tokens. Hosts
@@ -89,7 +96,7 @@ The proxy password is only sent to the proxy, never to the systems behind it.
 
 If your internal systems use certificates from your own certificate authority, put the CA certificates in one PEM
 file (one or more `-----BEGIN CERTIFICATE-----` blocks). Then set
-`platform.integration.private-ca-file=/etc/documents/private-ca.pem`. They are trusted **in addition to** the
+`platform.outbound.private-ca-file=/etc/documents/private-ca.pem`. They are trusted **in addition to** the
 certificates the system already trusts; nothing is replaced. There is no "trust everything" switch. The file is read
 at startup: restart the app after you change it.
 
