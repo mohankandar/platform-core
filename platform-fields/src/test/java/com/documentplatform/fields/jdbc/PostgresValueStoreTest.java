@@ -672,6 +672,25 @@ class PostgresValueStoreTest {
         assertEquals(before, values.readSensitive(ref(A, "c1")));
     }
 
+    /**
+     * crypto-30 (P040): items are bound to their record context too. Another record's envelope and item copied in
+     * together (so the data key is right) still do not open: the record context differs.
+     */
+    @Test
+    void aSealedValueCopiedWithItsEnvelopeToAnotherRecordDoesNotOpen() {
+        values.claim(ref(A, "c1"), vals("contract_number", "AB-1001", "borrower_name", List.of("Alice Smith")));
+        values.claim(ref(A, "c2"), vals("contract_number", "AB-1002", "borrower_name", List.of("Bob Jones")));
+        db.exec("update fld_record set envelope = (select envelope from fld_record where record_id = 'c1') "
+                + "where record_id = 'c2'",
+                "update fld_value set sealed_value = (select v.sealed_value from fld_value v join fld_record r on "
+                        + "r.record_uuid = v.record_uuid where r.record_id = 'c1' and v.field_key = 'borrower_name') "
+                        + "where field_key = 'borrower_name' and record_uuid = (select record_uuid from fld_record "
+                        + "where record_id = 'c2')");
+        CryptoException e = assertThrows(CryptoException.class, () -> values.readSensitive(ref(A, "c2")));
+        assertEquals(CryptoError.CRYPTO_CIPHERTEXT_INVALID, e.code());
+        assertFalse(e.getMessage().toLowerCase(Locale.ROOT).contains("alice"), e.getMessage());
+    }
+
     private void restore(List<String> original, String where) {
         for (String row : original) {
             String[] kv = row.split("=", 2);

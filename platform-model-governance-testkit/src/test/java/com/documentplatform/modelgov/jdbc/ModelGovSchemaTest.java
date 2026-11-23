@@ -40,6 +40,37 @@ class ModelGovSchemaTest {
         assertTrue(before.contains(ModelGovSchema.VERSION_TABLE));
     }
 
+    /**
+     * install-model-governance-2 (P040): the install guide's grants are exactly enough: the grant statements of
+     * docs/install/model-governance.md section 1, run for a login with no other rights, pass the startup check and
+     * let the store do its work.
+     */
+    @Test
+    void theInstallGuidesGrantsAreEnough() throws Exception {
+        String guide = java.nio.file.Files.readString(java.nio.file.Path.of("../docs/install/model-governance.md"));
+        List<String> grants = new java.util.ArrayList<>();
+        StringBuilder current = null;
+        for (String line : guide.replace("\r\n", "\n").split("\n")) {
+            String t = line.strip();
+            if (current == null && t.startsWith("grant ")) current = new StringBuilder();
+            if (current != null) {
+                current.append(t).append(' ');
+                if (t.endsWith(";")) {
+                    grants.add(current.toString().strip().replace(";", ""));
+                    current = null;
+                }
+            }
+        }
+        assertTrue(grants.size() >= 5, "found " + grants);
+        Pg db = Pg.migrated();
+        DataSource bare = db.bareUser();
+        db.exec(grants.stream().map(g -> g.replace("app_runtime", db.bareUserName())).toArray(String[]::new));
+        assertDoesNotThrow(() -> ModelGovSchema.verify(bare));
+        PostgresModelGovStore st = new PostgresModelGovStore(bare);
+        Scenario.write(st);
+        assertEquals(0, st.purgeReadings(Instant.parse("2020-01-01T00:00:00Z")));
+    }
+
     @Test
     void verifyNamesWhatIsWrong() {
         assertEquals(ModelGovSchemaException.Problem.MG_TABLES_MISSING, problem(Pg.empty().owner));

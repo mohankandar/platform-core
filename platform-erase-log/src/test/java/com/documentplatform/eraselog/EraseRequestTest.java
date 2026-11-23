@@ -9,6 +9,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** An entry holds ids only: anything that looks like a value is refused, and the message never repeats it. */
 class EraseRequestTest {
@@ -32,6 +33,20 @@ class EraseRequestTest {
         String[] values = {"Philippa Quillfeather", "742 Evergreen Terrace", "philippa@example.com",
                 "pcv1.AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRo", "pci1.AQIDBAUGBwgJ", "pck1.AQIDBAUG",
                 "f1.k9dJ3mQ0aZx7Lr2tYw8uVb4nC6eS1hGfPq", "vault:v1:abcdef", "name=Philippa", "Smith, John"};
+        int pinned = 0;
+        for (String v : values) {
+            // erase-log-31 (P040): a value that fits the ID form is refused as a value, not as a malformed ID.
+            if (EraseRequest.RECORD_ID.matcher(v).matches()) {
+                pinned++;
+                assertEquals(EraseLogError.ERASE_ENTRY_VALUE_REFUSED, assertThrows(EraseLogException.class,
+                        () -> request(v, ErasedBy.rule("RET-7Y"), "AUD-1")).code(), v);
+            }
+            if (EraseRequest.ID.matcher(v).matches()) {
+                assertEquals(EraseLogError.ERASE_ENTRY_VALUE_REFUSED, assertThrows(EraseLogException.class,
+                        () -> request("rec-1", ErasedBy.rule("RET-7Y"), v)).code(), v);
+            }
+        }
+        assertTrue(pinned >= 3, "the e-mail, sealed, fingerprint and ciphertext samples fit the ID form: " + pinned);
         for (String v : values) {
             refused(v, () -> request(v, ErasedBy.rule("RET-7Y"), "AUD-1"));
             refused(v, () -> request("rec-1", ErasedBy.person(v), "AUD-1"));

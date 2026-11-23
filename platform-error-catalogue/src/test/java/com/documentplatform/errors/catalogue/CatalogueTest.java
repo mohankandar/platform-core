@@ -133,6 +133,24 @@ class CatalogueTest {
         }
     }
 
+    /** install-monitoring-5 (P040): the diagnostic bundle lists every platform schema's version table. */
+    @Test
+    @SuppressWarnings("unchecked")
+    void theDiagnosticBundleReadsEverySchemasVersionTable() throws Exception {
+        java.lang.reflect.Field f = Class.forName("com.documentplatform.monitoring.spring.DiagnosticBundles")
+                .getDeclaredField("VERSION_TABLES");
+        f.setAccessible(true);
+        List<String> listed = (List<String>) f.get(null);
+        assertEquals(new TreeSet<>(List.of(com.documentplatform.identity.jdbc.IdentitySchema.VERSION_TABLE,
+                        com.documentplatform.licensing.jdbc.LicensingSchema.VERSION_TABLE,
+                        com.documentplatform.notifications.jdbc.NotificationSchema.VERSION_TABLE,
+                        com.documentplatform.fields.jdbc.FieldSchema.VERSION_TABLE,
+                        com.documentplatform.eraselog.jdbc.EraseLogSchema.VERSION_TABLE,
+                        com.documentplatform.integration.jdbc.IntegrationSchema.VERSION_TABLE,
+                        com.documentplatform.modelgov.jdbc.ModelGovSchema.VERSION_TABLE)),
+                new TreeSet<>(listed));
+    }
+
     /** xc-catalogue-19 (P037): store and read failures carry a code; the message names the operation and SQL state. */
     @Test
     void everyStoreFailureCarriesItsCode() throws Exception {
