@@ -23,6 +23,10 @@ The tables are created only by the app's schema step, never at app startup.
   grant select on fld_schema_version to app_runtime;
   ```
 
+  The startup check (section 2) needs fewer rights than these: it does not ask for DELETE on
+  `fld_field_definition`, UPDATE or DELETE on `fld_field_definition_history`, or UPDATE on `fld_value`. Granting the
+  list above is still fine; leave it as it is.
+
   Even with DELETE granted, the database refuses to delete a field definition or a history entry, to change a
   field's key, or to change a history entry: removing a field means switching it off. It also refuses a sensitive
   value with any readable column filled in.
@@ -60,10 +64,31 @@ and a message saying what to do:
 
 The Business Admin can export an entity's field list from one product (`platform-fields/1` file, JSON, definitions
 only: no values, no app-only settings) and import it into the other. Import matches fields by key, creates the new
-ones, and never changes an existing field; a field whose type differs is reported as a conflict.
+ones, and never changes an existing field. Three kinds of line are reported as conflicts: a field whose type differs
+(`TYPE_DIFFERS`), a MONEY field in another currency (`CURRENCY_DIFFERS`), and a key that differs from an existing one
+only in capitals (`KEY_CASE_DIFFERS`).
 
 ## 4. Backups
 
-A database backup holds sensitive values only encrypted (`pci1.` texts) and as keyed fingerprints (`f1.` texts). Neither
+A database backup holds sensitive values only encrypted (`pci1.` texts in `fld_value`, under each record's
+envelope, a `pck1.` text in `fld_record.envelope`) and as keyed fingerprints (`f<version>.` texts: `f1.`, then `f2.`
+and so on after a fingerprint key rotation). Neither
 can be read or matched without the customer's keys in the key service, which are never exported. Restoring a backup
 needs the same key service (or its own backup) to read sensitive values again.
+
+## 5. Wiring in the app
+
+There is no `platform-fields-spring` module (P019): the app builds the field objects itself, on its own `DataSource`
+and the beans of `platform-crypto-spring` (`KeyService` and `CustomerId`, `docs/install/crypto.md`):
+
+```java
+FieldSchema.verify(dataSource);                                   // at startup; stops the app with an FLD_ code
+PostgresFieldStore fieldStore = new PostgresFieldStore(dataSource);
+PostgresValueStore valueStore = new PostgresValueStore(dataSource);
+FieldDefinitions definitions = new FieldDefinitions(fieldStore, valueStore);   // the value store locks types
+FieldValues values = new FieldValues(customerId, fieldStore, valueStore, keyService, Clock.systemUTC(), legalHolds);
+```
+
+`legalHolds` is the app's own `LegalHolds` (leave it out when the app has none). To erase case fields, the app also
+registers `new CaseFieldsEraseHandler(values, valueStore, legalHolds)` as an `EraseHandler` bean for the erase log
+(`docs/install/erase-log.md`). Codes: `docs/errors/platform-error-codes.md`.
