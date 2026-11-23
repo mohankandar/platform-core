@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.documentplatform.platform</groupId>
         <artifactId>platform-core</artifactId>
-        <version>0.7.0-SNAPSHOT</version>
+        <version>0.6.1</version>
     </parent>
     <artifactId>platform-notifications</artifactId>
     <description>Notifications capability: event catalogue, settings, routing, summaries, continuous-condition alerts,
