@@ -3,6 +3,7 @@ package com.documentplatform.integration;
 import com.documentplatform.integration.config.ConfigJson;
 import com.documentplatform.integration.config.Rule;
 import com.documentplatform.integration.config.SignIn;
+import com.documentplatform.integration.json.Json;
 import com.documentplatform.integration.result.AttemptResult;
 import com.documentplatform.integration.result.Outcome;
 import com.documentplatform.integration.store.StoredIntegration;
@@ -116,6 +117,22 @@ class ClassificationRulesTest {
         assertEquals(Outcome.REFUSED, send().outcome());
         fx.mock.busy(429, null, null);
         assertEquals(Outcome.BUSY, send().outcome());
+    }
+
+    @Test
+    void aDestinationCodeThatIsNotACodeIsNeverRepeated() {
+        // xc-never-leak-69: only [A-Za-z0-9_.:-]{1,40} is kept as the destination's code; other answer text is dropped.
+        for (String text : List.of("Account 12345 belongs to Ann Lee", "A".repeat(41), "line\nbreak", "")) {
+            fx.mock.clearRoutes().route("POST", "/api/submissions", 409, "{\"code\":" + Json.quote(text) + "}");
+            AttemptResult r = send();
+            assertEquals(Outcome.REFUSED, r.outcome(), r.toString());
+            assertNull(r.destinationCode(), text);
+            if (!text.isEmpty()) assertFalse(r.toString().contains(text));
+        }
+        fx.mock.clearRoutes().route("POST", "/api/submissions", 409, "{\"code\":\"" + "A".repeat(40) + "\"}");
+        assertEquals("A".repeat(40), send().destinationCode(), "40 characters is still a code");
+        fx.mock.clearRoutes().route("POST", "/api/submissions", 409, "{\"code\":4711}");
+        assertEquals("4711", send().destinationCode(), "a number is a code too");
     }
 
     @Test
