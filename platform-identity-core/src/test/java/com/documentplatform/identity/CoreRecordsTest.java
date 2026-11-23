@@ -9,8 +9,10 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Pins the validation of the 0.2.1 core records and the stable identity id. */
 class CoreRecordsTest {
@@ -42,6 +44,22 @@ class CoreRecordsTest {
         assertEquals(Set.of("g1"), identity.groups());
         assertThrows(IllegalArgumentException.class, () -> new AuthenticatedIdentity("p", "i", "s", " ", null, null, null, null));
         assertThrows(IllegalArgumentException.class, () -> new AuthenticatedIdentity(null, "i", "s", "u", null, null, null, null));
+    }
+
+    @Test
+    void authenticatedIdentityToStringShowsNoClaimsEmailNameOrGroups() {
+        AuthenticatedIdentity identity = new AuthenticatedIdentity("provider-1", "https://idp.example.test/realms/a",
+                "subject-1", "planted-username", "planted.person@corp.example", "Planted Display Name",
+                Set.of("planted-group-name"), Map.of("planted_claim", "planted-claim-value", "phone", "555-0100-77"));
+        String shown = identity.toString();
+        for (String planted : new String[] {"planted-username", "planted.person@corp.example", "Planted Display Name",
+                "planted-group-name", "planted_claim", "planted-claim-value", "555-0100-77"}) {
+            assertFalse(shown.contains(planted), () -> "toString shows " + planted + ": " + shown);
+        }
+        assertTrue(shown.contains("provider-1"));
+        assertTrue(shown.contains("https://idp.example.test/realms/a"));
+        assertTrue(shown.contains("subject-1"));
+        assertTrue(shown.contains("groups=1"));
     }
 
     @Test
