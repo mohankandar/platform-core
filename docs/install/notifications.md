@@ -80,7 +80,10 @@ mailbox the app sends from (for example `notifications@yourcompany.com`, a share
    ```
    Changes in steps 2 to 6 can take up to an hour to reach all of Microsoft's servers.
 7. **Open the firewall** from the app server to `login.microsoftonline.com` (HTTPS, port 443) and to
-   `smtp.office365.com` (port 587).
+   `smtp.office365.com` (port 587). The token request to `login.microsoftonline.com` uses the Java proxy options
+   (`https.proxyHost`, `https.proxyPort`, `http.nonProxyHosts`) when they are set, like the Teams and Slack calls.
+   Proxies that ask for a login are not supported. The mail connection to `smtp.office365.com` never goes through
+   that proxy: it needs a direct connection on port 587.
 8. **Give the installer only:** the directory (tenant) ID, the application (client) ID, `CERTIFICATE` or `SECRET`,
    the **path** of the secret, and the sender mailbox. Never the certificate, key or secret themselves.
 
@@ -147,6 +150,9 @@ summary items, conditions, approval requests and the schema version.
 
 **Creating and upgrading the tables is a separate schema step that you run.** It is part of the app's own schema step.
 The SQL files ship inside the app under `db/platform/notifications` (`V1__notifications.sql`, …).
+Notifications has **no history table of its own** (there is no `notif_schema_history`): the app's schema step runs
+these files with its own tool and history table, as the app's install guide describes. The app checks the version
+in the table `notif_schema_version`, which the files keep up to date.
 
 1. **Before the first start, and after every upgrade,** run the app's schema step. Run it as a database user that may
    create tables in the app's schema, for example the schema owner.
@@ -202,8 +208,8 @@ link or its token.
 | `mail.oauth.credential-secret` | — | Microsoft 365: **path** of the certificate-and-key or client secret in the secret store. |
 | `mail.oauth.sender-mailbox` | — | Microsoft 365: the mailbox the app sends as. `mail.from-address` defaults to it. |
 | `mail.oauth.authority` | `https://login.microsoftonline.com` | Microsoft 365: only for a national cloud. |
-| `teams.<id>` | — | One line per Teams destination: id = **path** of the webhook address secret. |
-| `slack.<id>` | — | One line per Slack destination: id = **path** of the webhook address secret. |
+| `teams.<id>` | — | One line per Teams destination. The key `<id>` is the destination id (for example `ops-teams`); the value is the **path** of the secret that holds the webhook address. |
+| `slack.<id>` | — | One line per Slack destination. The key `<id>` is the destination id (for example `ops-slack`); the value is the **path** of the secret that holds the webhook address. |
 | `webhook.connect-timeout` / `webhook.request-timeout` | `10s` / `30s` | How long to wait for Teams and Slack. |
 | `retry.first-delay` | `1m` | First retry after a temporary failure. |
 | `retry.max-delay` | `30m` | The wait doubles up to this. |
