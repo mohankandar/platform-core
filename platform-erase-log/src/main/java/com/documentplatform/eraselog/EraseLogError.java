@@ -13,6 +13,11 @@ public enum EraseLogError implements com.documentplatform.errors.PlatformCode {
     ERASE_LOG_SETTINGS_INVALID,
     /** The log's location cannot be read or written (not mounted, no rights, disk full). */
     ERASE_LOG_UNREACHABLE,
+    /**
+     * One of the log's own files at its location is a symbolic link, a junction or another reparse point: the log never
+     * writes, moves or reads through one, so nothing was written.
+     */
+    ERASE_LOG_LINK_REFUSED,
     /** A line of the log is not an entry of a known format. */
     ERASE_LOG_FORMAT,
     /** An entry was changed, removed or put out of order: its hash does not follow from the one before. */

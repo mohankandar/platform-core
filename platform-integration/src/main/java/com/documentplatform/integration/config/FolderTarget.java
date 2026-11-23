@@ -31,7 +31,8 @@ public record FolderTarget(String folder, String folderNameTemplate, String file
     private static final Pattern UNC = Pattern.compile("\\\\\\\\[^\\\\/]+[\\\\/][^\\\\/]+([\\\\/].*)?");
     private static final Set<String> RESERVED = Set.of("con", "prn", "aux", "nul", "com1", "com2", "com3", "com4",
             "com5", "com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8",
-            "lpt9");
+            "lpt9", "com0", "lpt0", "conin$", "conout$", "clock$", "com¹", "com²", "com³", "lpt¹",
+            "lpt²", "lpt³");
 
     public FolderTarget {
         Objects.requireNonNull(folder, "folder");
@@ -84,8 +85,7 @@ public record FolderTarget(String folder, String folderNameTemplate, String file
         if (n == null || n.isEmpty() || n.length() > MAX_NAME) return false;
         if (n.chars().anyMatch(c -> c < 0x20 || c == 0x7f || "/\\:*?\"<>|".indexOf(c) >= 0)) return false;
         if (n.equals(".") || n.equals("..") || n.endsWith(".") || n.endsWith(" ") || n.startsWith(" ")) return false;
-        String base = n.contains(".") ? n.substring(0, n.indexOf('.')) : n;
-        if (RESERVED.contains(base.toLowerCase(Locale.ROOT))) return false;
+        if (device(n)) return false;
         return !n.toLowerCase(Locale.ROOT).endsWith(PARTIAL_SUFFIX);
     }
 
@@ -102,8 +102,7 @@ public record FolderTarget(String folder, String folderNameTemplate, String file
         while (s.startsWith(".")) s = s.substring(1);
         while (s.endsWith(".") || s.endsWith(" ")) s = s.substring(0, s.length() - 1);
         if (s.isEmpty()) s = "document";
-        String base = s.contains(".") ? s.substring(0, s.indexOf('.')) : s;
-        if (RESERVED.contains(base.toLowerCase(Locale.ROOT))) s = "_" + s;
+        if (device(s)) s = "_" + s;
         if (s.toLowerCase(Locale.ROOT).endsWith(PARTIAL_SUFFIX)) s = s + "_";
         if (s.length() > MAX_NAME) {
             int dot = s.lastIndexOf('.');
@@ -111,6 +110,17 @@ public record FolderTarget(String folder, String folderNameTemplate, String file
             s = s.substring(0, MAX_NAME - ext.length()).strip() + ext;
         }
         return s;
+    }
+
+    /**
+     * Whether Windows opens {@code name} as a device: the part before the first dot, with the spaces Windows ignores
+     * before an extension removed ({@code "CON .txt"}), is a device name ({@code CON}, {@code COM1}, {@code CONIN$},
+     * {@code COM¹}, ...), in any case.
+     */
+    static boolean device(String name) {
+        int dot = name.indexOf('.');
+        String base = (dot >= 0 ? name.substring(0, dot) : name).stripTrailing();
+        return RESERVED.contains(base.toLowerCase(Locale.ROOT));
     }
 
     @Override

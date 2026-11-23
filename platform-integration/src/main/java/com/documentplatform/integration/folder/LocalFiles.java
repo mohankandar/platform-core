@@ -24,8 +24,9 @@ import java.util.List;
 /**
  * Local disks and network shares through the JDK. On Windows a share path ({@code \\server\share\...}) is used as it
  * is, under the service account's own rights; on other systems a share must be mounted and its mount path configured.
- * Files are forced to the disk when closed; symbolic links are not followed when deleting or listing. Used by folder
- * export and the watched folder.
+ * Files are forced to the disk when closed. Links (symbolic links, Windows junctions and other reparse points) are
+ * never followed: listing marks them, and deleting, renaming or moving one, or a folder that holds one, is refused
+ * with {@link LinkRefusedException} with nothing behind it touched. Used by folder export and the watched folder.
  */
 public final class LocalFiles implements com.documentplatform.integration.watch.WatchFiles {
 
@@ -104,30 +105,82 @@ public final class LocalFiles implements com.documentplatform.integration.watch.
 
     @Override
     public void rename(Path from, Path to) throws IOException {
+        refuseLink(from);
         Files.move(from, to);
     }
 
+    /**
+     * Deletes a file, or a folder with everything in it, never following a link. A link (symbolic link, Windows
+     * junction or other reparse point) at {@code p} or anywhere inside it is refused with
+     * {@link LinkRefusedException} before anything is deleted, and is checked again while deleting.
+     */
     @Override
     public void delete(Path p) throws IOException {
         if (!Files.exists(p, LinkOption.NOFOLLOW_LINKS)) return;
+        refuseLink(p);
         if (!Files.isDirectory(p, LinkOption.NOFOLLOW_LINKS)) {
             Files.deleteIfExists(p);
             return;
         }
-        Files.walkFileTree(p, new SimpleFileVisitor<>() {
+        walk(p, false); // the whole tree first: a link anywhere refuses before anything is deleted
+        walk(p, true);
+    }
+
+    @Override
+    public boolean link(Path p) {
+        try {
+            return isLink(p);
+        } catch (SecurityException e) {
+            return true; // not knowable: treated as a link, so nothing is followed
+        }
+    }
+
+    /** Walks a folder tree without following links; refuses at the first link, deletes on the way back when asked. */
+    private static void walk(Path top, boolean delete) throws IOException {
+        Files.walkFileTree(top, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                if (link(attrs)) throw new LinkRefusedException(name(dir));
+                return FileVisitResult.CONTINUE;
+            }
+
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                Files.deleteIfExists(file);
+                if (link(attrs)) throw new LinkRefusedException(name(file));
+                if (delete) Files.deleteIfExists(file);
                 return FileVisitResult.CONTINUE;
             }
 
             @Override
             public FileVisitResult postVisitDirectory(Path dir, IOException e) throws IOException {
                 if (e != null) throw e;
-                Files.deleteIfExists(dir);
+                if (delete) Files.deleteIfExists(dir);
                 return FileVisitResult.CONTINUE;
             }
         });
+    }
+
+    /** A Windows junction is a directory that is also "other" (a reparse point): treated as a link everywhere. */
+    private static boolean link(BasicFileAttributes a) {
+        return a.isSymbolicLink() || a.isOther();
+    }
+
+    private static boolean isLink(Path p) throws SecurityException {
+        try {
+            return link(Files.readAttributes(p, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS));
+        } catch (IOException gone) {
+            return false; // nothing there (or not readable: the operation itself then fails)
+        }
+    }
+
+    /** @throws LinkRefusedException when {@code p} is a link, a junction or another reparse point */
+    static void refuseLink(Path p) throws LinkRefusedException {
+        if (isLink(p)) throw new LinkRefusedException(name(p));
+    }
+
+    private static String name(Path p) {
+        Path n = p.getFileName();
+        return n == null ? "" : n.toString();
     }
 
     @Override
@@ -157,6 +210,7 @@ public final class LocalFiles implements com.documentplatform.integration.watch.
 
     @Override
     public void move(Path from, Path to) throws IOException {
+        refuseLink(from);
         if (Files.exists(to, LinkOption.NOFOLLOW_LINKS)) throw new FileAlreadyExistsException(to.getFileName().toString());
         Files.move(from, to, StandardCopyOption.ATOMIC_MOVE);
     }

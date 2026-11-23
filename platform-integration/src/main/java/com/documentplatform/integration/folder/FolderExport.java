@@ -111,7 +111,8 @@ public final class FolderExport {
                 Path target = files.resolve(integration.config().folder().folder());
                 files.delete(target.resolve(name));
             } catch (IOException e) {
-                r = result(integration, Outcome.NOT_CONFIGURED, IntegrationCode.INT_FOLDER_NO_PERMISSION, "cleanup",
+                r = result(integration, Outcome.NOT_CONFIGURED, e instanceof LinkRefusedException
+                        ? IntegrationCode.INT_FOLDER_LINK_REFUSED : IntegrationCode.INT_FOLDER_NO_PERMISSION, "cleanup",
                         null, null, true, Map.of());
             }
         }
@@ -305,6 +306,10 @@ public final class FolderExport {
             if (cannot != null) return stop(cannot.outcome(), cannot.code(), "folder", null);
             Path done = target.resolve(name);
             Path partial = target.resolve(name + FolderTarget.PARTIAL_SUFFIX);
+            // A link where the package folder or its .partial folder belongs is never followed, read or removed.
+            if (files.link(done) || files.link(partial)) {
+                return stop(Outcome.NOT_CONFIGURED, IntegrationCode.INT_FOLDER_LINK_REFUSED, "folder", null);
+            }
             if (files.exists(done)) return existing(done, manifest, name);
             try {
                 if (files.usableSpace(target) < total + manifest.length) {
@@ -538,6 +543,9 @@ public final class FolderExport {
 
     /** A failure while writing: permission, share gone, folder gone, disk or quota full, timeout, or other. */
     private Failed classify(IOException e, Path target) {
+        if (e instanceof LinkRefusedException) {
+            return new Failed(Outcome.NOT_CONFIGURED, IntegrationCode.INT_FOLDER_LINK_REFUSED);
+        }
         if (e instanceof TimedOut) return new Failed(Outcome.CANT_CONNECT, IntegrationCode.INT_TIMEOUT);
         if (e instanceof AccessDeniedException) {
             return new Failed(Outcome.NOT_CONFIGURED, IntegrationCode.INT_FOLDER_NO_PERMISSION);

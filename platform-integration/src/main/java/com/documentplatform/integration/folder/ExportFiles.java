@@ -33,8 +33,27 @@ public interface ExportFiles {
     /** Renames within the same folder; never replaces an existing file or folder. */
     void rename(Path from, Path to) throws IOException;
 
-    /** Deletes a file, or a folder with everything in it. Nothing when it does not exist. */
+    /**
+     * Deletes a file, or a folder with everything in it. Nothing when it does not exist. Never follows a link: a link
+     * at {@code p} or inside it is refused with {@link LinkRefusedException}, with nothing behind it touched.
+     */
     void delete(Path p) throws IOException;
+
+    /**
+     * Whether {@code p} is a symbolic link, a Windows junction or another reparse point (read without following it).
+     * The platform never deletes, moves or walks through one where it expects its own file or folder.
+     */
+    default boolean link(Path p) {
+        try {
+            java.nio.file.attribute.BasicFileAttributes a = java.nio.file.Files.readAttributes(p,
+                    java.nio.file.attribute.BasicFileAttributes.class, java.nio.file.LinkOption.NOFOLLOW_LINKS);
+            return a.isSymbolicLink() || a.isOther();
+        } catch (IOException gone) {
+            return false;
+        } catch (SecurityException e) {
+            return true;
+        }
+    }
 
     /** Bytes this account may still write there (the disk's free space within its quota). */
     long usableSpace(Path p) throws IOException;
