@@ -28,9 +28,9 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * B2, in a JVM started without any option (the JDK's default: Basic disabled for CONNECT tunnels): plain-http calls
  * and token requests through a proxy that needs Basic work with the right credentials and get
- * {@code INT_PROXY_SIGN_IN_REFUSED} with wrong or missing ones; an https call through it stops before connecting with
- * {@code INT_PROXY_SIGN_IN_DISABLED_BY_JVM}. The https (CONNECT) cases with the start option are in
- * {@link ProxySignInTunnelTest}, which runs in its own JVM.
+ * {@code INT_PROXY_SIGN_IN_REFUSED} with wrong or missing ones; since P026 an https call through it needs no JVM
+ * option (the HTTP client sends the sign-in on CONNECT itself). The https (CONNECT) cases are in
+ * {@link ProxySignInTunnelTest}.
  */
 class ProxySignInTest {
 
@@ -132,26 +132,25 @@ class ProxySignInTest {
     }
 
     @Test
-    void httpsThroughAProxyWithSignInStopsBeforeConnectingWhenTheJvmDisablesBasic() {
+    void httpsThroughAProxyWithSignInNeedsNoJvmOption() {
+        // P026: the HTTP client sends the proxy sign-in on CONNECT itself; the JVM's disabled schemes do not apply.
+        assertTrue(JvmProxySignIn.current().basicDisabledForTunnels(), "this JVM has the JDK's default");
         try (CallEngine engine = engine(withSignIn())) {
             AttemptResult r = engine.attempt(Fx.stored(config(URI.create("https://localhost:" + mock.port()))),
                     Fx.delivery(1));
-            assertEquals(Outcome.NOT_CONFIGURED, r.outcome());
-            assertEquals(IntegrationCode.INT_PROXY_SIGN_IN_DISABLED_BY_JVM, r.code());
+            assertNotEquals(IntegrationCode.INT_PROXY_SIGN_IN_DISABLED_BY_JVM, r.code());
+            assertNotEquals(IntegrationCode.INT_PROXY_SIGN_IN_REFUSED, r.code());
         }
-        assertTrue(proxy.targets().isEmpty(), "nothing was sent");
-        // The code's message names the start option the install guide gives.
-        assertTrue(IntegrationCode.INT_PROXY_SIGN_IN_DISABLED_BY_JVM.message()
-                .contains(JvmProxySignIn.TUNNEL_START_OPTION));
-        Outbound.Failure f = new Outbound.Failure(IntegrationCode.INT_PROXY_SIGN_IN_DISABLED_BY_JVM);
-        assertTrue(f.getMessage().contains("-Djdk.http.auth.tunneling.disabledSchemes="), f.getMessage());
-        // With the option (as ProxySignInTunnelTest's JVM has it), the same call goes to the proxy.
+        assertEquals(1, proxy.targets().size(), "the CONNECT went to the proxy");
+        assertEquals(1, proxy.signInsAccepted(), "with the sign-in, at once");
+        assertEquals(0, proxy.signInsRefused());
+        // The old constructor still compiles; its JVM answer is not used.
         Installation i = Installation.onPremises().withInternalAddresses(true).withProxy(withSignIn());
         try (CallEngine engine = new CallEngine(new Outbound(i, new AddressGuard(true), secrets,
-                new JvmProxySignIn(false, false)), secrets, Clock.systemUTC())) {
+                new JvmProxySignIn(true, true)), secrets, Clock.systemUTC())) {
             engine.attempt(Fx.stored(config(URI.create("https://localhost:" + mock.port()))), Fx.delivery(1));
         }
-        assertEquals(1, proxy.targets().size());
+        assertEquals(2, proxy.targets().size());
     }
 
     @Test

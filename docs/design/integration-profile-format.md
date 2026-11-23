@@ -18,7 +18,7 @@ The machine-readable definition is the JSON Schema
 | `api` | The API it describes: `title` and `version`, as in the OpenAPI file. |
 | `direction`, `kind` | `OUTBOUND` / `INBOUND`, and `API_PUSH` (or `API_POLL`). |
 | `steps` **or** `packaging` | Exactly one of them. The calls, in order: method, path, header and body templates, which values to read from the answer, the integrity check, rules per step. Or a packaging preset (`TWO_STEP`, `MULTIPART`, `FILE_PER_CALL`) with its parts; a preset expands to ordinary steps. |
-| `signIn` | The sign-in types the API accepts (`NONE`, `BASIC`, `API_KEY`, `BEARER_FIXED`, `OAUTH2_CLIENT_CREDENTIALS`). Also `installationSupplies`, the words IT recognises for what it must supply (`tokenAddress`, `clientId`, `credential`, `scope`, `apiKey`), and `apiKeyHeader` for an API key. |
+| `signIn` | The sign-in types the API accepts (`NONE`, `BASIC`, `API_KEY`, `BEARER_FIXED`, `OAUTH2_CLIENT_CREDENTIALS`, and since P026 `MUTUAL_TLS`: the API requires a client certificate, listed together with the type used with it, if any). The certificate itself is the installation's, never in a profile. Also `installationSupplies`, the words IT recognises for what it must supply (`tokenAddress`, `clientId`, `credential`, `scope`, `apiKey`), and `apiKeyHeader` for an API key. |
 | `health` | The readiness call (`GET` / `HEAD`, path, with or without sign-in) and its own rules. For example, a 503 with a busy code or with Retry-After is BUSY, not down. |
 | `rules` | How answers are classified: status, the API's error code (exact, a prefix such as `DMS-*`, or `-` for none), optionally one field of the answer or the presence of Retry-After. The outcome is SENT, ALREADY_RECEIVED, REFUSED, SIGN_IN_FAILED, BUSY, OUTAGE, … It can also give a platform code and say whether an attempt is used. |
 | `errorCodePointer` | Where the API puts its error code in an error answer (a JSON pointer, `/code`, `/error/code`). |
@@ -29,6 +29,7 @@ The machine-readable definition is the JSON Schema
 | `settings` | Choices the installation makes, each with a default. Each value stands for engine settings. Today there is one engine setting: `token.requiredClaims`, the claims the OAuth 2.0 token must carry. |
 | `notes` | Notes for IT, in plain words. |
 | `testMode` | What the Test action runs: `FULL` (every step with fake data) or `CHECK_ONLY` (health and sign-in). |
+| `steps[].accepted` | Since P026, optional, last step only (run once): "accepted, check later". The API may answer **202 Accepted**. `referencePointer` (where the 202 answer holds the status reference; without it, the `Location` header), `statusMethod` (`GET` or `POST`) and `statusPath` (with `{status.reference}`; only without `Location`), `statePointer` and the state values `done`, `failed` and `working`, `defaultWaitSeconds` (when Retry-After is missing, default 30) and `read` (values from the "done" answer). The attempt ends ACCEPTED; the app asks for the status later, one call each time. |
 
 Templates are the same fixed building blocks as in any configuration, with no expressions or scripts:
 

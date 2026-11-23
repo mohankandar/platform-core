@@ -331,6 +331,27 @@ class IntegrationWiringTest {
                     configs.create(IntegrationConfig.folderExport(ENTITY, "PRODUCT_B", "Off",
                             FolderTarget.of("/srv/exports")).withEnabled(false), "it-admin");
                     assertEquals(List.of(s.id()), configs.enabled().stream().map(StoredIntegration::id).toList());
+                    // P026: certificates and callbacks on the same database, the worker for both.
+                    assertInstanceOf(com.documentplatform.integration.jdbc.PostgresCredentialStore.class,
+                            ctx.getBean(com.documentplatform.integration.credential.CredentialStore.class));
+                    assertInstanceOf(com.documentplatform.integration.jdbc.PostgresCallbackOutbox.class,
+                            ctx.getBean(com.documentplatform.integration.callback.CallbackOutbox.class));
+                    assertEquals(List.of(30, 7, 1), ctx.getBean(
+                            com.documentplatform.integration.credential.CredentialExpiry.class).days().reversed());
+                    var callbacks = ctx.getBean(com.documentplatform.integration.callback.Callbacks.class);
+                    StoredIntegration hooks = configs.create(IntegrationConfig.callback(ENTITY, "PRODUCT_A", "Hooks",
+                            com.documentplatform.integration.config.Endpoint.of("https://hooks.example/cases"),
+                            new com.documentplatform.integration.config.SignIn.None(),
+                            com.documentplatform.notifications.secret.SecretRef.of("int/hooks")), "it-admin");
+                    java.util.UUID id = callbacks.enqueue(hooks.id(), "{\"case\":\"C-1\"}");
+                    ctx.getBean(IntegrationWorker.class).runOnce(); // the secret is missing: tried, kept for later
+                    var entry = callbacks.find(id).orElseThrow();
+                    assertEquals(1, entry.attempts());
+                    assertEquals("INT_SECRET_NOT_FOUND", entry.lastCode());
+                    assertEquals(com.documentplatform.integration.callback.CallbackState.PENDING, entry.state());
+                    var credentials = ctx.getBean(
+                            com.documentplatform.integration.credential.IntegrationCredentials.class);
+                    assertTrue(credentials.list(hooks.id()).isEmpty());
                 });
         // The tables missing: the app does not start (the schema step has not run).
         DataSource none = Pg.empty().appUser();

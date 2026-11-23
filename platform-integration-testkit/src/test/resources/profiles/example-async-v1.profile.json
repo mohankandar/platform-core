@@ -1,0 +1,53 @@
+{
+  "format": "platform-integration-profile/1",
+  "name": "example-async-v1",
+  "version": "1.0.0",
+  "description": "A made-up intake API for tests: accepts a package (202) and is asked for its status later.",
+  "api": {
+    "title": "Example Async Intake",
+    "version": "1.0"
+  },
+  "direction": "OUTBOUND",
+  "kind": "API_PUSH",
+  "steps": [
+    {
+      "name": "submit",
+      "method": "POST",
+      "path": "/v1/jobs",
+      "body": "JSON",
+      "bodyTemplate": "{\"package\":\"{package.id}\",\"documents\":{package.documentCount}}",
+      "repeat": "ONCE",
+      "read": {"jobId": "/jobId"},
+      "accepted": {
+        "referencePointer": "/jobId",
+        "statusMethod": "GET",
+        "statusPath": "/v1/jobs/{status.reference}",
+        "statePointer": "/state",
+        "done": ["DONE"],
+        "failed": ["FAILED"],
+        "working": ["QUEUED", "RUNNING"],
+        "defaultWaitSeconds": 60,
+        "read": {"resultId": "/resultId"}
+      }
+    }
+  ],
+  "signIn": {
+    "types": ["API_KEY", "MUTUAL_TLS"],
+    "apiKeyHeader": "X-Async-Key",
+    "installationSupplies": ["apiKey"]
+  },
+  "health": {
+    "method": "GET",
+    "path": "/v1/health",
+    "signIn": false,
+    "rules": []
+  },
+  "rules": [
+    {"status": "401", "code": "ASYNC-KEY", "outcome": "SIGN_IN_FAILED"},
+    {"status": "4xx", "code": "ASYNC-*", "outcome": "REFUSED"},
+    {"status": "5xx", "outcome": "OUTAGE"}
+  ],
+  "errorCodePointer": "/code",
+  "testMode": "CHECK_ONLY",
+  "notes": ["The API works on a package after it accepts it; the app asks for the job's state later."]
+}

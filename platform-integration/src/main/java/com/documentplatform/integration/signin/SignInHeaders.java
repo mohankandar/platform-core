@@ -2,6 +2,7 @@ package com.documentplatform.integration.signin;
 
 import com.documentplatform.integration.IntegrationCode;
 import com.documentplatform.integration.config.Limits;
+import com.documentplatform.integration.credential.ClientCertificate;
 import com.documentplatform.integration.config.SignIn;
 import com.documentplatform.integration.result.Outcome;
 import com.documentplatform.integration.safety.Installation;
@@ -62,8 +63,21 @@ public final class SignInHeaders {
      *                       only, from the token's payload, which is read here and kept nowhere
      */
     public Prepared prepare(SignIn signIn, Limits limits, boolean useProxy, List<String> requiredClaims) {
-        Prepared p = headers(signIn, limits, useProxy);
-        if (!p.ok() || requiredClaims.isEmpty() || !(signIn instanceof SignIn.OAuth2ClientCredentials)) return p;
+        return prepare(signIn, limits, useProxy, requiredClaims, null);
+    }
+
+    /**
+     * @param certificate the integration's client certificate (mutual TLS), presented on the token request when the
+     *                    configuration says so; else null
+     */
+    public Prepared prepare(SignIn signIn, Limits limits, boolean useProxy, List<String> requiredClaims,
+                            ClientCertificate certificate) {
+        ClientCertificate forToken = signIn instanceof SignIn.MutualTls m && m.certificateForToken() ? certificate
+                : null;
+        SignIn inHeaders = SignIn.headerSignIn(signIn);
+        if (inHeaders == null) return Prepared.ok(List.of()); // the certificate alone
+        Prepared p = headers(inHeaders, limits, useProxy, forToken);
+        if (!p.ok() || requiredClaims.isEmpty() || !(inHeaders instanceof SignIn.OAuth2ClientCredentials)) return p;
         String token = p.headers().get(0).getValue().substring("Bearer ".length());
         if (!hasClaims(token, requiredClaims)) {
             return Prepared.failed(Outcome.SIGN_IN_FAILED, IntegrationCode.INT_TOKEN_CLAIMS_MISSING);
@@ -88,7 +102,7 @@ public final class SignInHeaders {
         }
     }
 
-    private Prepared headers(SignIn signIn, Limits limits, boolean useProxy) {
+    private Prepared headers(SignIn signIn, Limits limits, boolean useProxy, ClientCertificate forToken) {
         if (signIn instanceof SignIn.None) {
             if (installation.hosted() || !installation.allowSignInNone()) {
                 return Prepared.failed(Outcome.NOT_CONFIGURED, IntegrationCode.INT_SIGN_IN_NONE_NOT_ALLOWED);
@@ -106,7 +120,7 @@ public final class SignInHeaders {
             return secret(t.token(), token -> header("Authorization", "Bearer " + token));
         }
         SignIn.OAuth2ClientCredentials o = (SignIn.OAuth2ClientCredentials) signIn;
-        ClientCredentialsTokens.Fetch f = tokens.token(o, secrets, limits, useProxy);
+        ClientCredentialsTokens.Fetch f = tokens.token(o, secrets, limits, useProxy, forToken);
         if (!f.ok()) {
             return Prepared.failed(outcomeOf(f.failure()), f.failure());
         }
@@ -119,13 +133,14 @@ public final class SignInHeaders {
             case INT_SECRET_NOT_FOUND, INT_ADDRESS_NOT_SECURE, INT_PROXY_SIGN_IN_DISABLED_BY_JVM -> Outcome.NOT_CONFIGURED;
             case INT_SECRET_UNAVAILABLE, INT_TOKEN_UNREACHABLE, INT_ADDRESS_BLOCKED, INT_TLS_FAILED,
                  INT_PROXY_REFUSED, INT_PROXY_SIGN_IN_REFUSED -> Outcome.CANT_CONNECT;
+            case INT_CREDENTIAL_REFUSED -> Outcome.SIGN_IN_FAILED;
             default -> Outcome.SIGN_IN_FAILED;
         };
     }
 
     /** After the destination refused the sign-in: an OAuth 2.0 token is dropped so the next attempt gets a new one. */
     public void refused(SignIn signIn) {
-        if (signIn instanceof SignIn.OAuth2ClientCredentials o) tokens.invalidate(o);
+        if (SignIn.headerSignIn(signIn) instanceof SignIn.OAuth2ClientCredentials o) tokens.invalidate(o);
     }
 
     private interface Use {

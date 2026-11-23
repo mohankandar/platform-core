@@ -64,7 +64,7 @@ public final class ConfigCheck {
     public static Report check(IntegrationConfig c, Installation installation, FieldLists fieldLists) {
         List<ConfigProblem> errors = new ArrayList<>();
         List<ConfigProblem> warnings = new ArrayList<>();
-        boolean api = c.kind() == Kind.API_PUSH || c.kind() == Kind.API_POLL;
+        boolean api = c.kind() == Kind.API_PUSH || c.kind() == Kind.API_POLL || c.kind() == Kind.CALLBACK;
 
         if (api && c.endpoint() == null) {
             errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_ADDRESS_INVALID, "endpoint", null));
@@ -77,7 +77,21 @@ public final class ConfigCheck {
             folder(c, installation, errors, fieldLists);
         } else {
             if (c.folder() != null) errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_INVALID, "folder", null));
-            signIn(c, installation, errors, warnings);
+            if (c.kind() == Kind.CALLBACK && c.signIn() instanceof SignIn.None) {
+                // A callback's signature proves the sender: sign-in NONE adds nothing and is allowed everywhere.
+            } else {
+                signIn(c, installation, errors, warnings);
+            }
+        }
+        if (c.kind() == Kind.CALLBACK) {
+            if (c.callback() == null) {
+                errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_CALLBACK_INVALID, "callback", null));
+            }
+            if (!c.steps().isEmpty()) {
+                errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_CALLBACK_INVALID, "steps", null));
+            }
+        } else if (c.callback() != null) {
+            errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_CALLBACK_INVALID, "callback", null));
         }
         settings(c, errors);
 
@@ -221,6 +235,19 @@ public final class ConfigCheck {
             }
         } else if (s instanceof SignIn.OAuth2ClientCredentials o) {
             address(o.tokenAddress(), "signIn.tokenAddress", installation, errors);
+        } else if (s instanceof SignIn.MutualTls m) {
+            // A client certificate only works over TLS: the address (and the token address it is presented to).
+            if (c.endpoint() != null && !c.endpoint().secure()) {
+                errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_MUTUAL_TLS_INVALID, "endpoint.baseAddress",
+                        null));
+            }
+            if (m.with() instanceof SignIn.OAuth2ClientCredentials o) {
+                address(o.tokenAddress(), "signIn.with.tokenAddress", installation, errors);
+                if (m.certificateForToken() && !o.tokenAddress().getScheme().equalsIgnoreCase("https")) {
+                    errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_MUTUAL_TLS_INVALID,
+                            "signIn.with.tokenAddress", null));
+                }
+            }
         }
     }
 
@@ -228,7 +255,7 @@ public final class ConfigCheck {
         String claims = c.settings().get(IntegrationConfig.REQUIRED_TOKEN_CLAIMS);
         if (claims == null) return;
         String where = "settings." + IntegrationConfig.REQUIRED_TOKEN_CLAIMS;
-        if (!(c.signIn() instanceof SignIn.OAuth2ClientCredentials)) {
+        if (!(SignIn.headerSignIn(c.signIn()) instanceof SignIn.OAuth2ClientCredentials)) {
             errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_SETTING_INVALID, where, null));
             return;
         }
@@ -245,7 +272,8 @@ public final class ConfigCheck {
             errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_STEPS_INVALID, "steps", null));
             return;
         }
-        String apiKeyHeader = c.signIn() instanceof SignIn.ApiKey k ? k.header().toLowerCase(Locale.ROOT) : null;
+        String apiKeyHeader = SignIn.headerSignIn(c.signIn()) instanceof SignIn.ApiKey k
+                ? k.header().toLowerCase(Locale.ROOT) : null;
         FieldSet fields = fieldLists == null ? null : fieldLists.fieldsOf(c.entity(), c.product()).orElse(null);
         Map<String, CallStep> earlier = new HashMap<>();
         for (int n = 0; n < steps.size(); n++) {
@@ -327,7 +355,63 @@ public final class ConfigCheck {
                         && (in.sizeValue() == null || s.read().containsKey(in.sizeValue()));
                 if (!ok) errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_BODY_INVALID, at + ".integrity", null));
             }
+            if (s.accepted() != null) {
+                accepted(s, at, n == steps.size() - 1, earlier, errors);
+            }
             earlier.put(s.name(), s);
+        }
+    }
+
+    /**
+     * "Accepted, check later": only on the last step, run once; valid pointers; a status path with
+     * {@code {status.reference}} (only step values, the correlation ID and the reference in it) when the reference is
+     * read by pointer, none when it is the Location header; done and failed values given, no value in two lists; a
+     * wait of 1 second to 24 hours.
+     */
+    private static void accepted(CallStep s, String at, boolean last, Map<String, CallStep> earlier,
+                                 List<ConfigProblem> errors) {
+        CallStep.Accepted a = s.accepted();
+        String where = at + ".accepted";
+        boolean ok = last && s.repeat() == CallStep.Repeat.ONCE
+                && (a.referencePointer() == null || Json.isPointer(a.referencePointer()))
+                && Json.isPointer(a.statePointer())
+                && (a.statusMethod() == HttpMethod.GET || a.statusMethod() == HttpMethod.POST)
+                && !a.doneValues().isEmpty() && !a.failedValues().isEmpty()
+                && a.read().entrySet().stream().allMatch(r -> CallStep.NAME.matcher(r.getKey()).matches()
+                && Json.isPointer(r.getValue()))
+                && a.defaultWait().compareTo(java.time.Duration.ofSeconds(1)) >= 0
+                && a.defaultWait().compareTo(CallStep.Accepted.MAX_WAIT) <= 0;
+        Set<String> all = new HashSet<>();
+        for (Set<String> values : List.of(a.doneValues(), a.failedValues(), a.workingValues())) {
+            for (String v : values) {
+                ok &= v != null && !v.isEmpty() && v.length() <= 200 && all.add(v);
+            }
+        }
+        if ((a.referencePointer() == null) != (a.statusPath() == null)) ok = false;
+        if (!ok) {
+            errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_ACCEPTED_INVALID, where, null));
+            return;
+        }
+        if (a.statusPath() == null) return;
+        try {
+            Template t = Template.parse(a.statusPath(), Template.Place.PATH);
+            if (!t.placeholders().contains(CallStep.Accepted.REFERENCE)) {
+                errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_ACCEPTED_INVALID, where + ".statusPath", null));
+            }
+            for (String p : t.placeholders()) {
+                boolean allowed = p.equals(CallStep.Accepted.REFERENCE) || p.equals("correlationId");
+                if (p.startsWith("step.")) {
+                    String[] seg = p.split("\\.");
+                    CallStep from = seg[1].equals(s.name()) ? s : earlier.get(seg[1]);
+                    allowed = from != null && from.read().containsKey(seg[2]) && from.repeat() == CallStep.Repeat.ONCE;
+                }
+                if (!allowed) {
+                    errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_PLACEHOLDER_PLACE, where + ".statusPath",
+                            p));
+                }
+            }
+        } catch (Template.Problem p) {
+            errors.add(new ConfigProblem(p.code(), where + ".statusPath", p.placeholder()));
         }
     }
 
@@ -379,6 +463,10 @@ public final class ConfigCheck {
     private static void placeholder(String p, CallStep s, Map<String, CallStep> earlier, Placed t, boolean outsideEach,
                                     List<ConfigProblem> errors) {
         boolean perDoc = s.repeat() == CallStep.Repeat.EACH_DOCUMENT;
+        if (p.equals(CallStep.Accepted.REFERENCE)) {
+            // Only in an "accepted, check later" status path.
+            errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_PLACEHOLDER_PLACE, t.where(), p));
+        }
         if (p.startsWith("doc.") && outsideEach && !t.documentContext()) {
             errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_PLACEHOLDER_PLACE, t.where(), p));
         }

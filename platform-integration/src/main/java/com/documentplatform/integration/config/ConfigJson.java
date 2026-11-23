@@ -90,6 +90,7 @@ public final class ConfigJson {
                 if (s.integrity().sizeValue() != null) in.put("sizeValue", s.integrity().sizeValue());
                 sm.put("integrity", in);
             }
+            if (s.accepted() != null) sm.put("accepted", accepted(s.accepted()));
             steps.add(sm);
         }
         m.put("steps", steps);
@@ -115,7 +116,39 @@ public final class ConfigJson {
             if (c.folder().fileNameTemplate() != null) f.put("fileName", c.folder().fileNameTemplate());
             m.put("folder", f);
         }
+        if (c.callback() != null) {
+            Map<String, Object> cb = new LinkedHashMap<>();
+            cb.put("signingSecret", c.callback().signingSecret().value());
+            m.put("callback", cb);
+        }
         return m;
+    }
+
+    private static Map<String, Object> accepted(CallStep.Accepted a) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        if (a.referencePointer() != null) m.put("referencePointer", a.referencePointer());
+        m.put("statusMethod", a.statusMethod().name());
+        if (a.statusPath() != null) m.put("statusPath", a.statusPath());
+        m.put("statePointer", a.statePointer());
+        m.put("done", new ArrayList<>(new java.util.TreeSet<>(a.doneValues())));
+        m.put("failed", new ArrayList<>(new java.util.TreeSet<>(a.failedValues())));
+        m.put("working", new ArrayList<>(new java.util.TreeSet<>(a.workingValues())));
+        m.put("defaultWaitSeconds", a.defaultWait().toSeconds());
+        if (!a.read().isEmpty()) m.put("read", new LinkedHashMap<>(a.read()));
+        return m;
+    }
+
+    private static CallStep.Accepted accepted(Map<String, Object> s) {
+        Map<String, Object> a = optMap(s, "accepted");
+        if (a == null) return null;
+        return new CallStep.Accepted((String) a.get("referencePointer"),
+                a.containsKey("statusMethod") ? HttpMethod.valueOf(str(a, "statusMethod")) : HttpMethod.GET,
+                (String) a.get("statusPath"), str(a, "statePointer"), new HashSet<>(stringList(list(a, "done"))),
+                new HashSet<>(stringList(list(a, "failed"))),
+                a.containsKey("working") ? new HashSet<>(stringList(list(a, "working"))) : Set.of(),
+                a.containsKey("defaultWaitSeconds") ? Duration.ofSeconds(num(a, "defaultWaitSeconds"))
+                        : CallStep.Accepted.DEFAULT_WAIT,
+                a.containsKey("read") ? strings(map(a, "read")) : Map.of());
     }
 
     private static Map<String, Object> signIn(SignIn s) {
@@ -141,6 +174,10 @@ public final class ConfigJson {
                 if (o.scope() != null) m.put("scope", o.scope());
                 if (o.audience() != null) m.put("audience", o.audience());
                 m.put("clientAuth", o.clientAuth().name());
+            }
+            case SignIn.MutualTls t -> {
+                if (t.with() != null) m.put("with", signIn(t.with()));
+                m.put("certificateForToken", t.certificateForToken());
             }
         }
         return m;
@@ -195,7 +232,9 @@ public final class ConfigJson {
                     bool(m, "sendCorrelationId"), (String) m.get("profile"),
                     m.containsKey("allowedSensitiveFields") ? new java.util.TreeSet<>(stringList(list(m,
                             "allowedSensitiveFields"))) : Set.of(),
-                    m.containsKey("settings") ? strings(map(m, "settings")) : Map.of(), folder(optMap(m, "folder")));
+                    m.containsKey("settings") ? strings(map(m, "settings")) : Map.of(), folder(optMap(m, "folder")),
+                    m.containsKey("callback")
+                            ? new CallbackTarget(SecretRef.of(str(map(m, "callback"), "signingSecret"))) : null);
         } catch (Unreadable u) {
             throw u;
         } catch (RuntimeException bad) {
@@ -214,6 +253,8 @@ public final class ConfigJson {
                     SignIn.OAuth2ClientCredentials.CredentialType.valueOf(str(m, "credentialType")),
                     SecretRef.of(str(m, "credential")), (String) m.get("scope"), (String) m.get("audience"),
                     SignIn.OAuth2ClientCredentials.ClientAuth.valueOf(str(m, "clientAuth")));
+            case "MUTUAL_TLS" -> new SignIn.MutualTls(m.containsKey("with") ? signIn(map(m, "with")) : null,
+                    Boolean.TRUE.equals(m.get("certificateForToken")));
             default -> throw new Unreadable("signIn.type");
         };
     }
@@ -278,7 +319,8 @@ public final class ConfigJson {
                     strings(map(s, "headers")), CallStep.Body.valueOf(str(s, "body")),
                     (String) s.get("bodyTemplate"), CallStep.Repeat.valueOf(str(s, "repeat")),
                     strings(map(s, "read")), required,
-                    s.containsKey("rules") ? readRuleList(list(s, "rules")) : List.of(), multipart(s), integrity(s)));
+                    s.containsKey("rules") ? readRuleList(list(s, "rules")) : List.of(), multipart(s), integrity(s),
+                    accepted(s)));
         }
         return steps;
     }

@@ -86,6 +86,12 @@ public final class ClientCredentialsTokens {
 
     /** A valid token: the held one, or a new one from the token address. */
     public Fetch token(OAuth2ClientCredentials client, SecretResolver secrets, Limits limits, boolean useProxy) {
+        return token(client, secrets, limits, useProxy, null);
+    }
+
+    /** As above; the token request presents {@code certificate} (mutual TLS) when it is not null. */
+    public Fetch token(OAuth2ClientCredentials client, SecretResolver secrets, Limits limits, boolean useProxy,
+                       com.documentplatform.integration.credential.ClientCertificate certificate) {
         Objects.requireNonNull(client, "client");
         Held h = held.get(client);
         if (h != null && clock.instant().isBefore(h.refreshAt())) {
@@ -97,7 +103,7 @@ public final class ClientCredentialsTokens {
             if (h != null && now.isBefore(h.refreshAt())) {
                 return Fetch.ok(h.token());
             }
-            Fetch f = fetch(client, secrets, limits, useProxy, now);
+            Fetch f = fetch(client, secrets, limits, useProxy, now, certificate);
             last.put(client, new Last(f.failure(), now));
             if (!f.ok()) {
                 held.remove(client);
@@ -123,7 +129,7 @@ public final class ClientCredentialsTokens {
     }
 
     private Fetch fetch(OAuth2ClientCredentials client, SecretResolver secrets, Limits limits, boolean useProxy,
-                        Instant now) {
+                        Instant now, com.documentplatform.integration.credential.ClientCertificate certificate) {
         Optional<Secret> credential;
         try {
             credential = secrets.resolve(client.credential());
@@ -168,14 +174,14 @@ public final class ClientCredentialsTokens {
             answer = outbound.send(new Outbound.Call("POST", client.tokenAddress(), headers,
                             HttpRequest.BodyPublishers.ofString(encode(form), StandardCharsets.UTF_8),
                             limits.readTimeout()),
-                    limits.connectTimeout(), MAX_REPLY, useProxy);
+                    limits.connectTimeout(), MAX_REPLY, useProxy, certificate);
         } catch (Outbound.Failure f) {
             // Blocked addresses and plain http keep their own codes; anything else is "unreachable".
             IntegrationCode c = f.code();
             return Fetch.failed(c == IntegrationCode.INT_ADDRESS_BLOCKED || c == IntegrationCode.INT_ADDRESS_NOT_SECURE
                     || c == IntegrationCode.INT_TLS_FAILED || c == IntegrationCode.INT_PROXY_REFUSED
                     || c == IntegrationCode.INT_PROXY_SIGN_IN_REFUSED || c == IntegrationCode.INT_PROXY_SIGN_IN_DISABLED_BY_JVM
-                    || c == IntegrationCode.INT_SECRET_NOT_FOUND || c == IntegrationCode.INT_SECRET_UNAVAILABLE
+                    || c == IntegrationCode.INT_SECRET_NOT_FOUND || c == IntegrationCode.INT_SECRET_UNAVAILABLE || c == IntegrationCode.INT_CREDENTIAL_REFUSED
                     ? c : IntegrationCode.INT_TOKEN_UNREACHABLE);
         }
         int status = answer.status();

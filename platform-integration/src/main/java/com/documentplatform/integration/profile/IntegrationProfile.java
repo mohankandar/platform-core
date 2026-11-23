@@ -232,7 +232,11 @@ public final class IntegrationProfile {
      *                                  never values)
      */
     public IntegrationConfig complete(Completion c) {
-        if (!signInTypes.contains(c.signIn().type())) {
+        // Mutual TLS: the profile lists MUTUAL_TLS, and the type used together with it when there is one.
+        boolean takes = c.signIn() instanceof com.documentplatform.integration.config.SignIn.MutualTls m
+                ? signInTypes.contains(m.type()) && (m.with() == null || signInTypes.contains(m.with().type()))
+                : signInTypes.contains(c.signIn().type());
+        if (!takes) {
             throw new IllegalArgumentException("Profile " + name + " takes sign-in " + signInTypes + ", not "
                     + c.signIn().type());
         }

@@ -95,6 +95,49 @@ public final class TestCertificates {
         return new Credential(cert, key, pem("CERTIFICATE", cert.getEncoded()) + pem("PRIVATE KEY", key.getEncoded()));
     }
 
+    /**
+     * A server certificate signed by {@code ca} whose server <b>requires a client certificate</b> and trusts only
+     * {@code trustedClients} (self-signed client credentials, or CAs): for {@link MockDestination#startMutualTls}.
+     */
+    public static Server serverTrusting(Path dir, Ca ca, String name, String san, X509Certificate... trustedClients)
+            throws Exception {
+        Server plain = server(dir, ca, name, san);
+        KeyStore store = load(dir.resolve(name + ".p12"));
+        KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(store, PASS.toCharArray());
+        KeyStore trust = KeyStore.getInstance("PKCS12");
+        trust.load(null, null);
+        int n = 0;
+        for (X509Certificate c : trustedClients) trust.setCertificateEntry("client-" + n++, c);
+        javax.net.ssl.TrustManagerFactory tmf = javax.net.ssl.TrustManagerFactory.getInstance(
+                javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init(trust);
+        SSLContext ctx = SSLContext.getInstance("TLS");
+        ctx.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
+        return new Server(ctx, plain.certificate());
+    }
+
+    /** The credential as a PKCS#12 file (an upload), protected by {@code password}. */
+    public static byte[] pkcs12(Credential c, String password) throws Exception {
+        KeyStore ks = KeyStore.getInstance("PKCS12");
+        ks.load(null, null);
+        ks.setKeyEntry("client", c.key(), password.toCharArray(), new java.security.cert.Certificate[]{c.certificate()});
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        ks.store(out, password.toCharArray());
+        return out.toByteArray();
+    }
+
+    /** The credential as a PKCS#12 keystore file (a customer-managed keystore) at {@code file}, entry {@code alias}. */
+    public static Path keystore(Credential c, Path file, String alias, String password) throws Exception {
+        KeyStore ks = KeyStore.getInstance("PKCS12");
+        ks.load(null, null);
+        ks.setKeyEntry(alias, c.key(), password.toCharArray(), new java.security.cert.Certificate[]{c.certificate()});
+        try (java.io.OutputStream out = Files.newOutputStream(file)) {
+            ks.store(out, password.toCharArray());
+        }
+        return file;
+    }
+
     public static String pem(String type, byte[] der) {
         return "-----BEGIN " + type + "-----\n" + Base64.getMimeEncoder(64, "\n".getBytes()).encodeToString(der)
                 + "\n-----END " + type + "-----\n";

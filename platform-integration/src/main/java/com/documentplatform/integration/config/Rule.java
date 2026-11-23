@@ -39,6 +39,10 @@ public record Rule(String status, String code, String pointer, String equals, Ou
     public Rule {
         Objects.requireNonNull(status, "status");
         Objects.requireNonNull(outcome, "outcome");
+        if (outcome == Outcome.ACCEPTED) {
+            throw new IllegalArgumentException("ACCEPTED comes from a step that declares \"accepted, check later\", not "
+                    + "from a rule");
+        }
         if (!STATUS.matcher(status).matches()) {
             throw new IllegalArgumentException("Rule status is not valid (any, 503, 5xx or 500-599)");
         }
@@ -160,6 +164,7 @@ public record Rule(String status, String code, String pointer, String equals, Ou
             case OUTAGE -> IntegrationCode.INT_OUTAGE;
             case UNCLEAR -> IntegrationCode.INT_UNCLEAR_ANSWER;
             case NOT_CONFIGURED -> IntegrationCode.INT_ADDRESS_NOT_FOUND;
+            case ACCEPTED -> IntegrationCode.INT_ACCEPTED;
         };
     }
 

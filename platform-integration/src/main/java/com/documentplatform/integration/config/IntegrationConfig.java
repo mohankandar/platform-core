@@ -36,12 +36,13 @@ import java.util.regex.Pattern;
  * @param settings         named settings: {@link #REQUIRED_TOKEN_CLAIMS} (claims the OAuth 2.0 token must carry,
  *                         comma-separated), and a profile's own settings (for example {@code senderIdentity})
  * @param folder           where a folder export writes (kind {@code FOLDER_EXPORT}); null for the other kinds
+ * @param callback         the signing secret of a callback (kind {@code CALLBACK}); null for the other kinds
  */
 public record IntegrationConfig(UUID id, UUID entity, String product, Kind kind, String name, boolean enabled,
                                 Endpoint endpoint, SignIn signIn, Limits limits, List<CallStep> steps,
                                 String errorCodePointer, List<Rule> rules, HealthCheck health, TestMode testMode,
                                 boolean sendCorrelationId, String profile, Set<String> allowedSensitiveFields,
-                                Map<String, String> settings, FolderTarget folder) {
+                                Map<String, String> settings, FolderTarget folder, CallbackTarget callback) {
 
     public enum TestMode {
         /** Every step, with fake data, against the destination (its test entity). */
@@ -100,7 +101,37 @@ public record IntegrationConfig(UUID id, UUID entity, String product, Kind kind,
                              String errorCodePointer, List<Rule> rules, HealthCheck health, TestMode testMode,
                              boolean sendCorrelationId, String profile) {
         this(id, entity, product, kind, name, enabled, endpoint, signIn, limits, steps, errorCodePointer, rules,
-                health, testMode, sendCorrelationId, profile, Set.of(), Map.of(), null);
+                health, testMode, sendCorrelationId, profile, Set.of(), Map.of(), null, null);
+    }
+
+    /** With a folder target, without a callback (the kinds before P026). */
+    public IntegrationConfig(UUID id, UUID entity, String product, Kind kind, String name, boolean enabled,
+                             Endpoint endpoint, SignIn signIn, Limits limits, List<CallStep> steps,
+                             String errorCodePointer, List<Rule> rules, HealthCheck health, TestMode testMode,
+                             boolean sendCorrelationId, String profile, Set<String> allowedSensitiveFields,
+                             Map<String, String> settings, FolderTarget folder) {
+        this(id, entity, product, kind, name, enabled, endpoint, signIn, limits, steps, errorCodePointer, rules,
+                health, testMode, sendCorrelationId, profile, allowedSensitiveFields, settings, folder, null);
+    }
+
+    /**
+     * A new callback configuration, switched on, with default limits: signed POSTs to {@code receiver} (its full
+     * address), signed with the secret behind {@code signingSecret}. Sign-in NONE is allowed here (the signature
+     * proves the sender); another sign-in type (for example mutual TLS) is added on top.
+     */
+    public static IntegrationConfig callback(UUID entity, String product, String name, Endpoint receiver,
+                                             SignIn signIn, com.documentplatform.notifications.secret.SecretRef
+                                                     signingSecret) {
+        return new IntegrationConfig(UUID.randomUUID(), entity, product, Kind.CALLBACK, name, true, receiver, signIn,
+                Limits.DEFAULT, List.of(), null, List.of(), null, TestMode.FULL, true, null, Set.of(), Map.of(), null,
+                new CallbackTarget(signingSecret));
+    }
+
+    /** The callback's signing secret. */
+    public IntegrationConfig withCallback(CallbackTarget t) {
+        return new IntegrationConfig(id, entity, product, kind, name, enabled, endpoint, signIn, limits, steps,
+                errorCodePointer, rules, health, testMode, sendCorrelationId, profile, allowedSensitiveFields, settings,
+                folder, t);
     }
 
     /** Without a folder target (the API kinds). */
@@ -110,7 +141,7 @@ public record IntegrationConfig(UUID id, UUID entity, String product, Kind kind,
                              boolean sendCorrelationId, String profile, Set<String> allowedSensitiveFields,
                              Map<String, String> settings) {
         this(id, entity, product, kind, name, enabled, endpoint, signIn, limits, steps, errorCodePointer, rules,
-                health, testMode, sendCorrelationId, profile, allowedSensitiveFields, settings, null);
+                health, testMode, sendCorrelationId, profile, allowedSensitiveFields, settings, null, null);
     }
 
     public Direction direction() {
@@ -138,21 +169,21 @@ public record IntegrationConfig(UUID id, UUID entity, String product, Kind kind,
     public static IntegrationConfig folderExport(UUID entity, String product, String name, FolderTarget target) {
         return new IntegrationConfig(UUID.randomUUID(), entity, product, Kind.FOLDER_EXPORT, name, true, null,
                 new SignIn.None(), Limits.DEFAULT, List.of(), null, List.of(), null, TestMode.FULL, true, null,
-                Set.of(), Map.of(), Objects.requireNonNull(target, "target"));
+                Set.of(), Map.of(), Objects.requireNonNull(target, "target"), null);
     }
 
     private IntegrationConfig with(String n, boolean on, Endpoint e, SignIn s, Limits l, List<CallStep> st, String p,
                                    List<Rule> r, HealthCheck h, TestMode t, boolean corr, String prof,
                                    Set<String> sens, Map<String, String> set) {
         return new IntegrationConfig(id, entity, product, kind, n, on, e, s, l, st, p, r, h, t, corr, prof, sens, set,
-                folder);
+                folder, callback);
     }
 
     /** Where a folder export writes. */
     public IntegrationConfig withFolder(FolderTarget f) {
         return new IntegrationConfig(id, entity, product, kind, name, enabled, endpoint, signIn, limits, steps,
                 errorCodePointer, rules, health, testMode, sendCorrelationId, profile, allowedSensitiveFields, settings,
-                f);
+                f, callback);
     }
 
     public IntegrationConfig withEnabled(boolean on) {

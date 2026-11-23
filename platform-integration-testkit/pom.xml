@@ -25,6 +25,13 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <!-- Uploaded client certificates sealed under a test key service (mutual TLS tests). -->
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-crypto-testkit</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <!-- The https mock issuer test (OutboundIssuerFetch with the private CA). -->
             <groupId>com.documentplatform.platform</groupId>
             <artifactId>platform-identity-testkit</artifactId>
@@ -38,38 +45,4 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <executions>
-                    <!-- Every test but the CONNECT proxy sign-in one, in a JVM with the JDK's defaults (Basic disabled
-                         for tunnels): ProxySignInTest proves INT_PROXY_SIGN_IN_DISABLED_BY_JVM there. -->
-                    <execution>
-                        <id>default-test</id>
-                        <configuration>
-                            <excludes>
-                                <exclude>**/ProxySignInTunnelTest.java</exclude>
-                            </excludes>
-                        </configuration>
-                    </execution>
-                    <!-- The CONNECT proxy sign-in, in its own JVM started as the install guide tells the customer. -->
-                    <execution>
-                        <id>proxy-sign-in-tunnel</id>
-                        <phase>test</phase>
-                        <goals>
-                            <goal>test</goal>
-                        </goals>
-                        <configuration>
-                            <argLine>-Djdk.http.auth.tunneling.disabledSchemes=</argLine>
-                            <includes>
-                                <include>**/ProxySignInTunnelTest.java</include>
-                            </includes>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-        </plugins>
-    </build>
 </project>

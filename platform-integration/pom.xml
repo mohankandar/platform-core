@@ -46,6 +46,27 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- Uploaded client certificates are stored sealed under the customer's keys (envelope.ValueCipher). -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-crypto</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- The HTTP client of every outbound call: it takes our own resolver, so a connection goes to the address the
+             address guard checked (connection pinning), with host name verification and SNI on the original name. -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+            <version>${httpclient5.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-crypto-testkit</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>com.documentplatform.platform</groupId>
             <artifactId>platform-notifications-testkit</artifactId>

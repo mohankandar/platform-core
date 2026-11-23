@@ -12,13 +12,24 @@ import com.documentplatform.integration.jdbc.IntegrationSchema;
 import com.documentplatform.integration.jdbc.PostgresIntegrationStore;
 import com.documentplatform.integration.profile.ProfileFolder;
 import com.documentplatform.integration.safety.Installation;
-import com.documentplatform.integration.safety.JvmProxySignIn;
+import com.documentplatform.crypto.CustomerId;
+import com.documentplatform.crypto.envelope.ValueCipher;
+import com.documentplatform.integration.callback.CallbackOutbox;
+import com.documentplatform.integration.callback.Callbacks;
+import com.documentplatform.integration.credential.CertificateSource;
+import com.documentplatform.integration.credential.CredentialExpiry;
+import com.documentplatform.integration.credential.CredentialStore;
+import com.documentplatform.integration.credential.IntegrationCredentials;
+import com.documentplatform.integration.jdbc.PostgresCallbackOutbox;
+import com.documentplatform.integration.jdbc.PostgresCredentialStore;
+import com.documentplatform.notifications.RetryPolicy;
 import com.documentplatform.integration.store.IntegrationAudit;
 import com.documentplatform.integration.store.IntegrationConfigs;
 import com.documentplatform.integration.store.IntegrationStore;
 import com.documentplatform.notifications.secret.SecretResolver;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -29,6 +40,7 @@ import org.springframework.context.annotation.Configuration;
 import javax.sql.DataSource;
 import java.lang.System.Logger.Level;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -43,7 +55,10 @@ import java.util.List;
  * <p>Beans: {@link IntegrationSettings}, {@link Installation}, the default {@link Limits} (bean
  * {@code integrationDefaultLimits}), {@link Outbound}, {@link CallEngine}, {@link IntegrationStore} (Postgres on the
  * app's DataSource, after {@link IntegrationSchema#verify}: read only, never creates tables), {@link IntegrationConfigs},
- * {@link FolderExport}, {@link TestAction}, {@link ProfileFolder} (when {@code profile-folder} is set) and, with
+ * {@link FolderExport}, {@link TestAction}, {@link ProfileFolder} (when {@code profile-folder} is set), since P026
+ * {@link CredentialStore} and {@link IntegrationCredentials} (client certificates; the call engine presents them),
+ * {@link CredentialExpiry}, {@link CallbackOutbox} and {@link Callbacks} (signed callbacks), the
+ * {@link IntegrationWorker} (callbacks due, timed certificate switches; {@code worker.enabled}) and, with
  * Actuator, the {@code integrations} health contributor. Every bean backs off when the app defines its own.
  */
 @AutoConfiguration(afterName = "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration")
@@ -63,11 +78,7 @@ public class IntegrationAutoConfiguration {
     IntegrationSettings integrationSettings(IntegrationProperties properties) {
         IntegrationSettings s = IntegrationSettings.from(properties);
         Installation i = s.installation();
-        if (i.proxy() != null && i.proxy().signIn() && JvmProxySignIn.current().basicDisabledForTunnels()) {
-            LOG.log(Level.WARNING, "The outbound proxy has sign-in, but this Java runtime does not send Basic sign-in "
-                    + "for https (CONNECT): https calls through the proxy will fail with "
-                    + "INT_PROXY_SIGN_IN_DISABLED_BY_JVM. Start the app with " + JvmProxySignIn.TUNNEL_START_OPTION);
-        }
+        // Since P026 the HTTP client sends the proxy sign-in on CONNECT itself: no JVM option is needed any more.
         LOG.log(Level.INFO, "Integrations: {0}", i);
         return s;
     }
@@ -110,8 +121,91 @@ public class IntegrationAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    CallEngine integrationCallEngine(Outbound outbound, AppBeans app, ObjectProvider<Clock> clock) {
-        return new CallEngine(outbound, app.secrets(), clock.getIfAvailable(Clock::systemUTC));
+    CallEngine integrationCallEngine(Outbound outbound, AppBeans app, ObjectProvider<Clock> clock,
+                                     ObjectProvider<CertificateSource> certificates) {
+        return new CallEngine(outbound, app.secrets(), certificates.getIfAvailable(() -> CertificateSource.NONE),
+                clock.getIfAvailable(Clock::systemUTC));
+    }
+
+    // ---- Client certificates (mutual TLS) ----
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnBean(DataSource.class)
+    CredentialStore integrationCredentialStore(IntegrationStore checkedFirst, DataSource ds) {
+        return new PostgresCredentialStore(ds); // the tables were checked with the integration store's
+    }
+
+    /**
+     * Uploaded certificates are sealed with the app's {@link ValueCipher} (platform-crypto-spring's) under the
+     * installation's customer ({@link CustomerId} bean). Without them uploads are refused
+     * ({@code INT_CREDENTIAL_KEY_SERVICE_FAILED}) and keystores still work. An installation serving several customers
+     * defines its own {@link IntegrationCredentials} bean with its entity-to-customer function.
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnBean(CredentialStore.class)
+    IntegrationCredentials integrationCredentials(CredentialStore store, ObjectProvider<ValueCipher> cipher,
+                                                  ObjectProvider<CustomerId> customer, AppBeans app,
+                                                  ObjectProvider<Clock> clock) {
+        CustomerId c = customer.getIfUnique();
+        return new IntegrationCredentials(store, c == null ? null : cipher.getIfUnique(), entity -> {
+            if (c == null) throw new IllegalStateException("no customer");
+            return c;
+        }, app.secrets(), app.audit(), clock.getIfAvailable(Clock::systemUTC));
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnBean(CredentialStore.class)
+    CredentialExpiry integrationCredentialExpiry(CredentialStore store, IntegrationProperties properties) {
+        try {
+            return new CredentialExpiry(store, properties.getCredentials().getExpiryWarningDays());
+        } catch (IllegalArgumentException e) {
+            throw new IntegrationConfigException(List.of(IntegrationProperties.PREFIX
+                    + ".credentials.expiry-warning-days: each is 1 to 365"));
+        }
+    }
+
+    // ---- Callbacks ----
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnBean(DataSource.class)
+    CallbackOutbox integrationCallbackOutbox(IntegrationStore checkedFirst, DataSource ds) {
+        return new PostgresCallbackOutbox(ds);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnBean(CallbackOutbox.class)
+    Callbacks integrationCallbacks(CallbackOutbox outbox, IntegrationStore store, CallEngine engine,
+                                   IntegrationProperties properties, ObjectProvider<Clock> clock) {
+        IntegrationProperties.Callbacks p = properties.getCallbacks();
+        RetryPolicy retry;
+        try {
+            retry = new RetryPolicy(p.getFirstDelay(), p.getMaxDelay(), p.getGiveUpAfter());
+        } catch (IllegalArgumentException | NullPointerException e) {
+            throw new IntegrationConfigException(List.of(IntegrationProperties.PREFIX + ".callbacks: first-delay at "
+                    + "least 1s, max-delay not below it, give-up-after not negative"));
+        }
+        return new Callbacks(outbox, store, engine, retry, Callbacks.DEFAULT_LEASE,
+                clock.getIfAvailable(Clock::systemUTC));
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(prefix = IntegrationProperties.PREFIX, name = "worker.enabled", havingValue = "true",
+            matchIfMissing = true)
+    IntegrationWorker integrationWorker(ObjectProvider<Callbacks> callbacks,
+                                        ObjectProvider<IntegrationCredentials> credentials,
+                                        IntegrationProperties properties, ObjectProvider<Clock> clock) {
+        Duration every = properties.getWorker().getEvery();
+        if (every == null || every.compareTo(Duration.ofSeconds(1)) < 0) {
+            throw new IntegrationConfigException(List.of(IntegrationProperties.PREFIX + ".worker.every: at least 1s"));
+        }
+        return new IntegrationWorker(callbacks.getIfUnique(), credentials.getIfUnique(), every, properties.getCallbacks().getKeepFinished(),
+                clock.getIfAvailable(Clock::systemUTC));
     }
 
     @Bean

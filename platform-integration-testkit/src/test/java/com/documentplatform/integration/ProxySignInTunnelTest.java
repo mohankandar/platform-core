@@ -8,7 +8,6 @@ import com.documentplatform.integration.http.Outbound;
 import com.documentplatform.integration.result.AttemptResult;
 import com.documentplatform.integration.result.Outcome;
 import com.documentplatform.integration.safety.Installation;
-import com.documentplatform.integration.safety.JvmProxySignIn;
 import com.documentplatform.integration.safety.ProxySettings;
 import com.documentplatform.integration.testkit.MockDestination;
 import com.documentplatform.integration.testkit.MockProxy;
@@ -34,12 +33,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 /**
- * B2 for https: the proxy's Basic sign-in on CONNECT, right, wrong and missing. Runs only in its own JVM started with
- * {@code -Djdk.http.auth.tunneling.disabledSchemes=} (the surefire execution {@code proxy-sign-in-tunnel} in this
- * module's POM), as the install guide tells the customer to start the app. {@link ProxySignInTest} proves the code
- * the default JVM gives. The full https call needs TLS to 127.0.0.1 to reach the mock unchanged; where something on
- * the machine intercepts it (an antivirus re-signing certificates), that one check is skipped as in
- * {@link PrivateCaTest}; CI forbids skips.
+ * B2 for https: the proxy's Basic sign-in on CONNECT, right, wrong and missing, in a JVM with the JDK's defaults
+ * (since P026 the HTTP client sends the sign-in on CONNECT itself; no start option is needed). The full https call
+ * needs TLS to 127.0.0.1 to reach the mock unchanged; where something on the machine intercepts it (an antivirus
+ * re-signing certificates), that one check is skipped as in {@link PrivateCaTest}; CI forbids skips.
  */
 class ProxySignInTunnelTest {
 
@@ -87,12 +84,6 @@ class ProxySignInTunnelTest {
     private static IntegrationConfig config() {
         return Fx.twoStep(mock.addressByName(), new SignIn.BearerFixed(SecretRef.of("int/t")))
                 .withEndpoint(new Endpoint(mock.addressByName(), true));
-    }
-
-    @Test
-    void thisJvmWasStartedWithTheOption() {
-        assertFalse(JvmProxySignIn.current().basicDisabledForTunnels(),
-                "run by the proxy-sign-in-tunnel execution, with " + JvmProxySignIn.TUNNEL_START_OPTION);
     }
 
     @Test

@@ -17,7 +17,8 @@ import java.util.Map;
 import static com.documentplatform.integration.jdbc.IntegrationSchemaException.Problem.*;
 
 /**
- * The integration tables in the app's database ({@code int_integration}, {@code int_integration_version}): their SQL
+ * The integration tables in the app's database ({@code int_integration}, {@code int_integration_version}, and since
+ * version 2 {@code int_credential}, {@code int_credential_change}, {@code int_callback_outbox}): their SQL
  * file and the check the app makes at startup.
  *
  * <p><b>Database rule:</b> the tables are created and changed only by the app's schema step, as a separate Flyway run
@@ -29,7 +30,7 @@ public final class IntegrationSchema {
 
     public static final String LOCATION = "db/platform/integration";
     public static final String HISTORY_TABLE = "int_schema_history";
-    public static final int VERSION = 1;
+    public static final int VERSION = 2;
     public static final String VERSION_TABLE = "int_schema_version";
     /** Table → the rights the app's database user needs on it. */
     public static final Map<String, List<String>> RIGHTS;
@@ -38,10 +39,13 @@ public final class IntegrationSchema {
         Map<String, List<String>> r = new LinkedHashMap<>();
         r.put("int_integration", List.of("SELECT", "INSERT", "UPDATE"));
         r.put("int_integration_version", List.of("SELECT", "INSERT"));
+        r.put("int_credential", List.of("SELECT", "INSERT", "UPDATE"));
+        r.put("int_credential_change", List.of("SELECT", "INSERT"));
+        r.put("int_callback_outbox", List.of("SELECT", "INSERT", "UPDATE", "DELETE"));
         RIGHTS = java.util.Collections.unmodifiableMap(r);
     }
 
-    private static final List<String> SCRIPTS = List.of("V1__integration.sql");
+    private static final List<String> SCRIPTS = List.of("V1__integration.sql", "V2__credentials_callbacks.sql");
     private static final String RUN_STEP = "run the integration schema step (Flyway location " + LOCATION
             + ", history table " + HISTORY_TABLE + ") before starting the app";
 
@@ -137,7 +141,9 @@ public final class IntegrationSchema {
         if (!lacking.isEmpty()) {
             throw new IntegrationSchemaException(INT_PRIVILEGES_MISSING, "The app's database user lacks "
                     + String.join(", ", lacking) + " on " + table + ": grant SELECT, INSERT, UPDATE on "
-                    + "int_integration, SELECT, INSERT on int_integration_version and SELECT on " + VERSION_TABLE
+                    + "int_integration and int_credential, SELECT, INSERT on int_integration_version and "
+                    + "int_credential_change, SELECT, INSERT, UPDATE, DELETE on int_callback_outbox and SELECT on "
+                    + VERSION_TABLE
                     + " to that user.");
         }
     }

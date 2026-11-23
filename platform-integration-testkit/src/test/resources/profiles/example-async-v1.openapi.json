@@ -1,0 +1,61 @@
+{
+  "openapi": "3.1.0",
+  "info": {"title": "Example Async Intake", "version": "1.0", "description": "A made-up API for tests: accepts a package and works on it later."},
+  "paths": {
+    "/v1/health": {
+      "get": {
+        "operationId": "health",
+        "responses": {
+          "200": {"description": "Up", "content": {"application/json": {"schema": {"type": "object", "properties": {"status": {"type": "string"}}}}}}
+        }
+      }
+    },
+    "/v1/jobs": {
+      "post": {
+        "operationId": "submitJob",
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Job"}}}
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted; check the job later",
+            "headers": {"Location": {"schema": {"type": "string"}}, "Retry-After": {"schema": {"type": "integer"}}},
+            "content": {"application/json": {"schema": {"type": "object", "required": ["jobId"], "properties": {"jobId": {"type": "string"}}}}}
+          },
+          "400": {"description": "Bad request", "x-error-codes": ["ASYNC-INVALID"], "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "401": {"description": "Key refused", "x-error-codes": ["ASYNC-KEY"], "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
+    "/v1/jobs/{jobId}": {
+      "get": {
+        "operationId": "jobStatus",
+        "parameters": [{"in": "path", "name": "jobId", "required": true, "schema": {"type": "string"}}],
+        "responses": {
+          "200": {"description": "The job's state", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/JobStatus"}}}},
+          "404": {"description": "No such job", "x-error-codes": ["ASYNC-NO-JOB"], "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Job": {
+        "type": "object",
+        "required": ["package"],
+        "properties": {"package": {"type": "string", "minLength": 1}, "documents": {"type": "integer"}}
+      },
+      "JobStatus": {
+        "type": "object",
+        "required": ["state"],
+        "properties": {
+          "state": {"type": "string", "enum": ["QUEUED", "RUNNING", "DONE", "FAILED"]},
+          "resultId": {"type": "string"},
+          "code": {"type": "string"}
+        }
+      },
+      "Error": {"type": "object", "properties": {"code": {"type": "string"}, "message": {"type": "string"}}}
+    }
+  }
+}
