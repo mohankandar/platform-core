@@ -81,6 +81,87 @@ class FileEraseLogStoreTest {
         assertEquals(100, chain.head().seq());
     }
 
+    /** erase-log-44: the file lock between processes, not only the lock inside one JVM. */
+    @Test
+    void writersInSeveralProcessesAtOnceKeepOneChain(@TempDir Path dir) throws Exception {
+        Path location = dir.resolve("log");
+        FileEraseLogStore store = new FileEraseLogStore(location);
+        Path go = dir.resolve("go");
+        int each = 40;
+        String javaExe = Path.of(System.getProperty("java.home"), "bin", "java").toString();
+        List<Process> others = new ArrayList<>();
+        for (String prefix : List.of("p1", "p2")) {
+            others.add(new ProcessBuilder(javaExe, "-cp", System.getProperty("java.class.path"),
+                    AppendInAnotherProcess.class.getName(), location.toString(), prefix, String.valueOf(each),
+                    go.toString()).redirectErrorStream(true).redirectOutput(dir.resolve(prefix + ".out").toFile())
+                    .start());
+        }
+        Thread.sleep(1500); // let the other JVMs start and wait for the go file
+        Files.writeString(go, "go");
+        for (int i = 0; i < each; i++) {
+            store.append(req("here-" + i), Instant.now());
+        }
+        for (Process p : others) {
+            assertTrue(p.waitFor(2, java.util.concurrent.TimeUnit.MINUTES), "the other JVM finished");
+            assertEquals(0, p.exitValue(), () -> "the other JVM failed: " + readQuietly(dir));
+        }
+
+        EraseLog.ChainCheck chain = new EraseLog(new FileEraseLogStore(location), Clock.systemUTC()).verify();
+        assertTrue(chain.intact(), chain.message());
+        assertEquals(3L * each, chain.entries());
+        List<String> ids = store.after(0).stream().map(e -> e.request().recordId()).toList();
+        assertEquals(3 * each, ids.size());
+        assertEquals(3 * each, new java.util.HashSet<>(ids).size(), "every entry there once");
+        for (String prefix : List.of("here", "p1", "p2")) {
+            for (int i = 0; i < each; i++) {
+                assertTrue(ids.contains(prefix + "-" + i), prefix + "-" + i);
+            }
+        }
+    }
+
+    private static String readQuietly(Path dir) {
+        StringBuilder b = new StringBuilder();
+        for (String p : List.of("p1", "p2")) {
+            try {
+                b.append(p).append(": ").append(Files.readString(dir.resolve(p + ".out"))).append('\n');
+            } catch (java.io.IOException e) {
+                b.append(p).append(": (no output)\n");
+            }
+        }
+        return b.toString();
+    }
+
+    /** erase-log-40: an escape and a missing field are refused when read, like an extra field. */
+    @Test
+    void aLineWithAnEscapeOrAMissingFieldIsRefused(@TempDir Path dir) throws Exception {
+        FileEraseLogStore store = new FileEraseLogStore(dir);
+        for (int i = 1; i <= 3; i++) {
+            store.append(req("rec-" + i), T0.plusSeconds(i));
+        }
+        Path file = dir.resolve(FileEraseLogStore.LOG_FILE);
+        String original = Files.readString(file);
+        EraseLog log = new EraseLog(store, Clock.systemUTC());
+
+        Files.writeString(file, original.replace("\"recordId\":\"rec-2\"", "\"recordId\":\"rec-\\\"2\""));
+        assertTrue(Files.readString(file).contains("rec-\\\"2"), "the line holds an escaped quote");
+        EraseLog.ChainCheck escaped = log.verify();
+        assertEquals(EraseLogError.ERASE_LOG_FORMAT, escaped.code());
+        assertTrue(escaped.message().contains("line 2 of the erase log: field recordId has an escape"),
+                escaped.message());
+        assertEquals(EraseLogError.ERASE_LOG_FORMAT, assertThrows(EraseLogException.class, () -> store.after(0))
+                .code());
+
+        Files.writeString(file, original.replace(",\"auditId\":\"AUD-rec-2\"", ""));
+        assertFalse(Files.readString(file).contains("AUD-rec-2"));
+        EraseLog.ChainCheck missing = log.verify();
+        assertEquals(EraseLogError.ERASE_LOG_FORMAT, missing.code());
+        assertTrue(missing.message().contains("line 2 of the erase log: field auditId is missing"),
+                missing.message());
+
+        Files.writeString(file, original);
+        assertTrue(log.verify().intact());
+    }
+
     @Test
     void aChangedOrRemovedLineBreaksTheChain(@TempDir Path dir) throws Exception {
         FileEraseLogStore store = new FileEraseLogStore(dir);
