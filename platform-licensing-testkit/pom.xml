@@ -15,6 +15,13 @@
             <artifactId>platform-licensing</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- Signs test licences and resets (P041: the signing side lives in platform-licensing-issue; the testkit is
+             test scope only, so it never reaches a customer's classpath). -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-licensing-issue</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>

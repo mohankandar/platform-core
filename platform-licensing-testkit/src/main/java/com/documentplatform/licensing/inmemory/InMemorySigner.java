@@ -29,7 +29,7 @@ public final class InMemorySigner implements Signer {
             throw new IssueException(IssueError.ISSUE_KEY_NOT_FOUND, "Key ID " + keyId + ".");
         }
         try {
-            return Ed25519.sign(key.getPrivate(), message);
+            return com.documentplatform.licensing.issue.SigningKeys.sign(key.getPrivate(), message);
         } catch (InvalidKeyException e) {
             throw new IssueException(IssueError.ISSUE_KEY_INVALID, "Key ID " + keyId + ".");
         }

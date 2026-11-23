@@ -17,6 +17,7 @@
         <module>platform-notifications-testkit</module>
         <module>platform-notifications-spring</module>
         <module>platform-licensing</module>
+        <module>platform-licensing-issue</module>
         <module>platform-licensing-testkit</module>
         <module>platform-licensing-spring</module>
         <module>platform-identity-jdbc</module>

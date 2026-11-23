@@ -1,4 +1,7 @@
-package com.documentplatform.licensing;
+package com.documentplatform.licensing.issue;
+
+import com.documentplatform.licensing.Licence;
+import com.documentplatform.licensing.LicenceFormat;
 
 import java.security.PrivateKey;
 
@@ -13,14 +16,14 @@ public final class LicenceSigner {
      * @throws IllegalArgumentException if the key is not an Ed25519 private key
      */
     public static String sign(Licence licence, PrivateKey key) {
-        return SignedDocument.sign(LicenceFormat.FORMAT, "licence", LicenceFormat.payload(licence), key);
+        return DocumentSigner.sign(LicenceFormat.FORMAT, "licence", LicenceFormat.payload(licence), key);
     }
 
     /**
      * Signs through a signing service that keeps the private key (for example Vault Transit): only the message to
      * sign leaves this process, and only the signature comes back.
      */
-    public static String sign(Licence licence, SignedDocument.MessageSigner signer) {
-        return SignedDocument.sign(LicenceFormat.FORMAT, "licence", LicenceFormat.payload(licence), signer);
+    public static String sign(Licence licence, DocumentSigner.MessageSigner signer) {
+        return DocumentSigner.sign(LicenceFormat.FORMAT, "licence", LicenceFormat.payload(licence), signer);
     }
 }

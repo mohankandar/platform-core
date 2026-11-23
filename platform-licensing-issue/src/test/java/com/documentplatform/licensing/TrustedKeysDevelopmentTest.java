@@ -13,8 +13,8 @@ class TrustedKeysDevelopmentTest {
 
     @Test
     void aKeyMarkedDevelopmentIsADevelopmentKeyAndTheMarkSurvivesTheFile() {
-        KeyPair dev = Ed25519.generate();
-        KeyPair prod = Ed25519.generate();
+        KeyPair dev = com.documentplatform.licensing.issue.SigningKeys.generate();
+        KeyPair prod = com.documentplatform.licensing.issue.SigningKeys.generate();
         TrustedKeys keys = TrustedKeys.of(Map.of("dev-1", dev.getPublic(), "lic-1", prod.getPublic()), Set.of("dev-1"));
         assertTrue(keys.isDevelopmentKey("dev-1"));
         assertFalse(keys.isDevelopmentKey("lic-1"));
@@ -28,7 +28,7 @@ class TrustedKeysDevelopmentTest {
 
     @Test
     void olderFilesWithoutTheFieldLoadAndHaveNoDevelopmentKey() {
-        KeyPair k = Ed25519.generate();
+        KeyPair k = com.documentplatform.licensing.issue.SigningKeys.generate();
         String older = "{\"format\":\"platform-licence-keys/1\",\"keys\":[{\"algorithm\":\"Ed25519\",\"keyId\":\"lic-1\","
                 + "\"publicKey\":\"" + Ed25519.encodePublic(k.getPublic()) + "\"}]}";
         TrustedKeys keys = TrustedKeys.parse(older);
@@ -39,7 +39,7 @@ class TrustedKeysDevelopmentTest {
 
     @Test
     void developmentMustBeTrueOrFalseAndNameAListedKey() {
-        KeyPair k = Ed25519.generate();
+        KeyPair k = com.documentplatform.licensing.issue.SigningKeys.generate();
         String bad = "{\"format\":\"platform-licence-keys/1\",\"keys\":[{\"algorithm\":\"Ed25519\",\"keyId\":\"lic-1\","
                 + "\"publicKey\":\"" + Ed25519.encodePublic(k.getPublic()) + "\",\"development\":\"yes\"}]}";
         assertThrows(IllegalArgumentException.class, () -> TrustedKeys.parse(bad));

@@ -47,6 +47,10 @@ Source of truth: the owner's Shared capabilities thread (project doc `Licensing-
 
 ## 5. Licence-issuing command (our side only)
 
+Since P041 (0.6.0) the issuing side is its own module, `platform-licensing-issue`: the command, the Vault Transit
+signer, and the signing half of the formats (`LicenceSigner`, `ResetSigner`, `DocumentSigner`, `SigningKeys`). It is
+not in the BOM and is never on a customer's classpath; `platform-licensing` only verifies.
+
 - Builds and signs a licence from **command options**, not an input file: `--customer`, `--products`, `--slot` (one
   per entity slot, with its allowances), `--type`, `--kind`, `--starts`, `--expires` or `--updates-until`,
   `--deployment`, `--tenant-id` for a new version of an existing tenant, `--key-id`. Set-up and the Vault options:

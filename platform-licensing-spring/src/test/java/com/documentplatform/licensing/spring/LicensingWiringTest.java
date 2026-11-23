@@ -254,8 +254,8 @@ class LicensingWiringTest {
         Db db = Db.migrated();
         DataSource ds = db.dmlUser();
         store(ds, production("2026-01-01", "2027-12-31"));
-        String forged = com.documentplatform.licensing.LicenceSigner.sign(production("2026-01-01", "2099-12-31"),
-                Ed25519.generate().getPrivate());
+        String forged = com.documentplatform.licensing.issue.LicenceSigner.sign(production("2026-01-01", "2099-12-31"),
+                com.documentplatform.licensing.issue.SigningKeys.generate().getPrivate());
         db.exec("update lic_licence set file = '" + forged.replace("'", "''") + "'");
         refusedStart(app(ds, NOW), LicenceRefusal.LICENCE_FORGED);
     }

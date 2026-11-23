@@ -125,7 +125,7 @@ class LicenceServiceTest {
         Instant now = clock.instant();
         LastSeenReset reset = new LastSeenReset("RST-TEST-0001", TENANT, now, now.plus(Duration.ofDays(7)), now,
                 licences.keyId());
-        String file = reset.sign(licences.keyPair().getPrivate());
+        String file = com.documentplatform.licensing.issue.ResetSigner.sign(reset, licences.keyPair().getPrivate());
         assertEquals(LastSeenReset.Outcome.APPLIED, service().applyReset(file.getBytes()));
         LicenceStatus s = service().status();
         assertEquals(LicenceState.VALID, s.state());
@@ -137,13 +137,13 @@ class LicenceServiceTest {
     void aResetIsUselessLaterAndForAnotherKey() {
         service().store(licences.sign(version(1, "2026-01-01", "2027-11-30")));
         Instant now = clock.instant();
-        String old = new LastSeenReset("RST-TEST-0002", TENANT, now, now.plus(Duration.ofDays(1)), now, licences.keyId())
-                .sign(licences.keyPair().getPrivate());
+        String old = com.documentplatform.licensing.issue.ResetSigner.sign(new LastSeenReset("RST-TEST-0002", TENANT, now, now.plus(Duration.ofDays(1)), now, licences.keyId()),
+                licences.keyPair().getPrivate());
         clock.set("2026-11-25T00:00:00Z");
         assertEquals(ResetRefusal.RESET_EXPIRED,
                 assertThrows(ResetException.class, () -> service().applyReset(old.getBytes())).code());
-        String forged = new LastSeenReset("RST-TEST-0003", TENANT, now, now.plus(Duration.ofDays(9)), now,
-                licences.keyId()).sign(Ed25519.generate().getPrivate());
+        String forged = com.documentplatform.licensing.issue.ResetSigner.sign(new LastSeenReset("RST-TEST-0003", TENANT, now, now.plus(Duration.ofDays(9)), now,
+                licences.keyId()),com.documentplatform.licensing.issue.SigningKeys.generate().getPrivate());
         assertEquals(ResetRefusal.RESET_FORGED,
                 assertThrows(ResetException.class, () -> service().applyReset(forged.getBytes())).code());
     }

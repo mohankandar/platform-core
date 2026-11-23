@@ -9,7 +9,6 @@ import com.documentplatform.licensing.LastSeenReset;
 import com.documentplatform.licensing.Licence;
 import com.documentplatform.licensing.LicenceFormat;
 import com.documentplatform.licensing.LicenceKind;
-import com.documentplatform.licensing.LicenceSigner;
 import com.documentplatform.licensing.LicenceType;
 import com.documentplatform.licensing.json.Json;
 
@@ -290,7 +289,7 @@ public final class IssueLicenceCommand {
         }
         String file;
         try {
-            file = reset.sign(message -> signWith(s, signingKey, message));
+            file = ResetSigner.sign(reset, message -> signWith(s, signingKey, message));
         } catch (IllegalArgumentException e) {
             throw new IssueException(IssueError.ISSUE_KEY_INVALID, "Key ID " + keyId + ".");
         }

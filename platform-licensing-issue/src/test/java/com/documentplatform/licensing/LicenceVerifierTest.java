@@ -94,7 +94,7 @@ class LicenceVerifierTest {
         byte[] message = LicenceFormat.signedMessage(payload);
         byte[] sig;
         try {
-            sig = Ed25519.sign(KEY_1.getPrivate(), message);
+            sig = com.documentplatform.licensing.issue.SigningKeys.sign(KEY_1.getPrivate(), message);
         } catch (java.security.InvalidKeyException e) {
             throw new AssertionError(e);
         }
@@ -141,8 +141,8 @@ class LicenceVerifierTest {
 
     @Test
     void forgedWhenSignedByAnotherKeyUnderOurKeyId() {
-        KeyPair attacker = Ed25519.generate();
-        String forged = LicenceSigner.sign(subscription(START, END), attacker.getPrivate());
+        KeyPair attacker = com.documentplatform.licensing.issue.SigningKeys.generate();
+        String forged = com.documentplatform.licensing.issue.LicenceSigner.sign(subscription(START, END), attacker.getPrivate());
         assertEquals(LICENCE_FORGED, refusal(() -> verifier.verify(forged, null)));
     }
 
@@ -212,7 +212,7 @@ class LicenceVerifierTest {
         String file = signed(subscription(START, END));
         @SuppressWarnings("unchecked")
         String sig = (String) ((Map<String, Object>) Json.parseObject(file).get("signature")).get("value");
-        String privateKey = Ed25519.encodePrivate(KEY_1.getPrivate());
+        String privateKey = com.documentplatform.licensing.issue.SigningKeys.encodePrivate(KEY_1.getPrivate());
         List<String> attempts = List.of(file.replace("10000", "10001"), file.replace(KEY_ID_1, "other"),
                 file.replace("platform-licence/1", "x"), file.substring(0, file.length() / 2));
         for (String attempt : attempts) {
@@ -234,7 +234,7 @@ class LicenceVerifierTest {
         @SuppressWarnings("unchecked")
         String sig = (String) ((Map<String, Object>) Json.parseObject(file).get("signature")).get("value");
         String digest = (String) ((Map<?, ?>) Json.parseObject(file).get("signature")).get("payloadSha256");
-        List<String> secrets = List.of(sig, sig.substring(0, 16), digest, Ed25519.encodePrivate(KEY_1.getPrivate()),
+        List<String> secrets = List.of(sig, sig.substring(0, 16), digest, com.documentplatform.licensing.issue.SigningKeys.encodePrivate(KEY_1.getPrivate()),
                 Ed25519.encodePublic(KEY_1.getPublic()), "Example Customer Ltd", "PAGES_PER_MONTH", "entitySlots",
                 "not a licence", "Pasted Secret Text");
         Map<String, LicenceRefusal> cases = new java.util.LinkedHashMap<>();
@@ -243,7 +243,7 @@ class LicenceVerifierTest {
         cases.put(file.replace("platform-licence/1", "platform-licence/2"), LICENCE_UNSUPPORTED_FORMAT);
         cases.put(file.replace(KEY_ID_1, "Pasted Secret Text"), LICENCE_UNKNOWN_KEY_ID);
         cases.put(file.replace("\"amount\": 10000", "\"amount\": 90000"), LICENCE_TAMPERED);
-        cases.put(LicenceSigner.sign(subscription(START, END), Ed25519.generate().getPrivate()), LICENCE_FORGED);
+        cases.put(com.documentplatform.licensing.issue.LicenceSigner.sign(subscription(START, END), com.documentplatform.licensing.issue.SigningKeys.generate().getPrivate()), LICENCE_FORGED);
         cases.put(file, LICENCE_WRONG_CUSTOMER);
 
         List<java.util.logging.LogRecord> records = java.util.Collections.synchronizedList(new ArrayList<>());
@@ -298,7 +298,7 @@ class LicenceVerifierTest {
         byte[] message = LicenceFormat.signedMessage(payload);
         byte[] sig;
         try {
-            sig = Ed25519.sign(KEY_1.getPrivate(), message);
+            sig = com.documentplatform.licensing.issue.SigningKeys.sign(KEY_1.getPrivate(), message);
         } catch (java.security.InvalidKeyException e) {
             throw new AssertionError(e);
         }

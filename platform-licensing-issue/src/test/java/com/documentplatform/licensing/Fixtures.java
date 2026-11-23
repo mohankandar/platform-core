@@ -12,8 +12,8 @@ import java.util.Map;
 /** Throwaway keys and licences for this module's tests. */
 public final class Fixtures {
 
-    public static final KeyPair KEY_1 = Ed25519.generate();
-    public static final KeyPair KEY_2 = Ed25519.generate();
+    public static final KeyPair KEY_1 = com.documentplatform.licensing.issue.SigningKeys.generate();
+    public static final KeyPair KEY_2 = com.documentplatform.licensing.issue.SigningKeys.generate();
     public static final String KEY_ID_1 = "test-2026-01";
     public static final String KEY_ID_2 = "test-2027-01";
 
@@ -55,7 +55,7 @@ public final class Fixtures {
     }
 
     public static String signed(Licence licence) {
-        return LicenceSigner.sign(licence, (licence.keyId().equals(KEY_ID_2) ? KEY_2 : KEY_1).getPrivate());
+        return com.documentplatform.licensing.issue.LicenceSigner.sign(licence, (licence.keyId().equals(KEY_ID_2) ? KEY_2 : KEY_1).getPrivate());
     }
 
     public static Instant at(String date) {

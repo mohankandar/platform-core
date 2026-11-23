@@ -8,7 +8,6 @@ import com.documentplatform.licensing.Fixtures;
 import com.documentplatform.licensing.LastSeenReset;
 import com.documentplatform.licensing.Licence;
 import com.documentplatform.licensing.LicenceKind;
-import com.documentplatform.licensing.LicenceSigner;
 import com.documentplatform.licensing.LicenceType;
 import com.documentplatform.licensing.jdbc.Pg;
 import org.junit.jupiter.api.BeforeEach;
@@ -67,7 +66,7 @@ class LicenceCommandTest {
     }
 
     private Path licenceFile(Licence l) throws Exception {
-        return file(l.licenceId() + ".json", LicenceSigner.sign(l, Fixtures.KEY_1.getPrivate()));
+        return file(l.licenceId() + ".json", com.documentplatform.licensing.issue.LicenceSigner.sign(l, Fixtures.KEY_1.getPrivate()));
     }
 
     private int run(String... args) {
@@ -140,8 +139,8 @@ class LicenceCommandTest {
 
     @Test
     void aForgedFileIsRefusedBeforeStoring() throws Exception {
-        Path forged = file("forged.json", LicenceSigner.sign(licence("LIC-0001", 1, TENANT, "2026-01-01", "2099-12-31"),
-                com.documentplatform.licensing.Ed25519.generate().getPrivate()));
+        Path forged = file("forged.json", com.documentplatform.licensing.issue.LicenceSigner.sign(licence("LIC-0001", 1, TENANT, "2026-01-01", "2099-12-31"),
+                com.documentplatform.licensing.issue.SigningKeys.generate().getPrivate()));
         assertEquals(1, run("store", "--file", forged.toString()));
         assertTrue(err().startsWith("LICENCE_FORGED: "), err());
         assertEquals(0, db.count("select count(*) from lic_licence"));
@@ -158,7 +157,7 @@ class LicenceCommandTest {
         Instant now = clock.instant();
         LastSeenReset reset = new LastSeenReset("RST-0000-0001", TENANT, now, now.plus(Duration.ofDays(7)), now,
                 Fixtures.KEY_ID_1);
-        Path resetFile = file("reset.json", reset.sign(Fixtures.KEY_1.getPrivate()));
+        Path resetFile = file("reset.json", com.documentplatform.licensing.issue.ResetSigner.sign(reset, Fixtures.KEY_1.getPrivate()));
         assertEquals(0, run("apply-reset", "--file", resetFile.toString()), err());
         assertTrue(out().startsWith("Reset applied"), out());
         assertTrue(out().contains("State VALID"), out());
@@ -171,8 +170,8 @@ class LicenceCommandTest {
     void aResetForAnotherCustomerIsRefused() throws Exception {
         assertEquals(0, run("store", "--file", licenceFile(licence("LIC-0001", 1, TENANT, "2026-01-01", "2027-11-30")).toString()));
         Instant now = clock.instant();
-        Path resetFile = file("reset.json", new LastSeenReset("RST-0000-0002", "TEN-OTHER", now, now.plusSeconds(60),
-                now, Fixtures.KEY_ID_1).sign(Fixtures.KEY_1.getPrivate()));
+        Path resetFile = file("reset.json", com.documentplatform.licensing.issue.ResetSigner.sign(new LastSeenReset("RST-0000-0002", "TEN-OTHER", now, now.plusSeconds(60),
+                now, Fixtures.KEY_ID_1),Fixtures.KEY_1.getPrivate()));
         assertEquals(1, run("apply-reset", "--file", resetFile.toString()));
         assertTrue(err().startsWith("RESET_WRONG_CUSTOMER: "), err());
     }

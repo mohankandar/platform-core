@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.documentplatform.platform</groupId>
+        <artifactId>platform-core</artifactId>
+        <version>0.6.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>platform-licensing-issue</artifactId>
+    <description>Our own licence issuing (P041): the licence-issuing command (IssueLicenceCommand, signing in Vault
+        Transit with VaultTransitSigner; the private key never leaves Vault), the signing side of the licence and
+        last-seen reset formats (LicenceSigner, ResetSigner, DocumentSigner) and Ed25519 key handling for tests and key
+        ceremonies (SigningKeys). Never on a customer's classpath and not in the BOM; platform-licensing (the customer
+        side) only verifies.</description>
+    <dependencies>
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-licensing</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-postgresql</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>${postgresql.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

@@ -7,7 +7,6 @@ import com.documentplatform.licensing.Ed25519;
 import com.documentplatform.licensing.EntitySlot;
 import com.documentplatform.licensing.Licence;
 import com.documentplatform.licensing.LicenceKind;
-import com.documentplatform.licensing.LicenceSigner;
 import com.documentplatform.licensing.LicenceType;
 import com.documentplatform.licensing.TrustedKeys;
 import org.junit.jupiter.api.Test;
@@ -39,7 +38,7 @@ class DemoFilesGenerator {
     @EnabledIfSystemProperty(named = "setup.demo.regenerate", matches = "true")
     void writeDemoLicence() throws Exception {
         Path demo = Path.of("demo");
-        KeyPair dev = Ed25519.generate();
+        KeyPair dev = com.documentplatform.licensing.issue.SigningKeys.generate();
         List<Allowance> a = List.of(new Allowance("PRODUCT_A", AllowanceType.PAGES_PER_MONTH, 1000),
                 new Allowance("PRODUCT_B", AllowanceType.PAGES_PER_MONTH, 1000));
         Licence licence = new Licence("LIC-DEMO-0001", 1, "Demo Customer Ltd", "TEN-DEMO-0001",
@@ -47,7 +46,7 @@ class DemoFilesGenerator {
                 List.of(new EntitySlot("ENT-DEMO-0001", a), new EntitySlot("ENT-DEMO-0002", a)),
                 LicenceType.PERPETUAL, LicenceKind.NON_PRODUCTION, LocalDate.parse("2026-01-01"), null,
                 LocalDate.parse("2036-12-31"), Deployment.ON_PREM, DEV_KEY_ID, Instant.parse("2026-11-21T00:00:00Z"));
-        Files.writeString(demo.resolve("licence-demo.json"), LicenceSigner.sign(licence, dev.getPrivate()),
+        Files.writeString(demo.resolve("licence-demo.json"), com.documentplatform.licensing.issue.LicenceSigner.sign(licence, dev.getPrivate()),
                 StandardCharsets.UTF_8);
         Files.writeString(demo.resolve("development-trusted-keys.json"),
                 TrustedKeys.of(Map.of(DEV_KEY_ID, dev.getPublic()), java.util.Set.of(DEV_KEY_ID)).toJson(), StandardCharsets.UTF_8);

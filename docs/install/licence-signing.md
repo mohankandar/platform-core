@@ -3,7 +3,8 @@
 For the people who issue licences: the owner and the backup signer. Customers never see this; their apps only ship
 public keys.
 
-The issuing command (`IssueLicenceCommand`) signs licences and last-seen resets with an **Ed25519 key inside
+The issuing command (`IssueLicenceCommand`, module `platform-licensing-issue` since 0.6.0: our own tool, never on a
+customer's classpath) signs licences and last-seen resets with an **Ed25519 key inside
 HashiCorp Vault's Transit engine**. The command sends Vault the bytes to sign and gets the signature back. The private
 key is created in Vault, used in Vault, and never leaves it: it is not exportable, not backed up in plain text, and no
 policy here can read it. Every signature is in Vault's audit log, and in our run log with the Vault request ID.

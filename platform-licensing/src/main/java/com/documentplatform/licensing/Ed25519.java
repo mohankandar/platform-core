@@ -29,28 +29,6 @@ public final class Ed25519 {
     private Ed25519() {
     }
 
-    /** A new key pair. For tests and for key ceremonies inside the secret store; never write the private key to a repo. */
-    public static KeyPair generate() {
-        try {
-            return KeyPairGenerator.getInstance(ALGORITHM).generateKeyPair();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("this JDK has no Ed25519", e);
-        }
-    }
-
-    public static byte[] sign(PrivateKey key, byte[] message) throws InvalidKeyException {
-        try {
-            Signature s = Signature.getInstance(ALGORITHM);
-            s.initSign(key);
-            s.update(message);
-            return s.sign();
-        } catch (InvalidKeyException e) {
-            throw e;
-        } catch (GeneralSecurityException e) {
-            throw new IllegalStateException("Ed25519 signing failed", e);
-        }
-    }
-
     /** False for a signature that does not verify, including one of the wrong shape. */
     public static boolean verify(PublicKey key, byte[] message, byte[] signature) {
         try {
@@ -77,21 +55,6 @@ public final class Ed25519 {
         } catch (IllegalArgumentException | GeneralSecurityException e) {
             throw new IllegalArgumentException("not a Base64 X.509 Ed25519 public key");
         }
-    }
-
-    /** @throws IllegalArgumentException if the text is not a Base64 PKCS#8 Ed25519 private key (text not repeated) */
-    public static PrivateKey decodePrivate(String base64) {
-        try {
-            return KeyFactory.getInstance(ALGORITHM)
-                    .generatePrivate(new PKCS8EncodedKeySpec(Base64.getDecoder().decode(base64.strip())));
-        } catch (IllegalArgumentException | GeneralSecurityException e) {
-            throw new IllegalArgumentException("not a Base64 PKCS#8 Ed25519 private key");
-        }
-    }
-
-    /** For tests and key ceremonies only. */
-    public static String encodePrivate(PrivateKey key) {
-        return Base64.getEncoder().encodeToString(key.getEncoded());
     }
 
     public static String sha256Hex(byte[] bytes) {

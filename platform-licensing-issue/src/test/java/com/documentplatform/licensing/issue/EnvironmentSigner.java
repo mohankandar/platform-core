@@ -36,12 +36,12 @@ final class EnvironmentSigner implements Signer {
         }
         PrivateKey key;
         try {
-            key = Ed25519.decodePrivate(value);
+            key = com.documentplatform.licensing.issue.SigningKeys.decodePrivate(value);
         } catch (IllegalArgumentException e) {
             throw new IssueException(IssueError.ISSUE_KEY_INVALID, "Key ID " + keyId + ".");
         }
         try {
-            return Ed25519.sign(key, message);
+            return com.documentplatform.licensing.issue.SigningKeys.sign(key, message);
         } catch (InvalidKeyException e) {
             throw new IssueException(IssueError.ISSUE_KEY_INVALID, "Key ID " + keyId + ".");
         }

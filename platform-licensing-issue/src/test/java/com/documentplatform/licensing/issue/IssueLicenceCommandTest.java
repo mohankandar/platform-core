@@ -35,9 +35,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class IssueLicenceCommandTest {
 
-    private static final KeyPair KEY = Ed25519.generate();
+    private static final KeyPair KEY = com.documentplatform.licensing.issue.SigningKeys.generate();
     private static final String KEY_ID = "test-2026-01";
-    private static final String PRIVATE_B64 = Ed25519.encodePrivate(KEY.getPrivate());
+    private static final String PRIVATE_B64 = com.documentplatform.licensing.issue.SigningKeys.encodePrivate(KEY.getPrivate());
 
     @TempDir
     Path dir;
