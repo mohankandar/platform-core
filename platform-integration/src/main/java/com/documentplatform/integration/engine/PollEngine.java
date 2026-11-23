@@ -15,6 +15,7 @@ import com.documentplatform.integration.intake.CursorState;
 import com.documentplatform.integration.intake.IntakeAnswer;
 import com.documentplatform.integration.intake.IntakeFile;
 import com.documentplatform.integration.intake.IntakeHandler;
+import com.documentplatform.integration.intake.LogRef;
 import com.documentplatform.integration.intake.PollResult;
 import com.documentplatform.integration.intake.PolledItem;
 import com.documentplatform.integration.json.Json;
@@ -346,8 +347,8 @@ public final class PollEngine {
             ScanResult scan = scanning.scan(content, size);
             if (scan.verdict() == ScanResult.Verdict.INFECTED) {
                 quarantined.add(new PollResult.Quarantined(id, scan.threat()));
-                LOG.log(System.Logger.Level.WARNING, "Integration {0} poll: item {1} infected ({2}); quarantined, not "
-                        + "acknowledged", c.id(), id, scan.threat());
+                LOG.log(System.Logger.Level.WARNING, "Integration {0} poll: item={1} infected ({2}); quarantined, not "
+                        + "acknowledged", c.id(), LogRef.of(id), scan.threat());
                 try {
                     scanning.events().infected(new ScanEvents.Infected(c.id(), c.entity(), c.product(), "poll", id,
                             name, scan.threat(), calls.clock().instant()));
