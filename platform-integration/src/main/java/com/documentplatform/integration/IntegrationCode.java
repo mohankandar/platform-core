@@ -218,6 +218,8 @@ public enum IntegrationCode implements com.documentplatform.errors.PlatformCode 
     INT_FIELD_VALUES_INVALID,
     /** A document's content could not be read from the app. */
     INT_CONTENT_UNREADABLE,
+    /** A stored integration configuration is not readable (its stored JSON is damaged or of an unknown form). */
+    INT_CONFIG_UNREADABLE,
     /** The address is not https and plain http is not allowed for this installation. */
     INT_ADDRESS_NOT_SECURE,
 

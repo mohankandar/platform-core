@@ -42,5 +42,10 @@ public enum FieldValuesError implements com.documentplatform.errors.PlatformCode
      */
     VALUES_ERASE_OUTSIDE_LOG,
     /** The database refused or failed the call (the message has the SQL state only). */
-    VALUES_STORE_FAILED
+    VALUES_STORE_FAILED,
+    /**
+     * INFO for the health page ({@link FieldValues#searchStatus()}): partial search works as prefix search because
+     * the trigram index is missing. Its name keeps the {@code FLD_} prefix it had as a string code (P037).
+     */
+    FLD_PARTIAL_SEARCH_UNAVAILABLE
 }
