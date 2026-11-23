@@ -17,7 +17,7 @@ import java.util.Map;
  * and while an entry this instance could not apply is still pending, {@code lastFailure}: its number, kind, record
  * type and ID, the handler's code, the erase log's code and when (ids and codes; an entry holds no value). No values. Uses the guard's last state (the startup check, then the recheck), so a health call reads nothing.
  */
-public final class EraseLogHealthIndicator extends AbstractHealthIndicator {
+final class EraseLogHealthIndicator extends AbstractHealthIndicator {
 
     private final EraseGuard guard;
     private final EraseRetention retention;

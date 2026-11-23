@@ -3,7 +3,7 @@ package com.documentplatform.eraselog.spring;
 import java.util.List;
 
 /** The erase log settings are not usable; every problem is listed. */
-public final class EraseLogConfigException extends RuntimeException implements com.documentplatform.errors.HasPlatformCode {
+final class EraseLogConfigException extends RuntimeException implements com.documentplatform.errors.HasPlatformCode {
 
     private final List<String> problems;
 

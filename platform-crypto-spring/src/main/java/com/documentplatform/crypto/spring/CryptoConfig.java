@@ -19,7 +19,7 @@ import java.util.regex.Pattern;
  *
  * @param customer the installation's customer, or null when no tenant ID is configured
  */
-public record CryptoConfig(URI address, String namespace, VaultAuth auth, Duration timeout, String transitMount,
+record CryptoConfig(URI address, String namespace, VaultAuth auth, Duration timeout, String transitMount,
                            String keyPrefix, CustomerId customer) {
 
     private static final Pattern MOUNT = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,63}(?:/[A-Za-z0-9][A-Za-z0-9._-]"

@@ -7,7 +7,7 @@ import java.util.List;
  * missing: {@link IdentitySettingsCode#IDENTITY_PUSH_SETTINGS_INVALID} (P037). The message lists every problem, each
  * naming the setting or bean, never a value. {@link IdentityFailureAnalyzer} shows it at start-up.
  */
-public final class PushCallerConfigException extends IllegalStateException
+final class PushCallerConfigException extends IllegalStateException
         implements com.documentplatform.errors.HasPlatformCode {
 
     private final List<String> problems;

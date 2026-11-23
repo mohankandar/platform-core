@@ -6,7 +6,7 @@ import java.util.List;
  * The crypto install config is wrong or incomplete. Lists every problem with its property key and what to do; never
  * a token or secret ID.
  */
-public final class CryptoConfigException extends IllegalStateException implements com.documentplatform.errors.HasPlatformCode {
+final class CryptoConfigException extends IllegalStateException implements com.documentplatform.errors.HasPlatformCode {
 
     private final List<String> problems;
 
