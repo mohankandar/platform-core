@@ -33,6 +33,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 
 import static com.documentplatform.licensing.inmemory.TestLicences.PRODUCT;
@@ -164,6 +165,63 @@ class LicensingWiringTest {
             assertFalse(details.contains(publicKey));
             assertFalse(details.contains("payloadSha256"));
         });
+    }
+
+    /**
+     * Every log line of the licence service and the licensing wiring (storing, a start, a refused start, a waiting
+     * licence taking over): licence IDs, versions and states only, never the signature, a key or the file.
+     */
+    @Test
+    void logLinesShowNoKeysOrSignatures() {
+        List<String> lines = java.util.Collections.synchronizedList(new ArrayList<>());
+        java.util.logging.Handler capture = new java.util.logging.Handler() {
+            private final java.util.logging.SimpleFormatter format = new java.util.logging.SimpleFormatter();
+
+            @Override
+            public void publish(java.util.logging.LogRecord r) {
+                lines.add(format.format(r));
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        capture.setLevel(java.util.logging.Level.ALL);
+        java.util.logging.Logger platform = java.util.logging.Logger.getLogger("com.documentplatform");
+        java.util.logging.Level before = platform.getLevel();
+        platform.addHandler(capture);
+        platform.setLevel(java.util.logging.Level.ALL);
+        Db db = Db.migrated();
+        DataSource ds = db.dmlUser();
+        List<String> secrets = new ArrayList<>(List.of(Ed25519.encodePublic(licences.keyPair().getPublic()),
+                java.util.Base64.getEncoder().encodeToString(licences.keyPair().getPrivate().getEncoded()),
+                "payloadSha256"));
+        try {
+            store(ds, production("2026-01-01", "2026-12-31"));
+            String file = db.text("select file from lic_licence");
+            int at = file.indexOf("\"value\": \"") + 10;
+            secrets.add(file.substring(at, file.indexOf('"', at)));
+            Licence v1 = production("2026-01-01", "2026-12-31");
+            store(ds, new Licence(v1.licenceId(), 2, v1.customer(), v1.tenantId(), v1.products(), v1.entitySlots(),
+                    v1.type(), v1.kind(), LocalDate.parse("2026-12-01"), LocalDate.parse("2027-12-31"), null,
+                    v1.deployment(), v1.keyId(), v1.issuedAt()));
+            app(ds, NOW).run(ctx -> assertNull(ctx.getStartupFailure()));
+            app(ds, Instant.parse("2026-12-02T10:00:00Z")).run(ctx -> ctx.getBean(LicenceService.class).status());
+            db.exec("update lic_licence set file = replace(file, '2026-12-31', '2036-12-31')");
+            app(ds, NOW).run(ctx -> assertNotNull(ctx.getStartupFailure()));
+        } finally {
+            platform.removeHandler(capture);
+            platform.setLevel(before);
+        }
+        String all = String.join("\n", lines);
+        assertTrue(all.contains("stored"), "the paths logged: " + all);
+        for (String secret : secrets) {
+            assertFalse(all.contains(secret), "a key or signature in the log: " + all);
+        }
     }
 
     private FailureAnalysis refusedStart(ApplicationContextRunner runner, LicenceRefusal code) {
