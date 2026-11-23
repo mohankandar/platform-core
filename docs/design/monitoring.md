@@ -18,22 +18,30 @@ name only; a check past its time limit is DOWN with `MON_CHECK_TIMEOUT`. Nothing
 | `SecretStoreCheck` | each configured reference resolves (`MON_SECRET_MISSING`, `MON_SECRET_UNAVAILABLE`); names only | no |
 | `LoginSystemCheck` | the customer's ACTIVE connection's discovery and keys, through `OutboundIssuerFetch` (`IDN_TEST_*`); no connection is HAVING_PROBLEMS | no |
 | `LicenceCheck` | missing, signature invalid, another customer's (`LICENCE_*`), not started, expiring (days), in grace, expired (`MON_LICENCE_*`); read only, never enforces | no |
-| `ChannelCheck.mail` / `.webhook` | settings complete; the server or the webhook's host reachable (a TCP connection; nothing sent, no sign-in) | no |
-| `FileLocationCheck` | exists, readable, writable (a probe file); disk warning and down thresholds (90 % / 95 %) | per folder |
+| `ChannelCheck.mail` / `.webhook` | settings complete; the server or the webhook's host reachable (a TCP connection; nothing sent, no sign-in). A webhook is checked on its **host only**: its path holds the webhook's secret, so it is never shown and never called (P032 decision 10) | no |
+| `FileLocationCheck` | exists, readable, writable (a probe file); disk warning and down thresholds (90 % / 95 %, each 1 to 100, the warning not above down). How the folder is seen is a replaceable `FileLocationCheck.Disk` (the real file system by default), so a full disk and a missing write right are tested the same on every system (P032 decision 8) | per folder |
 | `HttpServiceCheck` | an app's own dependency (model server, OCR): address valid, reachable, the expected status | per service |
 | `IntegrationChecks` | one per enabled integration, from its own health (`INT_*`): healthy WORKING, busy HAVING_PROBLEMS, else DOWN | **never**, and never in readiness |
 
 `StartupChecks.require` runs the required checks once; any DOWN refuses the start with one line per DOWN check:
 `name: CODE: cause Fix: fix`. `DependencyStatus` keeps the latest results (the Support screen's list), runs each
-check on its interval and sends a `MonitoringEvent` on each change (BECAME_DOWN, BECAME_HAVING_PROBLEMS,
+check on its interval (a check that sets its own `every()` keeps it; the others take the interval the app gives, in
+Spring `platform.monitoring.every`; P039) and sends a `MonitoringEvent` on each change (BECAME_DOWN, BECAME_HAVING_PROBLEMS,
 RECOVERED) for the app to route to its notifications.
 
 ## 2. Spring
 
 - `platform.monitoring.*` (`docs/install/monitoring.md`). The built-in checks come from the app's modules and
   beans: a DataSource (with the schemas whose module's main bean is there), `KeyService`, `SecretResolver` with
-  `secrets`, `LicenceService`, `LoginConnectionStore` + `IssuerFetch` + `product-code`, the notifications mail
-  settings, `folders.*`, `services.*`, the integration store. The app's own `DependencyCheck` beans join them.
+  `secrets`, `LicenceService`, `LoginConnectionStore` + `IssuerFetch` + `product-code`, the mail settings as
+  notifications-spring checked them (`NotificationsConfig`: the sender's own host, the port from the security when
+  none is set, and under Microsoft 365 its default host and the sender mailbox; without notifications-spring there is
+  no mail check; P039), `folders.*`, `services.*`, the integration store. Model-governance-spring adds its own
+  `model-governance` check (`docs/design/model-governance.md` section 10). The app's own `DependencyCheck` beans join
+  them.
+- The scheduler wakes every `tick` (default 5 s) and runs the checks that are due; `every` (default 60 s) is the
+  interval of the checks that do not set their own (P039). Every settings problem stops the start with
+  `MON_SETTINGS_INVALID`, each named by its property, never a value (P037).
 - Liveness never depends on checks. **Readiness** is the `readinessState` indicator, which this module provides
   (Spring Boot's own backs off): the app's readiness state plus the required checks; OUT_OF_SERVICE while one is
   DOWN. The informational `dependencies` contributor lists every check (always UP). platform-integration-spring's
