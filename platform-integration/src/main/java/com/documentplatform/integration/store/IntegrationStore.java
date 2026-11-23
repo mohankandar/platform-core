@@ -10,6 +10,8 @@ import java.util.UUID;
  * Where configurations and their history are kept. Every change is a new version; versions are never changed or
  * deleted. Built: {@code jdbc.PostgresIntegrationStore}; in-memory for tests in the testkit. Apps use
  * {@link IntegrationConfigs}, which checks and audits, rather than the store directly.
+ *
+ * <p>SPI: implemented by stores; apps call {@link IntegrationConfigs}.
  */
 public interface IntegrationStore {
 

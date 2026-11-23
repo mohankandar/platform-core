@@ -6,7 +6,7 @@ import java.time.YearMonth;
 import java.util.Collection;
 
 /** Combines the readings of one month into the month's usage, per {@link AllowanceType#aggregation()}. */
-public final class UsageTotals {
+final class UsageTotals {
 
     private UsageTotals() {
     }

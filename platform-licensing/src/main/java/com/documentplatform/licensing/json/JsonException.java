@@ -1,6 +1,9 @@
 package com.documentplatform.licensing.json;
 
-/** A document is not valid JSON of the strict subset {@link Json} reads. The message names a position, not content. */
+/**
+ * A document is not valid JSON of the strict subset {@link Json} reads. The message names a position, not content.
+ * Not for apps, as {@link Json} is.
+ */
 public class JsonException extends RuntimeException {
 
     public JsonException(String message) {

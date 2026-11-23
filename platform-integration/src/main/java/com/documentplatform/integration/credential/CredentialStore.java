@@ -7,6 +7,8 @@ import java.util.UUID;
  * Where the integrations' client certificates and their history are kept. Built: {@code jdbc.PostgresCredentialStore}
  * ({@code int_credential}, {@code int_credential_change}); in memory for tests in the testkit. Apps use
  * {@link IntegrationCredentials}, which checks, seals and audits.
+ *
+ * <p>SPI: implemented by stores; apps call {@link IntegrationCredentials}.
  */
 public interface CredentialStore {
 

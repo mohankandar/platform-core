@@ -31,10 +31,4 @@ public record UsageRecord(long sequence, String slotId, String product, Allowanc
         m.put("previousHash", previousHash);
         return m;
     }
-
-    /** A copy with a different amount and the same hashes: what an edit in the store looks like. For tests. */
-    public UsageRecord withAmount(long newAmount) {
-        return new UsageRecord(sequence, slotId, product, type, period, newAmount, unit, billable, recordedAt,
-                previousHash, hash);
-    }
 }

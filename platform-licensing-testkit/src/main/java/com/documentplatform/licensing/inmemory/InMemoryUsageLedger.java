@@ -44,6 +44,16 @@ public final class InMemoryUsageLedger implements UsageLedger {
         records.set(index(sequence), replacement);
     }
 
+    /**
+     * Changes a stored record's amount and keeps its hashes (no re-hashing): what an edit made directly in the store
+     * looks like.
+     */
+    public synchronized void editAmountForTest(long sequence, long newAmount) {
+        UsageRecord r = records.get(index(sequence));
+        records.set(index(sequence), new UsageRecord(r.sequence(), r.slotId(), r.product(), r.type(), r.period(),
+                newAmount, r.unit(), r.billable(), r.recordedAt(), r.previousHash(), r.hash()));
+    }
+
     /** Removes a stored record (the head stays): simulates a row deleted directly in the store. */
     public synchronized void deleteForTest(long sequence) {
         records.remove(index(sequence));

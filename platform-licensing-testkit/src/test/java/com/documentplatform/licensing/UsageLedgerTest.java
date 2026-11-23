@@ -45,7 +45,7 @@ class UsageLedgerTest {
         add(SLOT, AllowanceType.PAGES_PER_MONTH, NOV, 10, true);
         UsageRecord r2 = add(SLOT, AllowanceType.PAGES_PER_MONTH, NOV, 20, true);
         add(SLOT, AllowanceType.PAGES_PER_MONTH, NOV, 30, true);
-        ledger.overwriteForTest(2, r2.withAmount(2));
+        ledger.editAmountForTest(r2.sequence(), 2);
         ChainCheck c = ledger.verifyChain();
         assertFalse(c.intact());
         assertEquals(ChainCheck.Problem.USAGE_CHAIN_RECORD_EDITED, c.problem());

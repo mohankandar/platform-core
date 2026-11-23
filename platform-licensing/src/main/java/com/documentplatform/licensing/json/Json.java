@@ -19,6 +19,9 @@ import java.util.TreeMap;
  * no whitespace, strings escaped only where JSON requires it ({@code \" \\ \b \f \n \r \t}, other control characters
  * as a six-character backslash-u escape with lower-case hex), everything else written as UTF-8. Any implementation (for example the Platform Console) that
  * follows these rules produces the same bytes.
+ *
+ * <p><b>Not for apps.</b> The strict JSON of the licence files, shared with the setup command (its input files) and
+ * the licence-issuing side; apps read licences through {@code LicenceService}.
  */
 public final class Json {
 

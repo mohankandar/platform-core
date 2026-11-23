@@ -7,7 +7,7 @@ import java.util.TreeSet;
 
 /**
  * Typed, strict reads from a parsed JSON object. Every failure is a {@link JsonException} that names the field and
- * the expected shape, never the value found.
+ * the expected shape, never the value found. Not for apps: shared with the setup command, as {@link Json} is.
  */
 public final class Fields {
 
