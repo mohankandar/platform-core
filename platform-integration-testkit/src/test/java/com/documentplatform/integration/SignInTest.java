@@ -108,6 +108,25 @@ class SignInTest {
     }
 
     @Test
+    void aTokenWithoutTheRequiredClaimsIsNeverUsed() {
+        // integration-module-46: token.requiredClaims; checked before anything is sent.
+        fx.secrets.put(SecretRef.of("int/client"), "client-secret-xyz");
+        fx.mock.expectOAuth2().registerClient("sender-app", "client-secret-xyz")
+                .tokenClaims(java.util.Map.of("tenant", "t-1"));
+        IntegrationConfig c = Fx.twoStep(fx.mock.address(), OAuth2ClientCredentials.secret(fx.mock.tokenAddress(),
+                "sender-app", SecretRef.of("int/client"), null));
+        AttemptResult missing = send(c.withSetting(IntegrationConfig.REQUIRED_TOKEN_CLAIMS, "tenant, roles"));
+        assertEquals(Outcome.SIGN_IN_FAILED, missing.outcome(), missing.toString());
+        assertEquals(IntegrationCode.INT_TOKEN_CLAIMS_MISSING, missing.code());
+        assertEquals(1, fx.mock.tokensIssued(), "the token was fetched");
+        assertTrue(fx.mock.calls().isEmpty(), "nothing was sent with it");
+
+        AttemptResult present = send(c.withSetting(IntegrationConfig.REQUIRED_TOKEN_CLAIMS, "tenant"));
+        assertEquals(Outcome.SENT, present.outcome(), present.toString());
+        assertFalse(fx.mock.calls().isEmpty());
+    }
+
+    @Test
     void aHeldTokenIsDroppedWhenTheClientCertificateInUseChanges() {
         // P027 B0.2: the token is bound to the certificate in use when it was fetched (a switch by the admin, at its
         // set time, or on another instance); with another certificate it is never used again.
