@@ -38,11 +38,12 @@ The tables hold no secrets, no prices and no document data.
 |---|---|
 | `platform.licensing.trusted-keys-file` | The `trusted-keys.json` shipped with this release: a file path (for example `/opt/app/config/trusted-keys.json`) or `classpath:trusted-keys.json`. You do not type key IDs. After an upgrade, point it to the new release's file; it keeps the older keys. |
 | `platform.licensing.trusted-keys.<key ID>` | Instead of the file, or as well: the public keys typed in (key ID and Base64 key). Key IDs with a version, such as `lic-2026:1`, must be written in brackets so the `:` is kept: `"[lic-2026:1]": MCowBQYDK2VwAyEA...` in YAML, `platform.licensing.trusted-keys[lic-2026:1]=...` in a properties file. A key ID given both here and in the file must have the same key. |
-| `platform.licensing.product-code` | The app's product code (set by the app's own install guide). |
+| `platform.licensing.product-code` | **Required.** The app's product code as listed in licences (set by the app's own install guide). Without it the app does not start. |
 | `platform.licensing.tenant-id` | **Required.** Your customer ID from the licence (`TEN-…`). The setup command writes it into `platform-tenant.properties`, which the app imports. A licence for any other customer is refused. Without it the app does not start and says `platform.licensing.tenant-id is missing`. |
-| `platform.licensing.clock-tolerance` | Optional, default `1h`. How far the server clock may be behind before a warning is shown. |
+| `platform.licensing.clock-tolerance` | Optional, default `1h`, zero to at most `1d` (1 day). How far the server clock may be behind before a warning is shown. |
 
-A wrong value stops the app with the property name and what is wrong.
+A missing or wrong value stops the app with `LIC_SETTINGS_INVALID`; the start-up message lists every problem with
+the property name and what is wrong. Codes: `docs/errors/platform-error-codes.md`.
 
 ## 3. Storing your licence
 
@@ -55,6 +56,21 @@ licence status --jdbc-url …  --db-user …  --keys …
 
 The database password is read from the environment variable `PLATFORM_LICENSING_DB_PASSWORD`, never from an
 option.
+
+| Option | What to give |
+|---|---|
+| `--file` | The licence file (`store`) or the clock reset file (`apply-reset`). Not used with `status`. |
+| `--jdbc-url`, `--db-user` | **Required.** The app's database and its database user. |
+| `--keys` | **Required.** The `trusted-keys.json` shipped with this release. |
+| `--tenant-id` | Optional. Your customer ID (`TEN-…`), the same as `platform.licensing.tenant-id`. A licence for another customer is then refused. |
+| `--product-code` | Optional. The app's product code, the same as `platform.licensing.product-code`, so the command checks the licence for this product as the app does. |
+| `--clock-tolerance` | Optional, default `PT1H` (an ISO-8601 duration). The same as `platform.licensing.clock-tolerance`. |
+
+**Give `--tenant-id` on the first store.** Without it, the first licence stored is accepted for any customer, and its
+customer ID becomes the one later licences must match. With it, a licence for another customer is refused even on
+the first store.
+
+Exit codes: 0 done, 1 refused (the message starts with the code), 2 options wrong.
 
 - The file is checked before it is stored. A file that was changed, was not signed by us, or belongs to another
   customer is refused with a code (`LICENCE_TAMPERED`, `LICENCE_FORGED`, `LICENCE_WRONG_CUSTOMER`) and nothing
