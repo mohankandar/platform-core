@@ -41,6 +41,7 @@ public final class MockProxy implements AutoCloseable {
     private volatile boolean refuse;
     private volatile String expectedAuthorization;
     private final Thread acceptor;
+    private volatile boolean closing;
 
     private MockProxy() throws IOException {
         socket = new ServerSocket(0, 50, InetAddress.getLoopbackAddress());
@@ -107,6 +108,10 @@ public final class MockProxy implements AutoCloseable {
         while (!socket.isClosed()) {
             try {
                 Socket client = socket.accept();
+                if (closing) { // accepted while close() ran: never served, so a closed proxy really is closed
+                    client.close();
+                    return;
+                }
                 Thread t = new Thread(() -> serve(client), "mock-proxy-conn");
                 t.setDaemon(true);
                 t.start();
@@ -350,10 +355,18 @@ public final class MockProxy implements AutoCloseable {
 
     @Override
     public void close() {
+        closing = true;
         try {
             socket.close();
         } catch (IOException ignored) {
             // closing
+        }
+        // Return only once the accept loop has stopped, so the port is really closed (P032 report: CI run
+        // 45119824506 caught a connection that was accepted while close() ran and was still forwarded).
+        try {
+            acceptor.join(5000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 }
