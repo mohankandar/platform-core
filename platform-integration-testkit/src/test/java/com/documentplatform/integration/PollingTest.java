@@ -282,6 +282,7 @@ class PollingTest {
         StoredIntegration limited = Fx.stored(s.config().withLimits(s.config().limits().withMaxFileBytes(1000)));
         PollResult r = engine().pass(limited, CursorState.START, new App());
         assertEquals(2, r.taken());
+        assertTrue(r.ok(), r.toString());
         assertEquals(IntegrationCode.INT_FILE_TOO_LARGE, r.problems().get(0).code());
         assertEquals("big", r.problems().get(0).sourceItemId());
         assertFalse(source.acknowledged().contains("big"));
