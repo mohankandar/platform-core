@@ -18,6 +18,10 @@ app takes any work. The **erase log** makes this possible: one line per erasure 
   Files / EFS share mounted on every instance). The app locks a file there while writing.
 - The app's operating system user needs read and write access to it. Nobody else needs write access.
 - One location per protected database. Do not point two products' databases at one location.
+- A database belongs to one log for good: pointed at another log, the app refuses work (`ERASE_LOG_WRONG_LOG`).
+  **To move the log** to a new location, stop every instance, move the files (`erase-log.jsonl`, `erase-log.id`, and
+  `erase-log.checkpoint` when there is one) to the new directory, change `platform.erase-log.location`, and start
+  again. Never start a new, empty log for a database that already used one.
 
 Why: if the log were in the database or in its backups, restoring the database would roll the log back with it, and
 the erasures made after the backup would come back.
@@ -44,7 +48,7 @@ The app checks the table at startup and stops with a specific message (`ERL_TABL
 |---|---|---|
 | `platform.erase-log.location` | — | required, an absolute path (section 1) |
 | `platform.erase-log.backup-retention-days` | `35` | the installation's backup retention, 30 to 90, as agreed by contract; the log keeps entries 30 days longer |
-| `platform.erase-log.recheck` | `1m` | how often a blocked app looks again whether it may start work |
+| `platform.erase-log.recheck` | `1m` | how often a blocked app looks again whether it may start work; 5 seconds to 1 hour |
 | `platform.erase-log.exit-after-replay` | `true` | with `--erase-replay`, the app exits after the replay |
 | `platform.erase-log.enabled` | `true` | |
 
@@ -62,6 +66,10 @@ A wrong or missing setting stops the app at startup with a list of every problem
   retention allows), `ERASE_POSITION_FAILED` (the table cannot be read).
 
 While the state is not UP, the app takes no work.
+
+The details always hold `mayTakeWork`, `message`, `location`, `logHead` (the log's last entry number),
+`backupRetentionDays` and `logRetentionDays`; once known also `code`, `logId`, `checkedAt`, and `applied` (the entry the
+database is at) with `pending` (entries logged but not applied here). No values.
 
 While an erasure that was logged could not be applied on this instance (its handler failed, for example
 `DOC_STORE_DOWN`), the details also hold `lastFailure`: the entry number (`seq`), `kind`, `recordType`, `recordId`,
@@ -85,8 +93,10 @@ After restoring the app's database from a backup:
    It applies again every erasure made after the backup (documents, copies, case fields), then **checks** that nothing
    in the log can be read any more. It prints a short report and exits: 0 when everything is erased and checked, 1 when
    not.
-4. **If it says NOT complete:** the report names the code and the entry number where it stopped (for example
-   `ERASE_HANDLER_FAILED (DOC_STORE_DOWN)`: the document store did not answer). Fix the cause and run step 3 again.
+4. **If it says NOT complete:** the first line names the code and the handler's code (for example
+   `Erase replay NOT complete: ERASE_HANDLER_FAILED (DOC_STORE_DOWN)`: the document store did not answer). The last
+   line says why, and after a handler failure ends with the entry where it stopped ("it goes on from entry N").
+   Codes: `docs/errors/platform-error-codes.md`. Fix the cause and run step 3 again.
    Running it again is always safe; it goes on from where it stopped.
 5. **Start the app normally.** Health shows UP; work may start. Every instance sees the result.
 
