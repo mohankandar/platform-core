@@ -94,6 +94,12 @@ class NoSecretInLogsTest {
             secrets.add(info.wrappedKey());
             Fingerprinter.Fingerprint fp = new Fingerprinter(keys).fingerprint(c, "name", PLAIN);
             texts.add(fp.toString());
+            Fingerprinter.Input input = new Fingerprinter.Input("name", PLAIN);
+            assertTrue(input.toString().contains("name"), input.toString());
+            texts.add(input.toString());
+            List<Fingerprinter.Input> inputs = List.of(input, new Fingerprinter.Input("other", PLAIN));
+            texts.add(inputs.toString());
+            new Fingerprinter(keys).fingerprintAll(c, inputs).forEach(f -> texts.add(f.toString()));
 
             VaultDev.root("POST", "/v1/secret/data/platform/logs", "{\"data\":{\"password\":\"kv-secret-Tq7\"}}");
             texts.add(client.readSecret("secret", "platform/logs").toString());
