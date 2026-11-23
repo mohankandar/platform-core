@@ -7,11 +7,15 @@ import org.springframework.boot.actuate.health.AbstractHealthIndicator;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.Status;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * {@code /actuator/health/eraseLog}: UP when the log is reachable, its chain intact and the database in step;
  * OUT_OF_SERVICE after a restore until the replay has verified; DOWN for the other problems. Details: the log's ID and
- * location, its last entry, the database's applied position, entries pending, the code and message, the retention.
- * No values. Uses the guard's last state (the startup check, then the recheck), so a health call reads nothing.
+ * location, its last entry, the database's applied position, entries pending, the code and message, the retention,
+ * and while an entry this instance could not apply is still pending, {@code lastFailure}: its number, kind, record
+ * type and ID, the handler's code, the erase log's code and when (ids and codes; an entry holds no value). No values. Uses the guard's last state (the startup check, then the recheck), so a health call reads nothing.
  */
 public final class EraseLogHealthIndicator extends AbstractHealthIndicator {
 
@@ -54,6 +58,18 @@ public final class EraseLogHealthIndicator extends AbstractHealthIndicator {
         b.withDetail("logRetentionDays", retention.logRetentionDays());
         if (s.checkedAt() != null) {
             b.withDetail("checkedAt", s.checkedAt().toString());
+        }
+        EraseGuard.ApplyFailure f = s.lastFailure();
+        if (f != null) {
+            Map<String, Object> failure = new LinkedHashMap<>();
+            failure.put("seq", f.seq());
+            failure.put("kind", f.kind());
+            failure.put("recordType", f.recordType());
+            failure.put("recordId", f.recordId());
+            failure.put("handlerCode", f.handlerCode());
+            failure.put("code", f.code().name());
+            failure.put("at", f.at().toString());
+            b.withDetail("lastFailure", failure);
         }
     }
 }

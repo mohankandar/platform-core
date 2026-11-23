@@ -31,12 +31,21 @@ public final class EraseReplay {
     private final ErasePosition position;
     private final EraseHandlers handlers;
     private final Clock clock;
+    private final EraseGuard guard;
 
     public EraseReplay(EraseLog log, ErasePosition position, EraseHandlers handlers, Clock clock) {
+        this(log, position, handlers, clock, null);
+    }
+
+    /**
+     * @param guard told of the entry the replay stopped at ({@link EraseGuard.State#lastFailure()}); may be null
+     */
+    public EraseReplay(EraseLog log, ErasePosition position, EraseHandlers handlers, Clock clock, EraseGuard guard) {
         this.log = Objects.requireNonNull(log, "log");
         this.position = Objects.requireNonNull(position, "position");
         this.handlers = Objects.requireNonNull(handlers, "handlers");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.guard = guard;
     }
 
     /**
@@ -106,7 +115,7 @@ public final class EraseReplay {
                 }
                 for (EraseEntry e : log.after(p.appliedSeq())) {
                     try {
-                        applied.merge(Applying.apply(handlers, locked, e), 1, Integer::sum);
+                        applied.merge(Applying.apply(handlers, locked, e, guard), 1, Integer::sum);
                     } catch (EraseLogException x) {
                         return failed(x.code(), x.handlerCode().orElse(null), x.reason() + "; fix the cause and run "
                                 + "the replay again (it goes on from entry " + e.seq() + ")", from[0], head[0],

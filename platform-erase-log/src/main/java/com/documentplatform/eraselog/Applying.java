@@ -6,7 +6,22 @@ final class Applying {
     private Applying() {
     }
 
-    static EraseHandler.Applied apply(EraseHandlers handlers, ErasePosition.Locked locked, EraseEntry entry) {
+    /**
+     * @param guard told of a failure ({@link EraseGuard#applyFailed}), when given; may be null
+     */
+    static EraseHandler.Applied apply(EraseHandlers handlers, ErasePosition.Locked locked, EraseEntry entry,
+                                      EraseGuard guard) {
+        try {
+            return apply(handlers, locked, entry);
+        } catch (EraseLogException e) {
+            if (guard != null) {
+                guard.applyFailed(entry, e);
+            }
+            throw e;
+        }
+    }
+
+    private static EraseHandler.Applied apply(EraseHandlers handlers, ErasePosition.Locked locked, EraseEntry entry) {
         EraseHandler handler = handlers.require(entry);
         EraseHandler.Context ctx = locked::connection;
         try {
