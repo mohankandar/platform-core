@@ -66,6 +66,44 @@ class LicenceVerifierTest {
         assertEquals(LICENCE_MALFORMED, refusal(() -> verifier.verify("[]", null)));
         assertEquals(LICENCE_MALFORMED, refusal(() -> verifier.verify(new byte[]{(byte) 0xff, (byte) 0xfe}, null)));
         assertEquals(LICENCE_MALFORMED, refusal(() -> verifier.verify("{\"format\":\"platform-licence/1\"}", null)));
+
+        // licensing-file-format-31: an extra envelope field; a signature that is not 64 bytes.
+        String file = signed(subscription(START, END));
+        assertEquals(subscription(START, END), verifier.verify(file, null), "the unchanged file verifies");
+        String extraField = file.replaceFirst("\\{", "{\"comment\": \"added\",");
+        assertNotEquals(file, extraField);
+        LicenceException extra = assertThrows(LicenceException.class, () -> verifier.verify(extraField, null));
+        assertEquals(LICENCE_MALFORMED, extra.code(), extra.getMessage());
+        @SuppressWarnings("unchecked")
+        String value = (String) ((Map<String, Object>) Json.parseObject(file).get("signature")).get("value");
+        byte[] raw = Base64.getDecoder().decode(value);
+        for (int length : new int[]{63, 65, 32}) {
+            String other = Base64.getEncoder().encodeToString(java.util.Arrays.copyOf(raw, length));
+            LicenceException e = assertThrows(LicenceException.class,
+                    () -> verifier.verify(file.replace(value, other), null), length + " bytes");
+            assertEquals(LICENCE_MALFORMED, e.code(), length + " bytes: " + e.getMessage());
+            assertTrue(e.getMessage().contains("64 bytes"), e.getMessage());
+        }
+    }
+
+    /** licensing-file-format-25: an unknown payload field is refused even when the file is properly signed. */
+    @Test
+    void aSignedPayloadWithAnUnknownFieldIsMalformed() {
+        Map<String, Object> payload = new java.util.LinkedHashMap<>(LicenceFormat.payload(subscription(START, END)));
+        payload.put("maxServers", 99);
+        byte[] message = LicenceFormat.signedMessage(payload);
+        byte[] sig;
+        try {
+            sig = Ed25519.sign(KEY_1.getPrivate(), message);
+        } catch (java.security.InvalidKeyException e) {
+            throw new AssertionError(e);
+        }
+        String file = Json.pretty(Map.of("format", LicenceFormat.FORMAT, "licence", payload, "signature",
+                Map.of("algorithm", "Ed25519", "payloadSha256", Ed25519.sha256Hex(message),
+                        "value", Base64.getEncoder().encodeToString(sig))));
+        LicenceException e = assertThrows(LicenceException.class, () -> verifier.verify(file, null));
+        assertEquals(LICENCE_MALFORMED, e.code(), e.getMessage());
+        assertTrue(e.getMessage().contains("maxServers"), e.getMessage());
     }
 
     @Test
