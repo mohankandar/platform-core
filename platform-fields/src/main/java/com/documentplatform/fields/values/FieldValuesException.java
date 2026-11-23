@@ -10,7 +10,7 @@ import java.util.Objects;
  * name the field's label and rule only). No cause is attached, so nothing a driver quoted can leak through a stack
  * trace. Key service failures are not wrapped: they arrive as {@code CryptoException} with their own code.
  */
-public final class FieldValuesException extends RuntimeException {
+public final class FieldValuesException extends RuntimeException implements com.documentplatform.errors.HasPlatformCode {
 
     private final FieldValuesError code;
     private final List<ValueProblem> problems;
@@ -26,6 +26,12 @@ public final class FieldValuesException extends RuntimeException {
     }
 
     public FieldValuesError code() {
+        return code;
+    }
+
+    /** The code, for monitoring and the app's error handler ({@code HasPlatformCode}). */
+    @Override
+    public com.documentplatform.errors.PlatformCode platformCode() {
         return code;
     }
 

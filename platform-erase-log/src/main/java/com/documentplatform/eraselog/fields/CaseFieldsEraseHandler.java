@@ -67,11 +67,11 @@ public final class CaseFieldsEraseHandler implements EraseHandler {
         try {
             held = holds.held(ref);
         } catch (RuntimeException e) {
-            throw new EraseHandlerException(FieldValuesError.VALUES_LEGAL_HOLD_UNKNOWN.name(), "the legal hold check "
+            throw new EraseHandlerException(FieldValuesError.VALUES_LEGAL_HOLD_UNKNOWN, "the legal hold check "
                     + "for " + ref + " could not answer");
         }
         if (held) {
-            throw new EraseHandlerException(FieldValuesError.VALUES_LEGAL_HOLD.name(), ref + " is under legal hold");
+            throw new EraseHandlerException(FieldValuesError.VALUES_LEGAL_HOLD, ref + " is under legal hold");
         }
     }
 
@@ -85,7 +85,7 @@ public final class CaseFieldsEraseHandler implements EraseHandler {
             if (e.code() == FieldValuesError.VALUES_RECORD_UNKNOWN) {
                 return Applied.ALREADY_GONE;
             }
-            throw new EraseHandlerException(e.code().name(), "case fields of " + ref + " not erased");
+            throw new EraseHandlerException(e.code(), "case fields of " + ref + " not erased");
         }
     }
 
@@ -96,7 +96,7 @@ public final class CaseFieldsEraseHandler implements EraseHandler {
         try {
             stored = store.find(ref);
         } catch (FieldValuesException e) {
-            throw new EraseHandlerException(e.code().name(), "case fields of " + ref + " could not be checked");
+            throw new EraseHandlerException(e.code(), "case fields of " + ref + " could not be checked");
         }
         if (stored.isEmpty() || stored.get().createdAt().isAfter(entry.request().erasedAt())) {
             return Verified.GONE;
@@ -108,7 +108,7 @@ public final class CaseFieldsEraseHandler implements EraseHandler {
         try {
             return RecordRef.of(FieldScope.of(r.entity(), r.product()), r.recordType(), r.recordId());
         } catch (FieldValuesException | FieldDefinitionException e) {
-            throw new EraseHandlerException("VALUES_RECORD_REF_INVALID", "entry for " + r.recordType() + " "
+            throw new EraseHandlerException(FieldValuesError.VALUES_RECORD_REF_INVALID, "entry for " + r.recordType() + " "
                     + r.recordId() + " is not a case field record");
         }
     }

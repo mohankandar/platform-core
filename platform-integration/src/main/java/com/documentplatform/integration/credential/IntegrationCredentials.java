@@ -47,7 +47,7 @@ import java.util.regex.Pattern;
 public final class IntegrationCredentials implements CertificateSource {
 
     /** A change was refused; {@link #code()} says why (its {@code message()} tells IT what to do). */
-    public static final class Refused extends RuntimeException {
+    public static final class Refused extends RuntimeException implements com.documentplatform.errors.HasPlatformCode {
         private final IntegrationCode code;
 
         public Refused(IntegrationCode code) {
@@ -56,6 +56,12 @@ public final class IntegrationCredentials implements CertificateSource {
         }
 
         public IntegrationCode code() {
+            return code;
+        }
+
+        /** The code, for monitoring and the app's error handler ({@code HasPlatformCode}). */
+        @Override
+        public com.documentplatform.errors.PlatformCode platformCode() {
             return code;
         }
     }

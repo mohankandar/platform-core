@@ -6,7 +6,7 @@ import java.util.Objects;
  * A field definition, or a change to one, is not allowed. {@link #code()} says why, as a stable code; the message is
  * plain text for the admin. Messages name the field's key or label and the rule, never a value.
  */
-public final class FieldDefinitionException extends IllegalArgumentException {
+public final class FieldDefinitionException extends IllegalArgumentException implements com.documentplatform.errors.HasPlatformCode {
 
     /** Why a definition or change was refused. */
     public enum Code implements com.documentplatform.errors.PlatformCode {
@@ -76,6 +76,12 @@ public final class FieldDefinitionException extends IllegalArgumentException {
     }
 
     public Code code() {
+        return code;
+    }
+
+    /** The code, for monitoring and the app's error handler ({@code HasPlatformCode}). */
+    @Override
+    public com.documentplatform.errors.PlatformCode platformCode() {
         return code;
     }
 

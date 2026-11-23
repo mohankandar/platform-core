@@ -34,6 +34,8 @@ public enum EraseLogError implements com.documentplatform.errors.PlatformCode {
     ERASE_HANDLER_MISSING,
     /** A handler refused or failed; the message carries the handler's own code. */
     ERASE_HANDLER_FAILED,
+    /** A handler threw an unexpected exception (not an {@code EraseHandlerException}); its type is named, never its text. */
+    ERASE_HANDLER_ERROR,
     /** After the replay, a handler found something in the log still readable (or could not check). */
     ERASE_VERIFY_FAILED
 }

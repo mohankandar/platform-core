@@ -7,7 +7,7 @@ import java.util.Objects;
  * Setup stopped with {@link #code()}. The message is the code and the cause; {@link #details()} lists line-by-line
  * problems (for example mapping file errors). Never holds secrets.
  */
-public final class SetupException extends RuntimeException {
+public final class SetupException extends RuntimeException implements com.documentplatform.errors.HasPlatformCode {
 
     private final SetupRefusal code;
     private final List<String> details;
@@ -23,6 +23,12 @@ public final class SetupException extends RuntimeException {
     }
 
     public SetupRefusal code() {
+        return code;
+    }
+
+    /** The code, for monitoring and the app's error handler ({@code HasPlatformCode}). */
+    @Override
+    public com.documentplatform.errors.PlatformCode platformCode() {
         return code;
     }
 

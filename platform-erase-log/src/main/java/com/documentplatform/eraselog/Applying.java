@@ -14,7 +14,7 @@ final class Applying {
                 try {
                     EraseHandler.Applied a = handler.apply(entry, ctx);
                     if (a == null) {
-                        throw new EraseHandlerException("ERASE_HANDLER_ERROR", "the " + entry.kind()
+                        throw new EraseHandlerException(EraseLogError.ERASE_HANDLER_ERROR, "the " + entry.kind()
                                 + " handler gave no outcome");
                     }
                     return a;
