@@ -89,6 +89,23 @@ Full proposal, table columns, input files and command steps: `docs/work/P012-rep
    security (section 2a).
 6. **Exit code 1 for failures:** keep it.
 
+### Rules setup follows (P014, stated in P039)
+
+- **"Not in the file" (grants).** The role mapping file is the customer's complete grant list for the product and the
+  sign-in file's issuer. Every stored grant of the customer for that product and issuer that the file does not list is
+  "not in the file", also when the file does not name its slot at all (every row of a slot dropped). Such grants are
+  listed as `not removed` (exit code 3) and removed only with `--remove-unlisted-grants`.
+- **Grants under another issuer** (for example after the customer moved to a new login system) are left alone: not
+  listed, not removed, even with `--remove-unlisted-grants`. Listing them is for the hub-mode task (answer 4 above).
+- **Slots of a waiting renewal.** A licence that starts later is stored as the waiting renewal, and its slots are
+  stored at once (`NOT_ACTIVATED`), so the mapping and client-binding files may already name them. Activating a slot
+  still follows the licence in force.
+- **"Changed in the app" (login connection).** Setup compares the customer's connection for the product (the ACTIVE
+  one, else the DISABLED one changed last; drafts are the app's) with the sign-in file. Equal values are `unchanged`.
+  Different values are an update when the last history row is setup's own; otherwise the connection was changed in
+  the app and it is a `conflict` (exit code 3), left as it is until `--replace-connection` is given. A connection the
+  app DISABLED is such a change too: setup does not switch it back on without `--replace-connection`.
+
 ## 6. Integration client bindings (LexaVault thread decision, 2026-11-21)
 
 Registers which machine client may call which entity, for Vero's and LexaVault's own push-API callers (Vero finds the entity and source from the verified client ID via `MachineEntityBindings`; see `docs/design/integration-module.md`).
