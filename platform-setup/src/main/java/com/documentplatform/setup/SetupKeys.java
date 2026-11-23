@@ -87,6 +87,8 @@ public final class SetupKeys {
                 return State.CREATE;
             }
             throw failed(e);
+        } catch (RuntimeException e) {
+            throw failed(e);
         }
     }
 
@@ -98,9 +100,22 @@ public final class SetupKeys {
                 throw new SetupException(SetupRefusal.SETUP_KEY_SERVICE_FAILED, "The customer's keys are still missing "
                         + "after creating them.");
             }
+        } catch (SetupException e) {
+            throw e;
         } catch (CryptoException e) {
             throw failed(e);
+        } catch (RuntimeException e) {
+            throw failed(e);
         }
+    }
+
+    /**
+     * Any other failure of the key service (a plug-in's unchecked exception): its text may hold a login or an
+     * address, so only its class is shown.
+     */
+    static SetupException failed(RuntimeException e) {
+        return new SetupException(SetupRefusal.SETUP_KEY_SERVICE_FAILED, "The key service failed ("
+                + e.getClass().getSimpleName() + ").");
     }
 
     static SetupException failed(CryptoException e) {

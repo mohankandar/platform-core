@@ -548,6 +548,86 @@ class SetupCommandTest {
         assertFalse(read("setup-runs.log").contains("Demo Finance"), "the run log holds IDs and codes, no group names");
     }
 
+    /**
+     * A failure inside the database part whose own text carries a secret: a database error raised with it, and a
+     * key service (an app's plug-in) failing with an unchecked exception that names it. SETUP_FAILED /
+     * SETUP_KEY_SERVICE_FAILED say what failed, never that text, in stdout, stderr, the run log or a log line.
+     */
+    @Test
+    void aFailureTextCarryingASecretNeverReachesAnyOutput() throws Exception {
+        demo();
+        Pg db = Pg.migrated();
+        String planted = "s.PLANTED-FAILURE-SECRET-3f9d";
+        List<String> outputs = new ArrayList<>();
+        java.util.List<String> lines = java.util.Collections.synchronizedList(new ArrayList<>());
+        java.util.logging.Handler capture = new java.util.logging.Handler() {
+            private final java.util.logging.SimpleFormatter format = new java.util.logging.SimpleFormatter();
+
+            @Override
+            public void publish(java.util.logging.LogRecord r) {
+                lines.add(format.format(r));
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        capture.setLevel(java.util.logging.Level.ALL);
+        // the platform's loggers (the driver's own FINEST trace would show this test's SQL)
+        java.util.logging.Logger root = java.util.logging.Logger.getLogger("com.documentplatform");
+        java.util.logging.Level before = root.getLevel();
+        root.addHandler(capture);
+        root.setLevel(java.util.logging.Level.ALL);
+        try {
+            db.exec("create function fail_grant() returns trigger language plpgsql as "
+                            + "$$ begin raise exception 'grant insert failed, token " + planted + "'; end $$",
+                    "create trigger fail_grant before insert on idn_group_grant for each row execute function fail_grant()");
+            Result storeFailed = run(db, "apply", A);
+            assertEquals(SetupCommand.EXIT_FAILED, storeFailed.exit(), storeFailed.all());
+            assertTrue(storeFailed.err().startsWith("SETUP_FAILED: "), storeFailed.err());
+            outputs.add(storeFailed.all());
+            db.exec("drop trigger fail_grant on idn_group_grant", "drop function fail_grant()");
+
+            SetupKeys.Connector before2 = connector;
+            InMemoryKeyService fresh = new InMemoryKeyService(); // the first run already created the keys in "keys"
+            com.documentplatform.crypto.KeyService failing = (com.documentplatform.crypto.KeyService)
+                    java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),
+                            new Class<?>[]{com.documentplatform.crypto.KeyService.class}, (proxy, method, args) -> {
+                                if (method.getName().equals("createKeys")) {
+                                    throw new IllegalStateException("key service login " + planted + " was refused");
+                                }
+                                try {
+                                    return method.invoke(fresh, args);
+                                } catch (java.lang.reflect.InvocationTargetException e) {
+                                    throw e.getCause();
+                                }
+                            });
+            connector = env -> new SetupKeys.Connection(failing, () -> { });
+            try {
+                Result keysFailed = run(db, "apply", A);
+                assertEquals(SetupCommand.EXIT_REFUSED, keysFailed.exit(), keysFailed.all());
+                assertTrue(keysFailed.err().startsWith("SETUP_KEY_SERVICE_FAILED: The key service failed "
+                        + "(IllegalStateException)."), keysFailed.err());
+                outputs.add(keysFailed.all());
+            } finally {
+                connector = before2;
+            }
+            assertEquals(0, rows(db), "both runs rolled back");
+            outputs.add(read("setup-runs.log"));
+        } finally {
+            root.removeHandler(capture);
+            root.setLevel(before);
+        }
+        outputs.addAll(lines);
+        for (String text : outputs) {
+            assertFalse(text.contains(planted) || text.contains("PLANTED-FAILURE"), "a failure text was printed: " + text);
+        }
+    }
+
     @Test
     void wrongOptionsAndHubModeAreRefused() throws Exception {
         demo();
