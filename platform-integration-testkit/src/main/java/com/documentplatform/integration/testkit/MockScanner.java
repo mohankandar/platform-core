@@ -19,7 +19,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * A mock virus scanner on 127.0.0.1 that speaks clamd ({@code zINSTREAM}, {@code zPING}) or ICAP ({@code RESPMOD},
  * {@code OPTIONS}). By default it finds the EICAR test file ({@link Eicar}) and nothing else. Switches:
  * {@link #infected} (everything is infected), {@link #slow}, {@link #down} (nothing listens), {@link #garbled} (an
- * answer that is not a scan result). It counts scans and bytes; it never keeps what it scanned. For tests only.
+ * answer that is not a scan result), {@link #withoutThreatHeader} (ICAP: a blocked file answered 200 without naming
+ * the threat). It counts scans and bytes; it never keeps what it scanned. For tests only.
  */
 public final class MockScanner implements AutoCloseable {
 
@@ -42,6 +43,7 @@ public final class MockScanner implements AutoCloseable {
     private volatile ServerSocket server;
     private volatile boolean infectedAlways;
     private volatile boolean garbled;
+    private volatile boolean withoutThreatHeader;
     private volatile Duration slow = Duration.ZERO;
 
     private MockScanner(Protocol protocol) {
@@ -75,6 +77,7 @@ public final class MockScanner implements AutoCloseable {
     public MockScanner working() {
         infectedAlways = false;
         garbled = false;
+        withoutThreatHeader = false;
         slow = Duration.ZERO;
         down(false);
         return this;
@@ -89,6 +92,15 @@ public final class MockScanner implements AutoCloseable {
     /** It answers something that is not a scan result. */
     public MockScanner garbled(boolean on) {
         garbled = on;
+        return this;
+    }
+
+    /**
+     * ICAP: a file it blocks is answered {@code 200} (the response changed) without {@code X-Infection-Found} or any
+     * other header naming the threat, as some scanners do.
+     */
+    public MockScanner withoutThreatHeader(boolean on) {
+        withoutThreatHeader = on;
         return this;
     }
 
@@ -276,7 +288,9 @@ public final class MockScanner implements AutoCloseable {
         }
         if (verdict(content.toByteArray())) {
             String blocked = "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n";
-            out.write(("ICAP/1.0 200 OK\r\nX-Infection-Found: Type=0; Resolution=2; Threat=" + EICAR_NAME + ";\r\n"
+            String threat = withoutThreatHeader ? ""
+                    : "X-Infection-Found: Type=0; Resolution=2; Threat=" + EICAR_NAME + ";\r\n";
+            out.write(("ICAP/1.0 200 OK\r\n" + threat
                     + "Encapsulated: res-hdr=0, null-body=" + blocked.length() + "\r\n\r\n" + blocked)
                     .getBytes(StandardCharsets.US_ASCII));
         } else {
