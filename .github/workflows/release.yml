@@ -57,6 +57,9 @@ jobs:
           if [ ! -f "docs/releases/${tag}.md" ]; then echo "docs/releases/${tag}.md is missing" >&2; exit 1; fi
 
       - name: mvn -B verify
+        # The scanner tests use the real EICAR test file here (a placeholder by default; testkit Eicar).
+        env:
+          RUN_EICAR_TESTS: "true"
         run: mvn -B verify
 
       - name: No test skipped

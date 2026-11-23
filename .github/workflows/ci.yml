@@ -26,6 +26,9 @@ jobs:
       # Compile and all tests, including the PostgreSQL tests (Testcontainers, Docker on the runner), the end-to-end
       # TLS tests and the product-name guard.
       - name: mvn -B verify
+        # The scanner tests use the real EICAR test file here (a placeholder by default; testkit Eicar).
+        env:
+          RUN_EICAR_TESTS: "true"
         run: mvn -B verify
 
       # On this runner nothing may be skipped: the TLS tests skip only where TLS to 127.0.0.1 is intercepted.

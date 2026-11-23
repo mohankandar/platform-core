@@ -515,11 +515,12 @@ class WatchedFolderTest {
 
     @Test
     void eicarIsQuarantinedAndNeverReachesTheHandler() {
-        assumeTrue(Eicar.staysOnDisk(tmp), "a virus scanner on this machine removes the test file; CI runs this");
+        assumeTrue(Eicar.staysOnDisk(tmp),
+                "RUN_EICAR_TESTS=true, but a virus scanner on this machine blocks the EICAR file; CI runs this");
         StoredIntegration s = jsonDrops();
         jsonDrop("clean", old, "a.pdf");
         jsonDrop("infected", old, "a.pdf");
-        folder.write("infected/b.pdf", Eicar.bytes(), old);
+        folder.write("infected/b.pdf", Eicar.testFile(), old);
         try (MockScanner m = MockScanner.clamd()) {
             List<ScanEvents.Infected> events = new ArrayList<>();
             Scanning scanning = new Scanning(new ClamdScanner(new ScannerAddress(m.host(), m.port(),
