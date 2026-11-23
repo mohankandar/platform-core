@@ -32,7 +32,8 @@ with `mvn -pl platform-error-catalogue -am verify -Dplatform.errors.write=true` 
 ## 2. Failures: `PlatformError`, `ReferenceId`, `FailureLog`
 
 - `ReferenceId.next()`: `R-` plus 12 characters of Crockford base32, time-ordered (tenths of a second) and
-  unguessable (25 random bits). Inside a request handled with platform-monitoring-spring's filter, the request's
+  unguessable (random bits), never the same twice in one process (within a tenth the random part steps on by a
+  random amount). Inside a request handled with platform-monitoring-spring's filter, the request's
   reference (`ReferenceId.current()`, from `X-Request-Id`) is used.
 - `PlatformError`: code, the user message with `(reference R-…)`, the cause with its safe details filled in, the
   reference, the time. A detail named like a secret (`password`, `secret`, `token`, `key`, `credential`, …) loses its
