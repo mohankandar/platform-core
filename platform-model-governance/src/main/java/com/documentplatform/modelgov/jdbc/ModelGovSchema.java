@@ -31,7 +31,7 @@ public final class ModelGovSchema {
     public static final String HISTORY_TABLE = "mg_schema_history";
 
     /** The table version this code needs: the number of the last migration file. */
-    public static final int VERSION = 3;
+    public static final int VERSION = 4;
 
     /** The tables the code reads and writes at runtime. */
     public static final List<String> TABLES = List.of("mg_model", "mg_model_history", "mg_model_use",
@@ -56,7 +56,7 @@ public final class ModelGovSchema {
     public static final String VERSION_TABLE = "mg_schema_version";
 
     private static final List<String> SCRIPTS = List.of("V1__modelgov.sql", "V2__modelgov_monitoring.sql",
-            "V3__modelgov_purge_guard.sql");
+            "V3__modelgov_purge_guard.sql", "V4__modelgov_validation_location.sql");
     private static final List<String> RIGHTS = List.of("SELECT", "INSERT", "UPDATE", "DELETE");
     private static final String RUN_STEP = "run the model-governance schema step (Flyway location " + LOCATION
             + ", history table " + HISTORY_TABLE + ") before starting the app";

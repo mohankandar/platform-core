@@ -72,24 +72,24 @@ final class ReviewDates {
 
     /**
      * The day of the first change since the validation that makes the review due at once, if any. The model,
-     * configuration, version and digest are compared with what the validation recorded (so a validation of the new
-     * state clears them); where the model runs is not in a validation record, so its change is read from the model's
-     * history: a change at or after the validation's time counts (the safe side when both share an instant).
+     * configuration, version, digest and (since P039) where the model runs are compared with what the validation
+     * recorded, so a validation of the new state clears them; for a validation recorded before P039 without where the
+     * model ran, a change of location is read from the model's history (at or after the validation's time).
      */
     private Optional<LocalDate> changedSince(ModelUse use, ValidationRecord v) {
         Model model = store.model(use.modelId()).orElse(null);
         boolean stale = !v.modelId().equals(use.modelId()) || !v.configFingerprint().equals(use.configFingerprint())
-                || model == null || !v.modelVersion().equals(model.modelVersion()) || !v.digest().equals(model.digest());
+                || model == null || !v.modelVersion().equals(model.modelVersion()) || !v.digest().equals(model.digest())
+                || locationChanged(v, model);
+        if (!stale) return Optional.empty();
         Instant first = null;
         for (ModelGovStore.HistoryRow r : store.modelHistory(use.modelId())) {
             if (r.changedAt().isBefore(v.ranAt())) continue;
-            boolean location = r.changedFields().contains("runsWhere");
-            if (location || (stale && r.changedFields().stream().anyMatch(MODEL_FIELDS::contains))) {
-                if (location) stale = true;
-                if (first == null || r.changedAt().isBefore(first)) first = r.changedAt();
+            if (r.changedFields().stream().anyMatch(MODEL_FIELDS::contains)
+                    && (first == null || r.changedAt().isBefore(first))) {
+                first = r.changedAt();
             }
         }
-        if (!stale) return Optional.empty();
         for (ModelGovStore.HistoryRow r : store.useHistory(use.useId())) {
             if (r.changedAt().isBefore(v.ranAt())) continue;
             if (r.changedFields().stream().anyMatch(USE_FIELDS::contains)
@@ -99,6 +99,20 @@ final class ReviewDates {
         }
         // Stale with no history row found (a store without history): due since the validation itself.
         return Optional.of(day(first != null ? first : v.ranAt()));
+    }
+
+    /**
+     * Whether the model now runs elsewhere than when the validation ran (P039, design section 4). The validation's own
+     * record says where; one recorded before P039 does not, and then a change of location in the model's history at
+     * or after the validation's time counts (the safe side when both share an instant).
+     */
+    boolean locationChanged(ValidationRecord v, Model model) {
+        if (model == null) return false;
+        if (v.runsWhere() != null) return v.runsWhere() != model.runsWhere();
+        for (ModelGovStore.HistoryRow r : store.modelHistory(model.modelId())) {
+            if (!r.changedAt().isBefore(v.ranAt()) && r.changedFields().contains("runsWhere")) return true;
+        }
+        return false;
     }
 
     private static LocalDate day(Instant at) {

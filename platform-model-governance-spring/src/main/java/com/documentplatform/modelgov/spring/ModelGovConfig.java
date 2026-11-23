@@ -47,6 +47,11 @@ public record ModelGovConfig(ModelGovSettings settings, Duration measureRetentio
             problems.add(ModelGovProperties.PREFIX + ".approver-roles: name at least one role that may approve models "
                     + "(the Model approver)");
         }
+        if (forbidden.isEmpty()) {
+            // P039, install-model-governance-5: without it the separation of duties is silently lost.
+            problems.add(ModelGovProperties.PREFIX + ".forbidden-roles: name the roles an approver may never also hold "
+                    + "(the Business Admin role); it may not be empty");
+        }
         for (String r : approvers) {
             if (forbidden.contains(r)) {
                 problems.add(ModelGovProperties.PREFIX + ".forbidden-roles: " + r + " is also an approver role; a "

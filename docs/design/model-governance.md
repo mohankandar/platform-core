@@ -158,6 +158,22 @@ Package `com.documentplatform.modelgov`, plain Java, depends only on platform-er
 6. **The pack's period** applies to validations, readings, drifts (raised, acted on, or still open) and changes; the
    register entries are as they are at export.
 
+### Decision and fix (P039)
+
+- **A change of where a model runs goes through the gate, for every materiality** (P035 question 1, decided by the
+  shared-capabilities thread following the owner-approved design section 4; this replaces P034 decision 2, "due for
+  review with a warning"). Each validation records where the model ran (`ValidationRecord.runsWhere`, schema V4,
+  `mg_validation.runs_where`). `ModelGate.requireLive` refuses with `MOD_LOCATION_CHANGED` while the live validation
+  was for another location, until a validation where the model now runs is recorded, approved and made live. A
+  validation recorded before V4 has no location; then a change in the model's history at or after its time counts.
+  The use is still due for review at once, as before.
+- **A customer's pass mark never looser than the default in force** (gap model-governance-19). When the app tightens a
+  default, a customer mark that is now looser stops counting: the stricter default applies, for validations and for
+  monitoring, and `ModelGovernance.looserEntityMarks` / `ModelMeasures.looserEntityMarks` list such marks for the
+  register. The pack shows the default as the mark in force.
+- **`forbidden-roles` may not be empty** (install-model-governance-5): Spring start-up refuses it with
+  `MOD_SETTINGS_INVALID`.
+
 ### Fix (P037)
 
 - **The purge guard is the schema owner's (gap model-governance-84, schema V3).** Before, any user with DELETE on

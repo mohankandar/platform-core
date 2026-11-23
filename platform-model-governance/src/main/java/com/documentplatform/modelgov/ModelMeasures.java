@@ -82,13 +82,37 @@ public final class ModelMeasures {
         store.putMonitorThreshold(t, change(by, t.measure()));
     }
 
-    /** The pass marks in force for the use and entity: the entity's where set, else the default; by measure. */
+    /**
+     * The pass marks in force for the use and entity, by measure: the entity's where set and at least as strict as the
+     * default in force, else the default (P039: a customer mark left looser by a tightened default stops counting;
+     * {@link #looserEntityMarks} lists such marks).
+     */
     public Map<String, Monitoring.MonitorThreshold> thresholdsInForce(UUID useId, UUID entity) {
         Map<String, Monitoring.MonitorThreshold> out = new LinkedHashMap<>();
         List<Monitoring.MonitorThreshold> all = store.monitorThresholds(useId);
         for (Monitoring.MonitorThreshold t : all) if (t.entity() == null) out.put(t.measure(), t);
-        for (Monitoring.MonitorThreshold t : all) if (entity != null && entity.equals(t.entity())) out.put(t.measure(), t);
+        for (Monitoring.MonitorThreshold t : all) {
+            if (entity == null || !entity.equals(t.entity())) continue;
+            Monitoring.MonitorThreshold def = out.get(t.measure());
+            if (def == null || stricterOrEqual(t, def)) out.put(t.measure(), t);
+        }
         return out;
+    }
+
+    /** The customers' monitoring marks of the use that no longer count, the default now being stricter (P039). */
+    public List<Monitoring.MonitorThreshold> looserEntityMarks(UUID useId) {
+        List<Monitoring.MonitorThreshold> all = store.monitorThresholds(useId);
+        List<Monitoring.MonitorThreshold> out = new java.util.ArrayList<>();
+        for (Monitoring.MonitorThreshold t : all) {
+            if (t.entity() == null) continue;
+            all.stream().filter(d -> d.entity() == null && d.measure().equals(t.measure())).findFirst()
+                    .filter(d -> !stricterOrEqual(t, d)).ifPresent(d -> out.add(t));
+        }
+        return out;
+    }
+
+    private static boolean stricterOrEqual(Monitoring.MonitorThreshold t, Monitoring.MonitorThreshold def) {
+        return t.direction() == def.direction() && def.direction().atLeastAsStrict(t.value(), def.value());
     }
 
     // ---- readings and drift

@@ -24,6 +24,8 @@ public enum ModelGovCode implements PlatformCode {
     MOD_NOT_LIVE,
     MOD_DIGEST_MISMATCH,
     MOD_CONFIG_CHANGED,
+    /** Where the model runs changed since the live validation (P039, design section 4): validate and approve there. */
+    MOD_LOCATION_CHANGED,
     MOD_RETIRED,
     MOD_REVIEW_OVERDUE,
     MOD_NO_ROLLBACK_TARGET,

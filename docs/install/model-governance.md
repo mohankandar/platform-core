@@ -16,7 +16,8 @@ The tables are created only by the app's schema step, never at app startup.
   `mg_schema_history`, run as the schema owner, in the same database schema the app uses. Files today:
   `V1__modelgov.sql` (register, validations, approvals, live versions), `V2__modelgov_monitoring.sql`
   (monitoring, re-validation) and `V3__modelgov_purge_guard.sql` (the retention purge as the schema owner, since
-  0.6.0).
+  0.6.0) and
+  `V4__modelgov_validation_location.sql` (where the model ran, recorded with each validation; since 0.6.0).
 - **Runtime user:** data rights only:
 
   ```sql
@@ -44,7 +45,8 @@ The tables are created only by the app's schema step, never at app startup.
 platform:
   model-governance:
     approver-roles: [MODEL_APPROVER, COMPLIANCE_OFFICER]   # who may approve (required)
-    forbidden-roles: [BUSINESS_ADMIN]                       # roles an approver may never also hold
+    forbidden-roles: [BUSINESS_ADMIN]                       # roles an approver may never also hold (required: start-up
+                                                            # refuses an empty list)
     review-every:                                           # how long a validation lasts
       high: 90d
       medium: 180d
@@ -88,6 +90,7 @@ feature does not run, and IT gets a notice with one of these codes:
 | `MOD_NOT_LIVE` | It is approved but not switched live. | Switch it live on the model screens. |
 | `MOD_DIGEST_MISMATCH` | The model file or download is not the one validated (a new pull, a swapped file). | Put back the validated model, or validate and approve the new one. |
 | `MOD_CONFIG_CHANGED` | The prompt or settings changed without a validation. | Validate and approve the new configuration, or restore the old one. |
+| `MOD_LOCATION_CHANGED` | Where the model runs changed since its live validation (every materiality). | Validate the use where the model now runs, approve it and make it live; or move the model back. |
 | `MOD_RETIRED` | The use was retired. | Register it again if it is still needed. |
 | `MOD_REVIEW_OVERDUE` | The periodic review is past due. A warning by default; a refusal where you chose so for the use. | Re-run the test set and have it approved. |
 

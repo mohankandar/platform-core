@@ -482,6 +482,95 @@ public abstract class ModelGovContract {
         assertEquals(List.of(), start(u, entity).warnings());
     }
 
+    /**
+     * P039, model-governance-33 (owner-approved design section 4): a change of where the model runs goes through the
+     * gate for every materiality; MOD_LOCATION_CHANGED until a validation there is recorded, approved and live.
+     */
+    @Test
+    void aChangeOfWhereTheModelRunsStopsItUntilValidatedThere() {
+        for (ModelUse.Materiality materiality : ModelUse.Materiality.values()) {
+            Model m = model(vendorModel());
+            ModelUse u = use(m, null, materiality);
+            ValidationRecord v = pass(u, entity);
+            assertEquals(m.runsWhere(), v.runsWhere(), "the validation records where the model ran");
+            gov.approve(v.validationId(), approver());
+            gov.goLive(u.useId(), entity, v.validationId(), "release-manager");
+            assertEquals(List.of(), start(u, entity).warnings());
+
+            Model now = store.model(m.modelId()).orElseThrow();
+            Model.RunsWhere other = now.runsWhere() == Model.RunsWhere.HOSTED ? Model.RunsWhere.CUSTOMER_ENVIRONMENT
+                    : Model.RunsWhere.HOSTED;
+            gov.changeModel(new Model(m.modelId(), now.name(), now.provider(), now.modelVersion(), now.digest(), other,
+                    now.version()), now.version(), "register-admin");
+            ModelGovException e = refuses(MOD_LOCATION_CHANGED, () -> start(u, entity));
+            assertTrue(e.getMessage().contains(other.name()), e.getMessage());
+
+            ValidationRecord there = pass(current(u), entity);
+            assertEquals(other, there.runsWhere());
+            refuses(MOD_LOCATION_CHANGED, () -> start(u, entity)); // recorded, not yet approved and live
+            gov.approve(there.validationId(), approver());
+            gov.goLive(u.useId(), entity, there.validationId(), "release-manager");
+            assertEquals(List.of(), start(u, entity).warnings(), materiality + ": validated where it now runs");
+        }
+    }
+
+    /** P039: a validation recorded before where-it-ran was kept is judged by the model's history. */
+    @Test
+    void anOlderValidationWithoutItsLocationIsJudgedByTheModelsHistory() {
+        Model m = model(vendorModel());
+        ModelUse u = use(m, null, ModelUse.Materiality.LOW);
+        ValidationRecord v = pass(u, entity);
+        ValidationRecord old = new ValidationRecord(UUID.randomUUID(), v.useId(), v.entity(), v.modelId(),
+                v.modelName(), v.modelVersion(), v.provider(), v.digest(), v.configFingerprint(), v.testSetName(),
+                v.testSetVersion(), v.measures(), v.passed(), v.ranBy(), v.ranAt());
+        store.insertValidation(old);
+        assertNull(store.validation(old.validationId()).orElseThrow().runsWhere());
+        gov.approve(old.validationId(), approver());
+        gov.goLive(u.useId(), entity, old.validationId(), "release-manager");
+        assertEquals(List.of(), start(u, entity).warnings());
+        clock.advance(Duration.ofDays(1));
+        Model now = store.model(m.modelId()).orElseThrow();
+        gov.changeModel(new Model(m.modelId(), now.name(), now.provider(), now.modelVersion(), now.digest(),
+                now.runsWhere() == Model.RunsWhere.HOSTED ? Model.RunsWhere.CUSTOMER_ENVIRONMENT : Model.RunsWhere.HOSTED,
+                now.version()), now.version(), "register-admin");
+        refuses(MOD_LOCATION_CHANGED, () -> start(u, entity));
+    }
+
+    /**
+     * P039, model-governance-19: a customer mark may never be looser than the default in force. After the app
+     * tightens a default, a now looser mark stops counting, the stricter default applies, and the register lists it.
+     */
+    @Test
+    void aCustomerMarkLeftLooserByATightenedDefaultStopsCounting() {
+        Model m = model(vendorModel());
+        ModelUse u = use(m, null, ModelUse.Materiality.MEDIUM); // default accuracy 0.90 (higher is better)
+        gov.setEntityThreshold(Threshold.forEntity(u.useId(), entity, "accuracy", new BigDecimal("0.93"),
+                Threshold.Direction.HIGHER_IS_BETTER), "customer");
+        assertEquals(new BigDecimal("0.93"), gov.thresholdsInForce(u.useId(), entity).get("accuracy").value());
+        assertEquals(List.of(), gov.looserEntityMarks(u.useId()));
+
+        gov.setDefaultThreshold(Threshold.byDefault(u.useId(), "accuracy", new BigDecimal("0.95"),
+                Threshold.Direction.HIGHER_IS_BETTER), "register-admin");
+        Threshold inForce = gov.thresholdsInForce(u.useId(), entity).get("accuracy");
+        assertNull(inForce.entity(), "the stricter default applies");
+        assertEquals(new BigDecimal("0.95"), inForce.value());
+        assertEquals(List.of(entity), gov.looserEntityMarks(u.useId()).stream().map(Threshold::entity).toList());
+        ValidationRecord v = validate(u, entity, "0.94", "0.01");
+        assertFalse(v.passed(), "0.94 passed the customer's 0.93, not the default's 0.95");
+        assertEquals(new BigDecimal("0.95"), v.measures().stream().filter(x -> x.measure().equals("accuracy"))
+                .findFirst().orElseThrow().threshold());
+
+        // The same for monitoring marks.
+        ModelUse mu = monitored(model(vendorModel())); // default correction_rate 0.10 (lower is better)
+        measures.setEntityThreshold(Monitoring.MonitorThreshold.forEntity(mu.useId(), entity, "correction_rate",
+                new BigDecimal("0.08"), Threshold.Direction.LOWER_IS_BETTER, 50), "customer");
+        measures.setDefaultThreshold(Monitoring.MonitorThreshold.byDefault(mu.useId(), "correction_rate",
+                new BigDecimal("0.05"), Threshold.Direction.LOWER_IS_BETTER, 50), "register-admin");
+        assertEquals(new BigDecimal("0.05"), measures.thresholdsInForce(mu.useId(), entity).get("correction_rate")
+                .value());
+        assertEquals(1, measures.looserEntityMarks(mu.useId()).size());
+    }
+
     /** P036, model-governance-39: the review date is kept per use and entity, from that entity's live validation. */
     @Test
     void oneEntitysPassNeverMovesAnotherEntitysReviewDate() {

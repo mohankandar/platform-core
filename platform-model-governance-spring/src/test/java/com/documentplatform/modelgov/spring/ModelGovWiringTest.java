@@ -301,6 +301,18 @@ class ModelGovWiringTest {
         app("platform.model-governance.forbidden-roles=" + APPROVER_ROLE)
                 .withBean(ModelGovStore.class, InMemoryModelGovStore::new)
                 .run(ctx -> assertTrue(root(ctx.getStartupFailure()).getMessage().contains("cannot be both")));
+        // install-model-governance-5 (P039): an empty forbidden-roles stops the start; the separation is never lost.
+        new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(ModelGovAutoConfiguration.class))
+                .withBean(ModelGovStore.class, InMemoryModelGovStore::new)
+                .withPropertyValues("platform.model-governance.approver-roles=" + APPROVER_ROLE)
+                .run(ctx -> {
+                    Throwable root = root(ctx.getStartupFailure());
+                    assertInstanceOf(ModelGovConfig.Invalid.class, root);
+                    assertEquals(List.of("platform.model-governance.forbidden-roles: name the roles an approver may "
+                            + "never also hold (the Business Admin role); it may not be empty"),
+                            ((ModelGovConfig.Invalid) root).problems());
+                });
     }
 
     @Test
