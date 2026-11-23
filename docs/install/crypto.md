@@ -34,6 +34,12 @@ policies:
   An installation set up before P022 removes `delete` from its `platform-crypto-setup` policy and adds
   `platform-crypto-offboard`.
 
+- **The app's own policy is the guard.** The app's `KeyService` bean has a `destroyCustomerKeys` method and its
+  Vault client can read KV secrets, so what the running app may do in Vault is decided by its policy alone. The
+  running app's login gets `platform-crypto-app` only: it **must not** allow `delete` on `transit/keys/*` (key
+  deletion) or `create` / `update` on `secret/data/*` (KV writes). Never give the running app the set-up or the
+  offboard policy, and never a wider one.
+
 ## 2. App settings (`platform.crypto.*`)
 
 | Property | Default | |
