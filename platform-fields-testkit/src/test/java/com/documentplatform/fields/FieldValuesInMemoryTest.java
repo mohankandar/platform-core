@@ -85,6 +85,19 @@ class FieldValuesInMemoryTest {
         assertTrue(values.claim(ref("c3"), vals("LN-100", null)).created());
     }
 
+    /** xc-public-api-2 (P037): a store deletes only with a ticket for that record, so never around the erase log. */
+    @Test
+    void aStoreDeletesNothingWithoutATicketForThatRecord() {
+        values.claim(ref("c1"), vals("LN-100", "Alice Smith"));
+        values.claim(ref("c2"), vals("LN-200", null));
+        StoredRecord c1 = store.find(ref("c1")).orElseThrow();
+        refused(FieldValuesError.VALUES_ERASE_OUTSIDE_LOG, () -> store.delete(c1, null));
+        refused(FieldValuesError.VALUES_ERASE_OUTSIDE_LOG, () -> store.delete(c1, TestErase.ticketFor(ref("c2"))));
+        assertEquals(2, store.all().size(), "nothing deleted");
+        store.delete(c1, TestErase.ticketFor(ref("c1")));
+        assertEquals(List.of(ref("c2")), store.all().stream().map(StoredRecord::ref).toList());
+    }
+
     @Test
     void storesSealsAndReadsBack() {
         values.claim(ref("c1"), vals("LN-100", "Alice Smith"));

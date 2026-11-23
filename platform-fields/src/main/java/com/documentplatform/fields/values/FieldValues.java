@@ -274,7 +274,7 @@ public final class FieldValues {
                         + " is under legal hold, so its values may not be erased");
             }
             try {
-                store.delete(current);
+                store.delete(current, new EraseTicket(ref));
                 return new Erased(ref, current.values().size(), current.envelope() != null, clock.instant());
             } catch (FieldValuesException e) {
                 if (e.code() != FieldValuesError.VALUES_CHANGED_MEANWHILE) {

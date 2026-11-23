@@ -93,7 +93,8 @@ public final class InMemoryValueStore implements ValueStore {
     }
 
     @Override
-    public synchronized void delete(StoredRecord record) {
+    public synchronized void delete(StoredRecord record, com.documentplatform.fields.values.EraseTicket ticket) {
+        com.documentplatform.fields.values.EraseTicket.check(ticket, record);
         StoredRecord current = records.get(record.id());
         if (current == null) {
             throw new FieldValuesException(FieldValuesError.VALUES_RECORD_UNKNOWN, "No record " + record.ref());

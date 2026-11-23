@@ -17,6 +17,9 @@ import java.util.UUID;
  * <p>Every store enforces, also with concurrent writers: one record per record type and ID, and one record per
  * identity (primary value set) in each entity, product and record type. A store is also the app's
  * {@link FieldValuesCheck}: values exist for a field once any record holds one.
+ *
+ * <p><b>An SPI, not for apps to call.</b> Apps read and write values only through {@link FieldValues}, and erase
+ * only through the erase log; a store is handed to {@code FieldValues} and used by it alone.
  */
 public interface ValueStore extends FieldValuesCheck {
 
@@ -48,12 +51,14 @@ public interface ValueStore extends FieldValuesCheck {
     StoredRecord replace(StoredRecord next);
 
     /**
-     * Deletes the record, its envelope and every value row, if the record is still at {@code version}.
+     * Deletes the record, its envelope and every value row, if the record is still at {@code version}. Only with a
+     * ticket for this record ({@link EraseTicket#check}), which only {@link FieldValues} makes during an erasure
+     * through the erase log; without one: {@code VALUES_ERASE_OUTSIDE_LOG}, nothing deleted.
      *
      * @throws FieldValuesException {@code VALUES_CHANGED_MEANWHILE} if another write came first,
      *                              {@code VALUES_RECORD_UNKNOWN} if there is no such record
      */
-    void delete(StoredRecord record);
+    void delete(StoredRecord record, EraseTicket ticket);
 
     /**
      * The records of the customer, entity, product and record type with a value of the field that matches, ordered by

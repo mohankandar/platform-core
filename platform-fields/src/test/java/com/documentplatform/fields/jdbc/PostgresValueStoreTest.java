@@ -438,6 +438,20 @@ class PostgresValueStoreTest {
 
     // ---- erasing a record (P020) ----
 
+    /** xc-public-api-2 (P037): the Postgres store deletes only with a ticket for that record. */
+    @Test
+    void theStoreDeletesNothingWithoutATicketForThatRecord() {
+        values.claim(ref(A, "c1"), vals("contract_number", "AB-1001", "notes", "n"));
+        values.claim(ref(A, "c2"), vals("contract_number", "AB-1002", "notes", "n"));
+        var c1 = store.find(ref(A, "c1")).orElseThrow();
+        refused(FieldValuesError.VALUES_ERASE_OUTSIDE_LOG, () -> store.delete(c1, null));
+        refused(FieldValuesError.VALUES_ERASE_OUTSIDE_LOG, () -> store.delete(c1, TestErase.ticketFor(ref(A, "c2"))));
+        assertTrue(store.find(ref(A, "c1")).isPresent(), "nothing deleted");
+        store.delete(c1, TestErase.ticketFor(ref(A, "c1")));
+        assertTrue(store.find(ref(A, "c1")).isEmpty());
+        assertTrue(store.find(ref(A, "c2")).isPresent());
+    }
+
     @Test
     void erasingARecordRemovesItsValuesAndEnvelopeAndSearchNoLongerFindsIt() {
         values.claim(ref(A, "c1"), fullCase("AB-1001"));
