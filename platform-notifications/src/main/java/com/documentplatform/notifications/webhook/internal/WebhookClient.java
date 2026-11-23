@@ -1,4 +1,4 @@
-package com.documentplatform.notifications.webhook;
+package com.documentplatform.notifications.webhook.internal;
 
 import com.documentplatform.notifications.ChannelKind;
 import com.documentplatform.notifications.FailureCode;
@@ -7,6 +7,8 @@ import com.documentplatform.notifications.SendResult;
 import com.documentplatform.notifications.secret.Secret;
 import com.documentplatform.notifications.secret.SecretRef;
 import com.documentplatform.notifications.secret.SecretResolver;
+import com.documentplatform.notifications.webhook.WebhookDirectory;
+import com.documentplatform.notifications.webhook.WebhookOptions;
 
 import java.io.IOException;
 import java.net.ProxySelector;
@@ -33,6 +35,8 @@ import java.util.function.Function;
  * request: it never reaches a result, an exception text or a log. Redirects are not followed.
  *
  * <p>Uses the Java runtime's proxy settings ({@code https.proxyHost} / {@code https.proxyPort}) when set.
+ *
+ * <p>Internal (P041): shared by the Teams and Slack senders; may change in any release, not for apps.
  */
 public final class WebhookClient implements AutoCloseable {
 

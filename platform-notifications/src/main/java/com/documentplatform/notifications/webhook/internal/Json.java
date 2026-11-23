@@ -1,4 +1,4 @@
-package com.documentplatform.notifications.webhook;
+package com.documentplatform.notifications.webhook.internal;
 
 import java.util.List;
 import java.util.Map;
@@ -7,6 +7,8 @@ import java.util.Map;
  * A minimal JSON writer for webhook payloads: objects (insertion-ordered maps), lists, strings, numbers, booleans and
  * null. Strings are escaped fully, including {@code < > &} and the line separators, so no value can break out of its
  * string or be read as markup by an intermediate.
+ *
+ * <p>Internal (P041): used by the Teams and Slack senders; may change in any release, not for apps.
  */
 public final class Json {
 

@@ -86,8 +86,8 @@ public final class Stack implements AutoCloseable {
         secrets.put(SLACK_REF, hooks.base() + "/services/T000/B000/" + SLACK_TOKEN);
         MailServer server = MailServer.withLogin("127.0.0.1", mail.getSmtp().getPort(), MailSecurity.NONE, "notify",
                 MAIL_REF, "notifications@customer.example").withTimeouts(Duration.ofSeconds(2), Duration.ofSeconds(2));
-        WebhookOptions local = WebhookOptions.DEFAULT.withTimeouts(Duration.ofSeconds(2), Duration.ofSeconds(2))
-                .allowingPlainHttpForTests();
+        WebhookOptions local = com.documentplatform.notifications.webhook.LocalWebhookOptions.plainHttpToThisMachine(
+                WebhookOptions.DEFAULT.withTimeouts(Duration.ofSeconds(2), Duration.ofSeconds(2)));
         email = new EmailChannel(MailServerDirectory.of(Map.of(MAIL, server)), secretResolver);
         teams = new TeamsChannel(WebhookDirectory.of(Map.of(TEAMS, TEAMS_REF)), secretResolver, local);
         slack = new SlackChannel(WebhookDirectory.of(Map.of(SLACK, SLACK_REF)), secretResolver, local);

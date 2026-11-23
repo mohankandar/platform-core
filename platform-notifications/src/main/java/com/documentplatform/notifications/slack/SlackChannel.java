@@ -6,8 +6,8 @@ import com.documentplatform.notifications.Message;
 import com.documentplatform.notifications.OutgoingMessage;
 import com.documentplatform.notifications.SendResult;
 import com.documentplatform.notifications.secret.SecretResolver;
-import com.documentplatform.notifications.webhook.Json;
-import com.documentplatform.notifications.webhook.WebhookClient;
+import com.documentplatform.notifications.webhook.internal.Json;
+import com.documentplatform.notifications.webhook.internal.WebhookClient;
 import com.documentplatform.notifications.webhook.WebhookDirectory;
 import com.documentplatform.notifications.webhook.WebhookOptions;
 
@@ -50,7 +50,7 @@ public final class SlackChannel implements Channel, AutoCloseable {
     }
 
     /** The incoming-webhook payload, built from the message only. */
-    public static String payload(Message m) {
+    static String payload(Message m) {
         List<Object> blocks = new ArrayList<>();
         blocks.add(map("type", "header", "text", plain(truncate(m.subject(), HEADER_MAX))));
         for (String section : sections(m.lines())) {
