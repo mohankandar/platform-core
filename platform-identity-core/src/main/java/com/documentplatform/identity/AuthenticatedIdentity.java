@@ -26,6 +26,16 @@ public record AuthenticatedIdentity(
         claims = claims == null ? Map.of() : Map.copyOf(claims);
     }
 
+    /**
+     * Shows only what identifies the sign-in, never what the person or the token says: no raw claims, username,
+     * email, display name or group names (an app's {@code log.debug("{}", identity)} must not print them).
+     */
+    @Override
+    public String toString() {
+        return "AuthenticatedIdentity[providerId=" + providerId + ", issuer=" + issuer + ", subject=" + subject
+                + ", groups=" + groups.size() + ", claims=" + claims.size() + "]";
+    }
+
     private static String required(String value, String name) {
         if (value == null || value.isBlank()) throw new IllegalArgumentException(name + " is required");
         return value.trim();
