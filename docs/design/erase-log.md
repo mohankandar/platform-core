@@ -1,6 +1,6 @@
 # platform-erase-log — erase log and customer key destruction (decided 2026-11-22)
 
-Source: owner decision (b) + (c), confirmed by the LexaVault thread (master), 2026-11-22. LexaVault's record: `docs/work/erase-and-backups.md` in secure-document-platform. Project doc: `Erase-Log-Design.md`. Related: `docs/design/case-fields.md` ("Erasing a record", "Erase and backups"), `docs/design/crypto.md`.
+Source: owner decision (b) + (c), confirmed by the thread of the first app that uses it (a document vault), 2026-11-22; that app keeps its own record of it in its repository. Project doc: `Erase-Log-Design.md`. Related: `docs/design/case-fields.md` ("Erasing a record", "Erase and backups"), `docs/design/crypto.md`.
 
 ## The rule
 
@@ -12,14 +12,14 @@ Source: owner decision (b) + (c), confirmed by the LexaVault thread (master), 20
 
 - Default **35 days**; a setting per installation, allowed **30–90 days**, set by contract. The compliance report states the period in force.
 
-## The erase log (shared: LexaVault and Vero both write to it)
+## The erase log (shared: every app that erases writes to it)
 
 - **Kept outside the database it protects** (its own store, backed up separately), so a restore can't roll it back.
 - **Holds no values:** entity, case/record ID, what was erased (e.g. document, redacted copy, case fields, export copy), when, by which rule or person, the audit record ID.
 - **Kept at least backup retention + 30 days** (default 35 + 30 = 65 days); then pruned, because every backup it could apply to is gone.
 - **Restore procedure:** restore → **replay the erase log** → **check** that nothing in the log is readable → only then take work. **Replaying twice is safe.**
 - **Shared part:** the log store, writing an entry, replay with app-registered handlers per "what" (platform-fields' record erase is one handler; documents and copies are the apps'), the verify step, idempotency, pruning, and a guard so a restored system doesn't take work before replay.
-- **LexaVault** uses it in switch-over part 1; Vero with its retention work.
+- A document vault app uses it in its switch-over part 1; a document intake app with its retention work.
 
 ## Customer key destruction (customer exit)
 
@@ -60,8 +60,9 @@ Source: owner decision (b) + (c), confirmed by the LexaVault thread (master), 20
 
 ## Built (P021): modules `platform-erase-log`, `-testkit`, `-spring`
 
-Package `com.documentplatform.eraselog`. Plain Java, no Spring; the only dependency is platform-fields, optional, for
-the built-in `case-fields` handler. Install guide: `docs/install/erase-log.md`.
+Package `com.documentplatform.eraselog`. Plain Java, no Spring. It depends on platform-errors (since P032: its codes
+are `PlatformCode`s) and, optionally, on platform-fields for the built-in `case-fields` handler. Install guide:
+`docs/install/erase-log.md`.
 
 ### Entry
 
@@ -75,13 +76,16 @@ the built-in `case-fields` handler. Install guide: `docs/install/erase-log.md`.
 | `recordId` | the record or case ID, `[A-Za-z0-9_.:@/-]{1,200}` |
 | `kind` | what was erased, app-defined, `[a-z][a-z0-9-]{0,39}`: `document`, `redacted-copy`, `case-fields`, `export-copy` |
 | `erasedAt` | when the erasure was decided |
-| `by` | `RULE` + rule ID, or `PERSON` + actor ID |
-| `auditId` | the app's audit record ID |
+| `by` | `RULE` + rule ID, or `PERSON` + actor ID; the ID `[A-Za-z0-9_.:@/-]{1,128}` |
+| `auditId` | the app's audit record ID, `[A-Za-z0-9_.:@/-]{1,128}` |
 | `seq`, `loggedAt`, `prev`, `hash` | added by the log: number from 1 without gaps, time written, SHA-256 chain |
 
-- **No values:** anything outside those forms is `ERASE_ENTRY_INVALID`. An id that looks like a value is
-  `ERASE_ENTRY_VALUE_REFUSED`: an e-mail address, platform-crypto sealed data (`pcv1.`, `pci1.`, `pck1.`), a
-  fingerprint, a Vault ciphertext. Messages name the field, never what was given. A person is named by actor ID, not
+- **No values (P021 decision 9):** anything outside those forms (for example spaces or commas) is
+  `ERASE_ENTRY_INVALID`. An id that fits its form but looks like a value is `ERASE_ENTRY_VALUE_REFUSED`: an e-mail
+  address, platform-crypto sealed data (`pcv1.`, `pci1.`, `pck1.`), a fingerprint (`f<version>.`), a Vault
+  ciphertext (`vault:v<n>:`). This second check runs on `recordId`, `auditId` and the `by` ID, after the form check,
+  so a sample with a character outside the form (for example `+` or `=` in a ciphertext) gets `ERASE_ENTRY_INVALID`
+  instead. Both refuse the entry. Messages name the field, never what was given. A person is named by actor ID, not
   by e-mail or name.
 - **Chain:** `hash` = SHA-256 of `platform-erase-log/1|<log ID>|<seq>|<loggedAt>|<fields…>|<prev>`; the first `prev`
   is 64 zeros (or the checkpoint's hash). `EraseLog.verify()` walks it: a changed, removed, reordered or inserted
@@ -142,6 +146,12 @@ erasures stop with the same handler code and are not logged.
   "Restored from backup: run the erase replay before starting work"**. Every instance sees the recorded flag.
 - `mayTakeWork()` is what the app checks before taking work. Any of the codes above means no work.
 - `refresh()` is a cheap recheck (log head against position), so the block lifts after the replay.
+- **Where the whole chain is walked (P021 decision 7):** the everyday erase (`Eraser.erase`) does not walk it; it
+  compares the log's last entry with the position, which stays cheap however long the log is. The whole chain is
+  walked at startup (`checkAtStartup`), daily (`fullCheck`), before pruning (`EraseLog.prune`) and by the replay.
+- **One database, one log (P021 decision 8):** a database that holds the position of another log is refused
+  (`ERASE_LOG_WRONG_LOG`). A database belongs to one log. Moving the log to a new location means moving its files
+  there (`erase-log.jsonl`, `erase-log.id`, `erase-log.checkpoint`), not starting a new log.
 - `fullCheck()` is the daily chain walk while running. It never records a restore: an entry pending while the app runs
   is an erase in progress.
 
@@ -157,7 +167,11 @@ erasures stop with the same handler code and are not logged.
    `ERASE_VERIFY_FAILED`, and the system stays blocked.
 4. Only then is `replay_required` cleared, and the guard lifts.
 
-Running it twice is safe. The report holds counts, codes and entry numbers only.
+Running it twice is safe. The report (`Report.describe()`) holds the code and the handler's code, entry numbers
+(where the database was, the log's last entry, entries still readable) and counts. Its last line is a message that
+may also name ids: the entry's number, kind, record type and record ID, the log's location and ID, and the handler's
+own message text (after a handler failure it ends "it goes on from entry N"). These are ids, never values (an entry
+holds none). The handler's text is the app's, so a handler keeps values out of its exception messages.
 
 Built-in handler `fields.CaseFieldsEraseHandler` (`case-fields`):
 
@@ -179,7 +193,7 @@ Built-in handler `fields.CaseFieldsEraseHandler` (`case-fields`):
 ### Spring (`platform-erase-log-spring`)
 
 - Properties: `platform.erase-log.location` (required, absolute), `backup-retention-days` (35; 30–90), `recheck`
-  (1 minute), `exit-after-replay` (true), `enabled`.
+  (1 minute; 5 seconds to 1 hour), `exit-after-replay` (true), `enabled`.
 - Beans:
   - the file store and `EraseLog`;
   - `PostgresErasePosition` on the app's `DataSource`, after `EraseLogSchema.verify`;
@@ -189,4 +203,6 @@ Built-in handler `fields.CaseFieldsEraseHandler` (`case-fields`):
   - `EraseLogWorker`: the recheck, plus the daily full check and pruning;
   - `EraseReplayRunner` (`--erase-replay`);
   - health indicator `eraseLog`: UP; OUT_OF_SERVICE after a restore until the replay verified; DOWN otherwise. Its
-    details hold no values.
+    details hold no values: `mayTakeWork`, `code`, `message`, `logId`, `location`, `logHead`, `applied` and
+    `pending` (once the position was read), `backupRetentionDays`, `logRetentionDays`, `checkedAt`, and
+    `lastFailure` while a logged entry could not be applied on this instance.
