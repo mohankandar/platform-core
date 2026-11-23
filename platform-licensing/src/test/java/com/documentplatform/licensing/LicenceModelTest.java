@@ -51,6 +51,11 @@ class LicenceModelTest {
         assertThrows(IllegalArgumentException.class, () -> new EntitySlot("ENT-1", List.of()));
         assertThrows(IllegalArgumentException.class, () -> new EntitySlot("ENT-1", List.of(
                 new Allowance("PRODUCT_A", AllowanceType.STORAGE, 1), new Allowance("PRODUCT_A", AllowanceType.STORAGE, 2))));
+        // A product listed twice (licensing-file-format-16).
+        IllegalArgumentException twice = assertThrows(IllegalArgumentException.class, () -> new Licence("LIC-0001", 1,
+                "C", "TEN-0001", List.of("PRODUCT_A", "PRODUCT_B", "PRODUCT_A"), SLOTS, LicenceType.SUBSCRIPTION,
+                LicenceKind.PRODUCTION, D1, D2, null, Deployment.HOSTED, "k1", Instant.EPOCH));
+        assertEquals("a product is listed twice", twice.getMessage());
         // An allowance must be for a listed product.
         assertThrows(IllegalArgumentException.class, () -> new Licence("LIC-0001", 1, "C", "TEN-0001",
                 List.of("PRODUCT_B"), SLOTS, LicenceType.SUBSCRIPTION, LicenceKind.PRODUCTION, D1, D2, null,
