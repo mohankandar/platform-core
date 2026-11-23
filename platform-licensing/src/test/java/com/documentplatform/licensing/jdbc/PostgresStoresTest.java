@@ -239,4 +239,19 @@ class PostgresStoresTest {
     private static LicensingSchemaException.Problem problem(DataSource ds) {
         return assertThrows(LicensingSchemaException.class, () -> LicensingSchema.verify(ds)).problem();
     }
+
+    /** xc-schemas-2 (P037): the runtime user has data rights only; every DDL statement is refused by the database. */
+    @Test
+    void theRuntimeUserCannotRunDdl() throws Exception {
+        javax.sql.DataSource app = Pg.migrated().appUser(DML);
+        String table = LicensingSchema.TABLES.get(0);
+        for (String sql : java.util.List.of("create table lic_extra (x int)", "alter table " + table + " add column note text",
+                "drop table " + table)) {
+            try (java.sql.Connection c = app.getConnection(); java.sql.Statement s = c.createStatement()) {
+                java.sql.SQLException e = org.junit.jupiter.api.Assertions.assertThrows(java.sql.SQLException.class,
+                        () -> s.execute(sql), sql);
+                org.junit.jupiter.api.Assertions.assertEquals("42501", e.getSQLState(), sql + ": " + e.getMessage());
+            }
+        }
+    }
 }
