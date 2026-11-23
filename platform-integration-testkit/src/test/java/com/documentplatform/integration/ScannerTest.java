@@ -112,6 +112,21 @@ class ScannerTest {
     }
 
     @Test
+    void anIcap200WithoutAThreatHeaderIsInfected() {
+        // integration-module-157: the scanner changed the response (it blocked the file) without naming the threat.
+        MockScanner m = mock(MockScanner.icap()).withoutThreatHeader(true);
+        FileScanner s = scanner(m, Duration.ofSeconds(5));
+        ScanResult blocked = scan(s, Eicar.bytes());
+        assertEquals(ScanResult.Verdict.INFECTED, blocked.verdict(), blocked.toString());
+        assertEquals("unknown", blocked.threat());
+        assertEquals(IntegrationCode.INT_SCAN_INFECTED, blocked.code());
+        m.infected(true);
+        assertEquals(ScanResult.Verdict.INFECTED, scan(s, "%PDF-1.4 anything".getBytes()).verdict());
+        m.infected(false);
+        assertEquals(ScanResult.clean(), scan(s, "%PDF-1.4 a clean document".getBytes()), "a 204 is still clean");
+    }
+
+    @Test
     void slowDownAndGarbledAreScanFailures() {
         for (MockScanner m : List.of(mock(MockScanner.clamd()), mock(MockScanner.icap()))) {
             FileScanner s = scanner(m, Duration.ofSeconds(1));
