@@ -4,6 +4,7 @@ import com.documentplatform.crypto.CryptoException;
 import com.documentplatform.crypto.CustomerId;
 import com.documentplatform.crypto.KeyService;
 import com.documentplatform.crypto.envelope.EnvelopeInfo;
+import com.documentplatform.crypto.envelope.RecordCipher;
 import com.documentplatform.crypto.envelope.StreamCipher;
 import com.documentplatform.crypto.envelope.ValueCipher;
 import com.documentplatform.crypto.fingerprint.Fingerprinter;
@@ -101,6 +102,25 @@ class NoSecretInLogsTest {
             texts.add(inputs.toString());
             new Fingerprinter(keys).fingerprintAll(c, inputs).forEach(f -> texts.add(f.toString()));
 
+            // record envelope: seal, open, toString
+            RecordCipher records = new RecordCipher(keys);
+            String envelope;
+            String item;
+            try (RecordCipher.RecordKey rk = records.newKey(c, "fld/rec-1")) {
+                envelope = rk.envelope();
+                item = rk.seal("name/0", PLAIN);
+                texts.add(rk.toString());
+            }
+            secrets.add(envelope.substring(RecordCipher.ENVELOPE_PREFIX.length()));
+            secrets.add(item.substring(RecordCipher.ITEM_PREFIX.length()));
+            try (RecordCipher.RecordKey rk = records.openKey(c, "fld/rec-1", envelope)) {
+                rk.openText("name/0", item);
+                texts.add(rk.toString());
+            }
+            String damagedItem = item.substring(0, item.length() - 3) + (item.endsWith("A") ? "BBB" : "AAA");
+            String damagedEnvelope = envelope.substring(0, envelope.length() - 6)
+                    + (envelope.endsWith("A") ? "BBBBBB" : "AAAAAA");
+
             VaultDev.root("POST", "/v1/secret/data/platform/logs", "{\"data\":{\"password\":\"kv-secret-Tq7\"}}");
             texts.add(client.readSecret("secret", "platform/logs").toString());
 
@@ -110,6 +130,24 @@ class NoSecretInLogsTest {
                     () -> values.open(CustomerId.of(UUID.randomUUID()), "case:1:field:name", sealed),
                     () -> keys.unwrap(c, info.wrappedKey().substring(0, info.wrappedKey().length() - 4) + "AAA="),
                     () -> keys.createKeys(c),
+                    () -> records.openKey(CustomerId.of(UUID.randomUUID()), "fld/rec-1", envelope),
+                    () -> records.openKey(c, "fld/rec-1", damagedEnvelope),
+                    () -> records.openKey(c, "fld/rec-1", "pck1." + PLAIN),
+                    () -> {
+                        try (RecordCipher.RecordKey rk = records.openKey(c, "fld/rec-1", envelope)) {
+                            rk.open("name/0", damagedItem);
+                        }
+                    },
+                    () -> {
+                        try (RecordCipher.RecordKey rk = records.openKey(c, "fld/rec-2", envelope)) {
+                            rk.open("name/0", item);
+                        }
+                    },
+                    () -> {
+                        try (RecordCipher.RecordKey rk = records.openKey(c, "fld/rec-1", envelope)) {
+                            rk.open("name/0", "xyz1." + PLAIN);
+                        }
+                    },
                     () -> keys.newDataKey(CustomerId.of(UUID.randomUUID())),
                     () -> client.readSecret("secret", "platform/none"),
                     () -> new VaultKeyService(new VaultClient(VaultDev.address(), VaultAuth.appRole("approle", roleId,
