@@ -22,6 +22,7 @@ full list of codes, with what to do for each: `docs/errors/platform-error-codes.
 | `folder-<name>` | a folder exists, the app may read and write it, and its disk is not nearly full (warning 90 %, down 95 %) | if you set `required` |
 | `service-<name>` | another service the app uses answers on its health address | if you set `required` |
 | `integration-<id>` | each switched-on integration's other system answers (as on its health check) | **never** |
+| `model-governance` | with model governance: its tables are at the version this release needs (down with the `MG_*` code), no drift is left without a recorded action (`MOD_DRIFT_UNHANDLED`) and no model review is overdue (`MOD_REVIEW_OVERDUE`), both having problems; runs every 5 minutes | no |
 
 A check is **working**, **having problems** (it still works, but needs attention soon: a licence ending, a disk 90 %
 full, a busy system) or **down**.
@@ -31,13 +32,18 @@ full, a busy system) or **down**.
 | Property | Default | |
 |---|---|---|
 | `platform.monitoring.enabled` | `true` | `false` switches the checks off |
-| `platform.monitoring.every` | `60s` | how often each check runs, unless the check sets its own interval |
+| `platform.monitoring.every` | `60s` | how often each check runs, unless the check sets its own interval (the `model-governance` check runs every 5 minutes); more than zero |
+| `platform.monitoring.tick` | `5s` | how often the app looks for checks that are due (at least 0.1 s is used); more than zero |
 | `platform.monitoring.startup-checks` | `true` | refuse to start while a required check is down |
 | `platform.monitoring.customer-keys-required` | `false` | `true` when the product's `customerKeys` is `required`: the key service is then required at start-up |
 | `platform.monitoring.product-code`, `.tenant-id` | none; tenant from `platform.licensing.tenant-id` | for the login-system check |
 | `platform.monitoring.secrets` | none | secret references that must resolve, comma-separated (never the secrets) |
-| `platform.monitoring.folders.<name>.path` | none | a folder to check; `.writable` (true), `.warn-at` (90), `.down-at` (95), `.required` (false) |
-| `platform.monitoring.services.<name>.url` | none | another service's health address; `.expected-status` (200), `.timeout` (5s), `.required` (false) |
+| `platform.monitoring.folders.<name>.path` | none | a folder to check; `.writable` (true), `.warn-at` (90), `.down-at` (95), `.required` (false). `warn-at` and `down-at` are per cent of the disk in use, each 1 to 100, and `warn-at` must not be above `down-at` |
+| `platform.monitoring.services.<name>.url` | none | another service's health address (http or https); `.expected-status` (200, an HTTP status 100 to 599), `.timeout` (5s, more than zero), `.required` (false) |
+
+A setting that is missing or not valid stops the app at start-up with `MON_SETTINGS_INVALID`. The message lists
+every problem, each with its property name (for example
+`platform.monitoring.folders.export.warn-at must not be above down-at`), never a value.
 
 ## 3. When the app refuses to start
 
