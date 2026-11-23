@@ -146,6 +146,93 @@ class ModelGovWiringTest {
                 });
     }
 
+    /**
+     * The worker's log lines, raising notices and purging, then with the store failing with a text of its own: counts,
+     * retention days and class names only; never a value, a dataset, a person, the configuration or the store's text.
+     */
+    @Test
+    void workerLogLinesCarryCountsOnly() {
+        TestClock clock = new TestClock();
+        UUID entity = UUID.randomUUID();
+        InMemoryModelGovStore memory = new InMemoryModelGovStore();
+        java.util.concurrent.atomic.AtomicBoolean failing = new java.util.concurrent.atomic.AtomicBoolean();
+        String storeText = "PLANTED-STORE-TEXT jdbc:postgresql://db.corp.example/mg?password=PLANTED-PW";
+        ModelGovStore store = (ModelGovStore) java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),
+                new Class<?>[]{ModelGovStore.class}, (proxy, method, args) -> {
+                    if (failing.get()) throw new IllegalStateException(storeText);
+                    try {
+                        return method.invoke(memory, args);
+                    } catch (java.lang.reflect.InvocationTargetException e) {
+                        throw e.getCause();
+                    }
+                });
+        List<String> lines = new CopyOnWriteArrayList<>();
+        java.util.logging.Handler capture = new java.util.logging.Handler() {
+            private final java.util.logging.SimpleFormatter format = new java.util.logging.SimpleFormatter();
+
+            @Override
+            public void publish(java.util.logging.LogRecord r) {
+                lines.add(format.format(r));
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        capture.setLevel(java.util.logging.Level.ALL);
+        java.util.logging.Logger logger = java.util.logging.Logger.getLogger(ModelGovWorker.class.getName());
+        java.util.logging.Level before = logger.getLevel();
+        logger.addHandler(capture);
+        logger.setLevel(java.util.logging.Level.ALL);
+        try {
+            app("platform.model-governance.worker.enabled=false")
+                    .withBean(ModelGovStore.class, () -> store)
+                    .withBean(Clock.class, () -> clock)
+                    .run(ctx -> {
+                        assertNull(ctx.getStartupFailure(), () -> String.valueOf(ctx.getStartupFailure()));
+                        ModelGovernance gov = ctx.getBean(ModelGovernance.class);
+                        ModelMeasures measures = ctx.getBean(ModelMeasures.class);
+                        Model m = gov.registerModel(vendorModel(), "admin");
+                        ModelUse u = gov.registerUse(ModelGovFixtures.use(m, null, ModelUse.Materiality.HIGH), "admin");
+                        gov.setDefaultThreshold(Threshold.byDefault(u.useId(), "accuracy", new BigDecimal("0.9"),
+                                Threshold.Direction.HIGHER_IS_BETTER), "admin");
+                        ValidationRecord v = gov.recordValidation(u.useId(), entity, "planted-dataset", "7",
+                                Map.of("accuracy", new BigDecimal("0.97319")), "planted-validator");
+                        gov.approve(v.validationId(), approver());
+                        gov.goLive(u.useId(), entity, v.validationId(), "release");
+                        measures.setDefaultThreshold(Monitoring.MonitorThreshold.byDefault(u.useId(),
+                                "correction_rate", new BigDecimal("0.1"), Threshold.Direction.LOWER_IS_BETTER, 10),
+                                "admin");
+                        measures.report(u.useId(), entity, "correction_rate", new BigDecimal("0.04173"),
+                                new Monitoring.MeasurePeriod(clock.now, clock.now, 50));
+
+                        clock.now = clock.now.plus(Duration.ofDays(401));
+                        ModelGovWorker worker = new ModelGovWorker(ctx.getBean(ModelReviews.class), measures,
+                                Duration.ofHours(1), clock);
+                        worker.runOnce();
+                        failing.set(true);
+                        clock.now = clock.now.plus(Duration.ofDays(2));
+                        worker.runOnce();
+                    });
+        } finally {
+            logger.removeHandler(capture);
+            logger.setLevel(before);
+        }
+        String all = String.join("\n", lines);
+        assertTrue(all.contains("review notices raised"), all);
+        assertTrue(all.contains("readings older than 400 days removed"), all);
+        assertTrue(all.contains("review notices could not be raised this run (IllegalStateException)"), all);
+        assertTrue(all.contains("readings could not be purged this run (IllegalStateException)"), all);
+        for (String never : List.of("PLANTED", "db.corp.example", "password", "0.97319", "0.04173", "planted-validator", "planted-dataset",
+                "example prompt", "correction_rate", "accuracy")) {
+            assertFalse(all.contains(never), never + " in: " + all);
+        }
+    }
+
     @Test
     void withoutAppBeansOnPostgres() {
         Pg db = Pg.migrated();
