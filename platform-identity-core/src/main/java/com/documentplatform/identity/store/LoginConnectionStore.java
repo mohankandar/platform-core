@@ -10,6 +10,9 @@ import java.util.UUID;
  * The customers' login connections and their history. Every write also writes a history row (who, when, source).
  * Per customer and product: at most one ACTIVE connection, and at most one DRAFT or VALIDATED one (the draft the IT
  * Admin is preparing; see {@link LoginConnections}).
+ *
+ * <p>SPI: implemented by stores ({@code PostgresLoginConnectionStore}, the identity testkit); apps call
+ * {@link LoginConnections}.
  */
 public interface LoginConnectionStore {
 

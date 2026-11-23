@@ -9,6 +9,10 @@ import java.util.UUID;
  * product. One binding per customer, product and client ID; at most one of them ACTIVE. Every change writes a history
  * row; nothing is deleted. Written by the setup command (client-binding file) and later by the IT Admin's integration
  * page: one store, no second copy.
+ *
+ * <p>SPI: implemented by stores ({@code PostgresMachineBindingStore}, the identity testkit). Apps decide
+ * through {@code admission.MachineEntityAdmission} and {@code push.PushCaller}; only a page that changes the bindings
+ * calls this store.
  */
 public interface MachineBindingStore {
 

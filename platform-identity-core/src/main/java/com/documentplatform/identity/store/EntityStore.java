@@ -13,6 +13,9 @@ import java.util.UUID;
  *
  * <p>Apps activate and rename slots through {@link SlotActivation}, which checks the licence and the name first; the
  * store methods here only make the change atomically.
+ *
+ * <p>SPI: implemented by stores ({@code PostgresEntityStore}, the identity testkit); apps call
+ * {@link SlotActivation} and {@link EntityTimeZones}.
  */
 public interface EntityStore {
 

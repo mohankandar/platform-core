@@ -16,6 +16,10 @@ import java.util.Set;
  * <p>Every change also writes the grant history ({@code idn_grant_history}, see {@link GrantHistory}) in the same
  * transaction: pass a {@link GrantAuthor} to say who. The methods without one record the change as made in the app
  * by {@value GrantAuthor#UNNAMED_APP_USER}.
+ *
+ * <p>SPI: implemented by stores ({@code PostgresGroupGrantStore}, the identity testkit). The setup command loads
+ * the grants; an app with its own grant screen calls this store directly (there is no service over it), and reads
+ * the history through {@link GrantHistory}.
  */
 public interface GroupGrantStore {
 

@@ -20,6 +20,8 @@ import java.util.UUID;
  *
  * <p><b>An SPI, not for apps to call.</b> Apps read and write values only through {@link FieldValues}, and erase
  * only through the erase log; a store is handed to {@code FieldValues} and used by it alone.
+ *
+ * <p>SPI: implemented by stores; apps call {@link FieldValues}.
  */
 public interface ValueStore extends FieldValuesCheck {
 

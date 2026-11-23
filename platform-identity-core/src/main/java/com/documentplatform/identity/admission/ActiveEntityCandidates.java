@@ -13,6 +13,9 @@ import java.util.Set;
  *   <li>{@code null} only when the store could not be read (the library then refuses).</li>
  * </ul>
  * Candidates are not memberships: the library admits an entity only if it is also matched by a verified group grant.
+ *
+ * <p>SPI: implemented by stores ({@code PostgresIdentityLookup}, the identity testkit, or the app's own);
+ * apps call {@link EntityMembershipResolver}.
  */
 @FunctionalInterface
 public interface ActiveEntityCandidates {

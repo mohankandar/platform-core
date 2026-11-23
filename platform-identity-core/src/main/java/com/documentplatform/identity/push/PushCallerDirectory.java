@@ -11,6 +11,9 @@ import java.util.Objects;
  * What {@link PushCaller} reads, from the identity tables (Postgres: {@code PostgresPushCallerDirectory} in
  * platform-identity-jdbc; in memory: the identity testkit's store). Read only. A store that cannot be read throws;
  * nothing here ever falls back to a configured entity.
+ *
+ * <p>SPI: implemented by stores ({@code PostgresPushCallerDirectory}, the identity testkit); apps call
+ * {@link PushCaller}.
  */
 public interface PushCallerDirectory {
 

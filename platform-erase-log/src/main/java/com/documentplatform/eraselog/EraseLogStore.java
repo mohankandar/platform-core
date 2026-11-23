@@ -13,6 +13,9 @@ import java.util.function.Consumer;
  * <p>Every method throws {@link EraseLogException} ({@link EraseLogError#ERASE_LOG_UNREACHABLE},
  * {@link EraseLogError#ERASE_LOG_FORMAT}). Implementations are safe for several threads and, for the file store,
  * several processes writing the same log.
+ *
+ * <p>SPI: implemented by stores; apps call {@link Eraser} (and {@link EraseReplay}, {@link EraseGuard}), never this
+ * store: an entry appended outside {@code Eraser} is an erasure nobody did.
  */
 public interface EraseLogStore {
 

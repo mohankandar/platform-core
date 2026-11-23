@@ -15,6 +15,11 @@ import java.util.function.Function;
  * in-memory one of {@code platform-erase-log-testkit}.
  *
  * <p>Failures: {@link EraseLogException} with {@link EraseLogError#ERASE_POSITION_FAILED}.
+ *
+ * <p>SPI: implemented by stores; apps call {@link Eraser} and {@link EraseReplay}, never this interface. Only
+ * those two call {@link Locked#applyAndAdvance} (moving the position past an entry) and {@link Locked#verified}
+ * (lifting the restore guard after a replay); an app that called them could skip an erasure or lift the guard
+ * without replaying.
  */
 public interface ErasePosition {
 

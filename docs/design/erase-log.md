@@ -94,6 +94,12 @@ are `PlatformCode`s) and, optionally, on platform-fields for the built-in `case-
 
 ### Store (outside the database)
 
+**Store SPI (P041):** `EraseLogStore` and `ErasePosition` are interfaces that stores implement (the file store, the
+Postgres position and the testkit). Apps never call them: they call `Eraser` to erase and `EraseReplay` (or
+`--erase-replay`) after a restore. Only `Eraser` appends entries, and only `Eraser` and `EraseReplay` move the position
+(`Locked.applyAndAdvance`) or mark a replay verified (`Locked.verified`); a caller that did so itself could skip an
+erasure or lift the restore guard.
+
 `EraseLogStore`. Built: **`file.FileEraseLogStore`** only; the separate-database store was not built (see the P021
 report). One directory, the configured location:
 
