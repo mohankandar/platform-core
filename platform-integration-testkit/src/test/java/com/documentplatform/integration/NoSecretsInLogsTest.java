@@ -211,6 +211,17 @@ class NoSecretsInLogsTest {
                         com.documentplatform.fields.FieldType.TEXT).sensitive(true).build()));
         com.documentplatform.fields.ValidatedFields v = fields.validate(java.util.Map.of("holder_name",
                 List.of(new com.documentplatform.fields.FieldValue.Text(sensitive))));
+        // xc-never-leak-74: the case field values' and each field's text, sensitive or not.
+        com.documentplatform.fields.FieldSet plain = com.documentplatform.fields.FieldSet.of(List.of(
+                com.documentplatform.fields.FieldSpec.builder("note", "Note",
+                        com.documentplatform.fields.FieldType.TEXT).build()));
+        for (com.documentplatform.integration.engine.CaseFields cf : List.of(
+                com.documentplatform.integration.engine.CaseFields.of(fields, v),
+                com.documentplatform.integration.engine.CaseFields.of(plain, plain.validate(java.util.Map.of("note",
+                        List.of(new com.documentplatform.fields.FieldValue.Text(VALUE))))))) {
+            outputs.add(cf.toString());
+            for (String key : List.of("holder_name", "note")) cf.field(key).ifPresent(f -> outputs.add(f.toString()));
+        }
         IntegrationConfig fc = IntegrationConfig.folderExport(FolderExportTest.ENTITY, "PRODUCT_A", "Share",
                         com.documentplatform.integration.config.FolderTarget.of(folder.folder()))
                 .withAllowedSensitiveFields(java.util.Set.of("holder_name"));
@@ -419,6 +430,21 @@ class NoSecretsInLogsTest {
                 .toString());
         fx.mock.refuse(400, "MOCK-CB-1");
         outputs.add(fx.engine.sendCallback(stored, java.util.UUID.randomUUID(), "{}").toString());
+        // xc-never-leak-81: the outbox's entries (pending, given up) never show their body.
+        InMemoryIntegrationStore cbStore = new InMemoryIntegrationStore();
+        cbStore.create(cb, new com.documentplatform.integration.store.ConfigChange(cb.id(), cb.entity(), cb.product(),
+                1, "test", java.time.Instant.now(), com.documentplatform.integration.config.ConfigJson.fields(cb),
+                List.of()));
+        com.documentplatform.integration.testkit.InMemoryCallbackOutbox outbox =
+                new com.documentplatform.integration.testkit.InMemoryCallbackOutbox();
+        com.documentplatform.integration.callback.Callbacks callbacks =
+                new com.documentplatform.integration.callback.Callbacks(outbox, cbStore, fx.engine, Clock.systemUTC());
+        java.util.UUID pending = callbacks.enqueue(cb.id(), "{\"note\":\"" + VALUE + "\"}");
+        outputs.add(callbacks.find(pending).orElseThrow().toString());
+        callbacks.deliverDue(10); // refused by the receiver: given up
+        outputs.add(callbacks.find(pending).orElseThrow().toString());
+        outputs.add(callbacks.gaveUp(cb.entity(), cb.product(), 10).toString());
+        assertTrue(callbacks.find(pending).orElseThrow().body().contains(VALUE), "the entry holds the body");
         outputs.add(com.documentplatform.integration.callback.CallbackVerifier.verify(
                 java.util.Map.of(com.documentplatform.integration.callback.CallbackSignature.SIGNATURE_HEADER,
                         "t=1,v1=00", com.documentplatform.integration.callback.CallbackSignature.ID_HEADER, "x")::get,
