@@ -4,7 +4,7 @@ Source of truth for the functional rules: the owner's Shared capabilities thread
 
 ## 1. What the module is
 
-Shared library code that LexaVault and Vero include. Not a server. It knows nothing about either app: each app registers its own event catalogue and supplies recipients. No app names, no app-specific events in this module.
+Shared library code that the document apps include (for example a redaction app and a document vault). Not a server. It knows nothing about any app: each app registers its own event catalogue and supplies recipients. No app names, no app-specific events in this module.
 
 ## 2. Functional rules (owner decisions)
 
@@ -23,11 +23,12 @@ Shared library code that LexaVault and Vero include. Not a server. It knows noth
 
 ## 3. Event catalogues (registered by each app, not built into this module)
 
-Listed so the model covers them. Kind: B = business, T = technical, C = critical.
+Listed so the model covers them. Kind: B = business, T = technical, C = critical. The two lists are examples from two
+apps; each app's real catalogue lives in that app.
 
-**LexaVault:** cases waiting for review (summary, B) · case past review target (B) · approval waiting (B) · intake source unreachable (T) · files rejected at intake (summary, T) · repeated processing failures (T) · backlog growing / over time target (T) · delivery to Vero failing (T, C) · delivery recovered (T) · database / AI model / OCR / key service down (T, C) · disk almost full (T) · recovered (T) · page allowance 80% / 100% (B) · licence expiring 30/7/1 days (B) · grace period (B) · licence expired (B, C) · redaction policy changed (B) · emergency admin used (B).
+**A redaction app:** cases waiting for review (summary, B) · case past review target (B) · approval waiting (B) · intake source unreachable (T) · files rejected at intake (summary, T) · repeated processing failures (T) · backlog growing / over time target (T) · delivery to the document vault failing (T, C) · delivery recovered (T) · database / AI model / OCR / key service down (T, C) · disk almost full (T) · recovered (T) · page allowance 80% / 100% (B) · licence expiring 30/7/1 days (B) · grace period (B) · licence expired (B, C) · redaction policy changed (B) · emergency admin used (B).
 
-**Vero:** print/download request waiting (B, to Business Admins) · request approved / denied (B, to the requester) · source system unreachable or failing (T) · documents rejected (summary, T) · database / storage / key service down (T, C) · recovered (T) · licence expiring (B) · storage or seats near limit (B) · licence expired (B, C) · sensitivity level lowered (B, **off by default**).
+**A document vault:** print/download request waiting (B, to Business Admins) · request approved / denied (B, to the requester) · source system unreachable or failing (T) · documents rejected (summary, T) · database / storage / key service down (T, C) · recovered (T) · licence expiring (B) · storage or seats near limit (B) · licence expired (B, C) · sensitivity level lowered (B, **off by default**).
 
 ## 4. Technical shape (built in steps)
 
@@ -128,9 +129,14 @@ Listed so the model covers them. Kind: B = business, T = technical, C = critical
   `DOWN`, when a destination has a problem.
 - **B3. Health stays per app instance** for now; cluster-wide health read from the outbox may be revisited if a
   customer's monitoring needs one view.
-- **B4. Flyway: separate run, own history table.** Each app runs `db/platform/notifications` as a separate Flyway run
-  with its own history table `notif_schema_history`, in its schema step, never at app startup. The platform files
-  never share the app's history table (both start at V1). Each app's switch-over task records this.
+- **B4. Flyway: in the app's schema step, never at app startup.** The answer first said: a separate Flyway run with
+  its own history table `notif_schema_history`. The code follows a later choice: the module names **no history table
+  of its own**. `NotificationSchema` gives the location `db/platform/notifications` (or the files in order through
+  `scripts()` / `script(name)`), and the app's own schema step runs it with whatever tool and history table the app
+  uses. This works because the startup check reads the version from `notif_schema_version`, which the SQL files keep
+  up to date, never from a history table (P005 decision 3). The install guide (`docs/install/notifications.md`
+  section 4) says the same. The later modules (licensing, identity, fields, integration and the others) do name their
+  own history table (`lic_schema_history`, `idn_schema_history`, …); notifications is the one that does not.
 - **B5. One mail server for all e-mail destinations** is enough for V1. Per-destination servers can be added later
   without breaking the config (`mail.*` stays the default).
 
@@ -202,6 +208,34 @@ supported. Password login and the internal relay stay as they are.
   `MAIL_OAUTH_SEND_AS_NOT_ALLOWED`, `MAIL_SMTP_AUTH_DISABLED` (all permanent). The existing mail codes still apply.
 - **Health** shows the sign-in mode, and for Microsoft 365 the token state, code, last fetch and expiry time.
 
+### Decisions made in P015 (source docs/work/P015-report.md, written here in P040)
+
+1. **`mail.oauth.credential-type` is required in Microsoft 365 mode.** The type (`CERTIFICATE` or `SECRET`) is never
+   guessed from the secret's contents, so a wrong item in the secret store shows up as a clear code. A missing type
+   stops start-up, naming the key.
+2. **Certificate format in the secret store:** one PEM text with the certificate and an unencrypted PKCS#8 private
+   key, in either order (what `openssl req -x509 -nodes` writes). RSA only, because Entra certificates for this flow
+   are RSA. Anything else is `MAIL_OAUTH_CREDENTIAL_INVALID`.
+3. **The client assertion carries `x5t`**, the SHA-1 thumbprint of the certificate, as Entra documents for client
+   assertions (`ClientAssertion`).
+4. **SMTP AUTH disabled and "not allowed" are told apart by Microsoft's reply.** "SmtpClientAuthentication is
+   disabled", or no XOAUTH2 offered, is `MAIL_SMTP_AUTH_DISABLED`; every other refused XOAUTH2 login, and
+   `SendAsDenied`, is `MAIL_OAUTH_SEND_AS_NOT_ALLOWED` (`EmailChannel`). This is the only place in the module that
+   reads a reply's text, and the text is not kept.
+5. **Four codes beyond the four asked for:** `MAIL_OAUTH_APP_UNKNOWN`, `MAIL_OAUTH_CREDENTIAL_INVALID`,
+   `MAIL_OAUTH_TOKEN_REFUSED` and `MAIL_OAUTH_UNEXPECTED_REPLY`, each pointing IT to a different step.
+6. **Only `MAIL_OAUTH_TOKEN_UNREACHABLE` is retried**, with the existing temporary codes. A proxy page in place of a
+   token is permanent.
+7. **A refused token is dropped**, so the next send fetches a new one; a permission granted after the alert then works
+   without a restart.
+8. **`mail.security=NONE` is refused at start-up with `mail.auth=OAUTH2_MICROSOFT`.** The core types still allow it,
+   because the tests use a plain local mail server.
+9. **The token endpoint uses the mail timeouts:** `mail.connect-timeout` to connect, and connect plus read timeout for
+   each token request (`MicrosoftTokens`). There are no separate token settings.
+10. **Health shows no client ID and no mailbox**, only the mode, token state, code and times, following the "no
+    addresses or logins in health" rule.
+11. **A certificate is checked for expiry only**, not for "not yet valid", before Microsoft is asked.
+
 ### Owner answers to the P015 questions (2026-11-21)
 
 - **C1. Row-level security gets its own design task** before any hosting work starts (see `docs/design/setup.md`
@@ -224,7 +258,8 @@ supported. Password login and the internal relay stay as they are.
   - A link works only for the recipient it was sent to, and only while they still hold the approver role (re-checked
     at decision time through the app).
   - Nobody approves their own request.
-  - Links expire with the request: default 24 hours, per request type.
+  - Links expire with the request: default 24 hours, per request type. A request type's time
+    (`ApprovalType.validFor`) must be between 5 minutes and 30 days; anything else is refused when the type is made.
   - Decline requires a reason.
   - Messages still follow the content rule.
 - **Group approvals:** the first decision wins. Later clicks see "Already approved/declined by <name> at <time>" and
@@ -252,6 +287,17 @@ supported. Password login and the internal relay stay as they are.
 - **Links are made at send time, never stored.** The outbox row names the request (`action_request`); the sender asks
   `ActionLinks` (`approval.ApprovalLinks`) for each recipient's links. A request decided or expired before the message
   went out is not sent (`ACTION_REQUEST_CLOSED`).
+- **Delivery codes for approval messages** (`FailureCode`, all permanent except the secret store):
+  - `ACTION_REQUEST_CLOSED`: the request was decided or expired before the message went out; nothing is sent.
+  - `ACTION_LINKS_NOT_AVAILABLE`: the app has approval requests, but no maker of approval links is installed (links
+    are not switched on).
+  - `ACTION_KEY_NOT_FOUND`: the link key is not in the secret store.
+  - `ACTION_KEY_INVALID`: the link key is shorter than 32 characters.
+  - `SECRET_UNAVAILABLE`: the secret store could not be reached while reading the key; retried like any other
+    temporary failure.
+
+  Their causes and fixes are in `docs/errors/platform-error-codes.md`; the install guide (section 8) says what IT
+  does for each.
 - **First decision wins in the database:** one `UPDATE … WHERE decision IS NULL AND expires_at > now`; check
   constraints refuse a decision by the requester and a decline without a reason.
 - **The requester's outcome** is the app's "approved" or "declined" event type, sent to that one person
