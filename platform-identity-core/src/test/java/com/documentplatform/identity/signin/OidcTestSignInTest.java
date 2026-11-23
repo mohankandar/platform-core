@@ -212,6 +212,16 @@ class OidcTestSignInTest {
     }
 
     @Test
+    void anIssuerAnswerNeverShowsItsBody() {
+        String body = "{\"issuer\":\"" + ISSUER + "\",\"planted\":\"PLANTED-ANSWER-BODY\"}";
+        IssuerFetch.Response response = new IssuerFetch.Response(200, body.getBytes(StandardCharsets.UTF_8));
+        String shown = response.toString();
+        assertEquals("Response[200]", shown);
+        assertFalse(shown.contains("PLANTED-ANSWER-BODY"));
+        assertFalse(shown.contains(ISSUER.toString()));
+    }
+
+    @Test
     void aLocalTestIssuerMayUseAnHttpKeyAddressOnThisMachine() {
         URI local = URI.create("http://127.0.0.1:8080/realms/test");
         pages.put(local + "/.well-known/openid-configuration", new Object[]{200,
