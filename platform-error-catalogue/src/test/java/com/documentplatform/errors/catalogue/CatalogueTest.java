@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.jar.JarFile;
@@ -97,6 +98,31 @@ class CatalogueTest {
             codes.add(code.code());
         }
         assertEquals(classes.size(), codes.size(), "one code per module: " + codes);
+    }
+
+    /** xc-catalogue-19 (P037): store and read failures carry a code; the message names the operation and SQL state. */
+    @Test
+    void everyStoreFailureCarriesItsCode() throws Exception {
+        Map<String, String> stores = new java.util.LinkedHashMap<>();
+        stores.put("com.documentplatform.fields.jdbc.FieldStoreException", "FLD_STORE_FAILED");
+        stores.put("com.documentplatform.identity.jdbc.IdentityStoreException", "IDN_STORE_FAILED");
+        stores.put("com.documentplatform.licensing.jdbc.LicensingStoreException", "LIC_STORE_FAILED");
+        stores.put("com.documentplatform.notifications.jdbc.NotificationStoreException", "NOTIF_STORE_FAILED");
+        stores.put("com.documentplatform.modelgov.jdbc.PostgresModelGovStore$StoreException", "MG_STORE_FAILED");
+        for (Map.Entry<String, String> s : stores.entrySet()) {
+            java.lang.reflect.Constructor<?> c = Class.forName(s.getKey())
+                    .getDeclaredConstructor(String.class, java.sql.SQLException.class);
+            c.setAccessible(true);
+            Throwable t = (Throwable) c.newInstance("read things", new java.sql.SQLException("denied", "42501"));
+            assertEquals(s.getValue(), ((com.documentplatform.errors.HasPlatformCode) t).platformCode().code(), s.getKey());
+            assertTrue(t.getMessage().startsWith(s.getValue() + ": "), t.getMessage());
+            assertTrue(t.getMessage().contains("read things") && t.getMessage().contains("SQL state 42501"),
+                    t.getMessage());
+        }
+        Throwable unreadable = new com.documentplatform.integration.config.ConfigJson.Unreadable("version 3");
+        assertEquals("INT_CONFIG_UNREADABLE",
+                ((com.documentplatform.errors.HasPlatformCode) unreadable).platformCode().code());
+        assertTrue(unreadable.getMessage().startsWith("INT_CONFIG_UNREADABLE: "), unreadable.getMessage());
     }
 
     /**

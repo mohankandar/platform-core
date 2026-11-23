@@ -6,13 +6,21 @@ import java.sql.SQLException;
  * The database refused or failed a field-definition operation. The message names the operation and the SQL state
  * only: never connection details or the driver's own text, which can quote the values written.
  */
-public final class FieldStoreException extends RuntimeException {
+public final class FieldStoreException extends RuntimeException
+        implements com.documentplatform.errors.HasPlatformCode {
 
     private final String sqlState;
 
     FieldStoreException(String operation, SQLException cause) {
-        super("Field definitions: could not " + operation + " (SQL state " + cause.getSQLState() + ")", cause);
+        super(FieldStoreCode.FLD_STORE_FAILED.name() + ": Field definitions: could not "
+                + operation + " (SQL state " + cause.getSQLState() + ")", cause);
         this.sqlState = cause.getSQLState();
+    }
+
+    /** {@code FLD_STORE_FAILED}: the code for monitoring and the app's error handler. */
+    @Override
+    public com.documentplatform.errors.PlatformCode platformCode() {
+        return FieldStoreCode.FLD_STORE_FAILED;
     }
 
     public String sqlState() {

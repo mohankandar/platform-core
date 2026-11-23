@@ -34,9 +34,16 @@ import java.util.UUID;
 public final class PostgresModelGovStore implements ModelGovStore {
 
     /** The store could not read or write; the operation is named, never a value. */
-    public static final class StoreException extends RuntimeException {
+    public static final class StoreException extends RuntimeException implements com.documentplatform.errors.HasPlatformCode {
         StoreException(String operation, SQLException e) {
-            super("Model-governance store: " + operation + " failed (SQL state " + e.getSQLState() + ")", e);
+            super(ModelGovStoreCode.MG_STORE_FAILED.name() + ": Model-governance store: "
+                    + operation + " failed (SQL state " + e.getSQLState() + ")", e);
+        }
+
+        /** {@code MG_STORE_FAILED}: the code for monitoring and the app's error handler. */
+        @Override
+        public com.documentplatform.errors.PlatformCode platformCode() {
+            return ModelGovStoreCode.MG_STORE_FAILED;
         }
     }
 

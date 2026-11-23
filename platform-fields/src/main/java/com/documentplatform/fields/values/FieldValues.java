@@ -409,7 +409,8 @@ public final class FieldValues {
         if (store.partialSearchAvailable()) {
             return new SearchStatus(true, null, "partial search available");
         }
-        return new SearchStatus(false, "FLD_PARTIAL_SEARCH_UNAVAILABLE", "partial search works as prefix search: the "
+        return new SearchStatus(false, FieldValuesError.FLD_PARTIAL_SEARCH_UNAVAILABLE.name(), "partial search works as "
+                + "prefix search: the "
                 + "trigram index is missing; the DBA makes the pg_trgm extension available and runs "
                 + "db/platform/fields-optional/partial-search.sql as the owner of the fld_ tables");
     }

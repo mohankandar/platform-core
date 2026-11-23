@@ -25,9 +25,17 @@ public final class ConfigJson {
     public static final String FORMAT = "platform-integration-config/1";
 
     /** The stored text cannot be read as a configuration. Says where, never a value. */
-    public static final class Unreadable extends RuntimeException {
+    public static final class Unreadable extends RuntimeException
+            implements com.documentplatform.errors.HasPlatformCode {
         public Unreadable(String where) {
-            super("Stored integration configuration is not readable (" + where + ")", null, false, false);
+            super(com.documentplatform.integration.IntegrationCode.INT_CONFIG_UNREADABLE.name()
+                    + ": Stored integration configuration is not readable (" + where + ")", null, false, false);
+        }
+
+        /** {@code INT_CONFIG_UNREADABLE}: the code for monitoring and the app's error handler. */
+        @Override
+        public com.documentplatform.errors.PlatformCode platformCode() {
+            return com.documentplatform.integration.IntegrationCode.INT_CONFIG_UNREADABLE;
         }
     }
 
