@@ -17,12 +17,12 @@ User-facing text says "customer" and "entity", never "tenant". Today's app table
 2. **`entity_uuid` derived from the slot ID** (name-based UUID from `"platform-entity|" + slotId`): no app column changes; same ID in every install and on hosting.
 3. **One login system per customer**, shared by all its entities. After sign-in the person chooses the entity (see 4).
 4. **Entity choice (owner, 2026-11-21):** after sign-in the person **lands on the entity they used last**. Everything shown is for that entity only, never mixed. They change entity with a **switcher in the app header** (app UI work, not this module); every switch is audited. The chooser appears only when there is no usable last entity: first sign-in ever, or the last entity is no longer allowed for them. People with only one entity never see a chooser. Once chosen, the entity stays chosen until the person changes it. The current entity's name is always shown in the header, and the result message after a manual upload or scan names the entity ("3 files uploaded to Acme Mortgage"), with **no extra confirmation step**, because one person may hold roles in both entities and a document can never be moved between entities. Watch folders and API intake are tied to one entity in their setup. The "last entity" is kept per person and is not sensitive.
-5. **Separate databases per product by default** (LexaVault and Vero are separate applications with separate users). A customer may instead use one database with a **separate schema per product** (owner, 2026-11-21). Setup runs once per product database or schema with the same input files. The tables still carry `product_code` on grants, so one shared customer/entity record set (e.g. a shared platform schema, or our hosting later) works without redesign: one customer row, one entity row, grants per product.
+5. **Separate databases per product by default** (for example a redaction app and a document vault are separate applications with separate users). A customer may instead use one database with a **separate schema per product** (owner, 2026-11-21). Setup runs once per product database or schema with the same input files. The tables still carry `product_code` on grants, so one shared customer/entity record set (e.g. a shared platform schema, or our hosting later) works without redesign: one customer row, one entity row, grants per product.
 6. **Setup never deletes customers, entities or slots.** A slot dropped from a newer licence becomes `NOT_IN_LICENCE`. **Group access missing from the mapping file is removed only with the explicit flag `--remove-unlisted-grants`**, and the plan always shows what will be removed first.
 7. Each product ships `product-roles.json`; setup reads it with `--product`. No product code inside the command.
 8. Demo data uses a **separate development signing key** that production apps never trust; demo-only app records become a separate app demo step after setup, never at startup.
 9. **Direct sign-in first** (first customer: Okta, no hub). Hub mode (Keycloak admin REST API, broker secret read from Vault and written through the admin API) only after the hub proof of concept.
-10. LexaVault's own `tenant_license_*` licensing is replaced by platform-licensing in its switch-over (no customer has one yet).
+10. An earlier app's own licensing tables (`tenant_license_*`) are replaced by platform-licensing in its switch-over (no customer has one yet).
 11. `platform.licensing.tenant-id` becomes required; setup writes it.
 
 ## 2a. Where the database lives (owner, 2026-11-21)
@@ -35,7 +35,7 @@ User-facing text says "customer" and "entity", never "tenant". Today's app table
 
 ## 3. Build order
 
-P013 identity storage (platform-core) → P014 setup command, direct mode (platform-core) → LexaVault switch-over → Vero switch-over (adds grants and the entity chooser) → hub proof of concept → setup hub mode.
+P013 identity storage (platform-core) → P014 setup command, direct mode (platform-core) → the first app's switch-over → the second app's switch-over (adds grants and the entity chooser) → hub proof of concept → setup hub mode.
 
 Full proposal, table columns, input files and command steps: `docs/work/P012-report.md` sections 5.1–5.6, as amended above.
 
@@ -106,9 +106,9 @@ Full proposal, table columns, input files and command steps: `docs/work/P012-rep
   the app and it is a `conflict` (exit code 3), left as it is until `--replace-connection` is given. A connection the
   app DISABLED is such a change too: setup does not switch it back on without `--replace-connection`.
 
-## 6. Integration client bindings (LexaVault thread decision, 2026-11-21)
+## 6. Integration client bindings (decision of an app's design thread, 2026-11-21)
 
-Registers which machine client may call which entity, for Vero's and LexaVault's own push-API callers (Vero finds the entity and source from the verified client ID via `MachineEntityBindings`; see `docs/design/integration-module.md`).
+Registers which machine client may call which entity, for the apps' own push-API callers (an app finds the entity and source from the verified client ID via `MachineEntityBindings`; see `docs/design/integration-module.md`).
 
 - **Now:** the setup command loads an input file next to the role mapping: **client ID → entity (slot ID) → source**, safe to rerun, shown in the plan like every other item.
 - **Rules:**
@@ -134,7 +134,7 @@ notifications tenant zone until identity has one.
 
 ### 6.1 Client-binding input file: final format (2026-11-22)
 
-Fixed now because Vero task 0041 builds its own loader to the same format (on Enterprise Identity 0.3.0) before it moves to platform-core.
+Fixed now because an app builds its own loader to the same format (on Enterprise Identity 0.3.0) before it moves to platform-core.
 
 - **File:** `client-bindings-<product>.csv`, UTF-8, comma-separated, one product per file, named in the sign-in file per product as `"clientBindingsFile"` (optional; no file = no machine callers for that product).
 - **Header (exact, required):** `client_id,entity_slot,source,description`
@@ -147,14 +147,14 @@ Fixed now because Vero task 0041 builds its own loader to the same format (on En
 - **Rules:** no secrets in the file; each `client_id` appears **once per product** (a duplicate line, or a client already bound to another entity or source, is refused); entity slot and source must exist, else setup stops with a clear message naming the line; a line removed from the file switches that binding **off** (never deleted); every change is in setup's plan and run log and in the binding history.
 - **Where it lands:** a shared table `idn_machine_binding` (customer, product, client ID, entity UUID derived from the slot, source key, status ACTIVE/INACTIVE, who/when) with history. platform-identity-jdbc gets a built-in `MachineClients` over it, so `PostgresMachineEntityBindings` works without an app-supplied table. The IT Admin's integration page later edits the same table (no second store).
 - **The connection:** a binding applies under the customer's ACTIVE login connection for that product (`ConnectionKey`), as `PostgresMachineEntityBindings` already checks.
-- **Reader details (P029, binding for Vero 0041's loader too):** both `"` and `'` count as quotes and are refused in a client ID; there are **no comment lines** (a line starting with `#` is a client ID); spreadsheet quoting is accepted in the description; a byte-order mark, CRLF and empty lines are accepted. A value **looks like a secret** (refused, never repeated in the message) when it is a JWT, a PEM block, a word such as `password`/`secret` followed by `=` or `:`, or a run of 40+ key-like characters mixing upper case, lower case and digits. Problems are reported as `line N: CODE: …` (`HEADER_WRONG`, `DUPLICATE_CLIENT_ID`, `SOURCE_UNKNOWN`, `SLOT_UNKNOWN`, `CLIENT_BOUND_ELSEWHERE`, `SECRET_LIKE`, …). The shared reader is `identity.mapping.ClientBindingsFile` (identity-core); Vero uses it when its loader moves to platform-core.
+- **Reader details (P029, binding for that app's own loader too):** both `"` and `'` count as quotes and are refused in a client ID; there are **no comment lines** (a line starting with `#` is a client ID); spreadsheet quoting is accepted in the description; a byte-order mark, CRLF and empty lines are accepted. A value **looks like a secret** (refused, never repeated in the message) when it is a JWT, a PEM block, a word such as `password`/`secret` followed by `=` or `:`, or a run of 40+ key-like characters mixing upper case, lower case and digits. Problems are reported as `line N: CODE: …` (`HEADER_WRONG`, `DUPLICATE_CLIENT_ID`, `SOURCE_UNKNOWN`, `SLOT_UNKNOWN`, `CLIENT_BOUND_ELSEWHERE`, `SECRET_LIKE`, …). The shared reader is `identity.mapping.ClientBindingsFile` (identity-core); the app uses it when its loader moves to platform-core.
 - **Decided on the P029 report (2026-11-22):** no `clientBindingsFile` switches every binding of the product off (the plan lists each `switch off` first; nothing deleted). Moving a client to another entity or source takes two runs (remove, run; add, run); a `--move-bound-clients` flag only if customers find it clumsy. The table is added by identity **V2** (`V2__machine_binding.sql`); a database with only V1 is refused with `IDN_VERSION_OLDER` until the schema step runs V2.
 
 **Interface check (2026-11-22):** `MachineEntityBindings`, `EntityId` and `ConnectionKey` are identical between Enterprise Identity 0.3.0 (tag `v0.3.0`) and platform-core (only line endings differ); the Java package `com.documentplatform.identity.admission` is unchanged. Only the Maven coordinates differ (`com.documentplatform.identity:enterprise-identity-core` → `com.documentplatform.platform:platform-identity-core`).
 
 ## 7. P031 (2026-11-22): drafts, test sign-in, local test issuers, aliases, grant history, keys guard
 
-Decided by the LexaVault design chat (board LV-6, LV-14); built in P031 (`docs/work/P031-report.md`).
+Decided by an app's design chat; built in P031 (`docs/work/P031-report.md`).
 
 - **Login-connection drafts** (`LoginConnections`, identity-core): draft (copy of the ACTIVE connection, or the
   first one), test sign-in (`OidcTestSignIn` over an `IssuerFetch`; production: `OutboundIssuerFetch`, since P028 in
