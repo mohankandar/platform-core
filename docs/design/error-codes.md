@@ -28,6 +28,11 @@ code, kind, message, cause, fix, support, http) is generated from the enums. The
 (`platform-error-catalogue`, run on CI) fails when a code enum does not implement `PlatformCode`, when a code lacks a
 message, cause or fix, when a code name is used in two modules, or when the generated files are stale. Regenerate
 with `mvn -pl platform-error-catalogue -am verify -Dplatform.errors.write=true` and commit the two files.
+`platform-error-catalogue` is a build check only: it is never deployed and is not in the BOM, so no app depends on it.
+Since P037 the check also refuses a text with a gap where a name was dropped (`Set , and`, `()`) or a `%s` slot, a
+user message that names internals (SQL, an exception, a stack trace, a driver), an exception that carries a code
+without `HasPlatformCode`, and a code name that disappears (`docs/errors/code-names.txt` lists every name ever
+released; the write mode only adds to it).
 
 ## 2. Failures: `PlatformError`, `ReferenceId`, `FailureLog`
 

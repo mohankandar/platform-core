@@ -158,6 +158,15 @@ Package `com.documentplatform.modelgov`, plain Java, depends only on platform-er
 6. **The pack's period** applies to validations, readings, drifts (raised, acted on, or still open) and changes; the
    register entries are as they are at export.
 
+### Fix (P037)
+
+- **The purge guard is the schema owner's (gap model-governance-84, schema V3).** Before, any user with DELETE on
+  `mg_measure` could set `mg.purge_before` and delete readings of any age. Now the guard allows a delete only when the
+  table's owner runs it, which happens only inside `mg_purge_measures` (SECURITY DEFINER), and that function never
+  removes readings younger than 30 days of the database's time. The runtime user needs EXECUTE on the function and
+  no DELETE on `mg_measure`. The startup check asks for the function and the right (`MG_TABLES_INCOMPLETE`,
+  `MG_PRIVILEGES_MISSING`).
+
 ### Fix (P036)
 
 - **Review dates per use and entity** (gap model-governance-39). A pass for one entity used to move the review date

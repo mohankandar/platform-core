@@ -110,9 +110,21 @@ Reads the licence, stores it, creates customer, tenant and entity slots, loads t
     written into the export header; an export is never refused.
 17. Refusals are logged with the code only; the issuing command logs IDs and codes.
 
-### P010 decisions
+### P010 decisions (as built; source docs/work/P010-report.md, written here in P037)
 
-See `docs/work/P010-report.md`, section "Decisions I had to make".
+- **Expected tenant (P010-3).** A licence must be for `platform.licensing.tenant-id`; before that setting existed, for
+  the stored licence's tenant. The first licence stored sets it.
+- **A broken stored row never blocks a good licence (P010-4).** If the stored licence row cannot be read, storing a
+  valid licence still works and replaces it.
+- **Versions only go up (P010-5).** A lower version of the same licence is `LICENCE_OLDER_VERSION`; the same licence
+  ID and version is `ALREADY_STORED`; a licence that starts now drops an older waiting one.
+- **Last-seen reset (P010-7).** A reset applies at or before its `notAfter` time. `NOT_NEEDED` (the latest time seen
+  is already earlier) still uses up the reset ID.
+- **Clock tolerance (P010-9)** is capped at 1 day in the Spring settings (`platform.licensing.clock-tolerance`).
+- **Health (P010-10, -11).** The health indicator gives the state, the days to expiry and the renewal's start; never
+  the customer's name.
+- **The clock (P010-12).** Spring apps set licensing's clock with a `LicensingClock` bean; an app's own `Clock` bean
+  is never picked up, so a test clock elsewhere in the app cannot move the licence.
 
 ### Owner answers to the P010 questions (2026-11-21)
 
@@ -127,7 +139,7 @@ See `docs/work/P010-report.md`, section "Decisions I had to make".
 
 ### P011 decisions (notification events and Vault signing)
 
-See `docs/work/P011-report.md`, section "Decisions I had to make". In short:
+As built; source docs/work/P011-report.md (the last six items written here in P037):
 
 - **Licensing notifications** live in `platform-licensing-spring`, with `platform-notifications` as an optional
   dependency. The app registers the event types (`LicensingEvents.register`) and supplies `ActivatedSlots`. Business
@@ -137,3 +149,16 @@ See `docs/work/P011-report.md`, section "Decisions I had to make". In short:
 - **Signing:** `Signer.sign(keyId, bytes)` replaces `SigningKeyResolver`. Production signing is `VaultTransitSigner`
   (Vault Transit ed25519; the private key never leaves Vault). Key ID = Transit key name + version (`lic-2026:1`), so
   the key-ID rule now allows an optional `:VERSION`. Set-up: `docs/install/licence-signing.md`.
+- **Timing (P011-1, -2).** "Daily" events go in the 08:00 summary in the tenant's zone. Critical conditions alert at
+  once and repeat every 24 hours; "server clock behind" repeats every 4 hours.
+- **Expiring bands (P011-3).** "Licence expiring" is sent once per band (60, 30, 7 and 1 days), not only on the exact
+  day, so a day the app was down is not missed; band 1 includes the last valid day.
+- **Grace hands over (P011-4).** When grace ends, the grace condition hands over to "intake stopped" without a
+  "recovered" message (`conditionSuperseded`).
+- **Condition keys (P011-5).** Licence conditions are keyed by event, tenant and entity (not the licence ID, so a
+  renewal does not start a new condition); usage conditions by `PRODUCT:TYPE`.
+- **Usage levels (P011-6).** "Near limit" at the admin's percentage (default 80, 50 to 99); "at limit" when use reaches
+  the allowance (and then "near limit" is skipped); "over limit" is a condition. Use without an allowance gets no
+  notice.
+- **Housekeeping (P011-7, -9, -11).** Notice claims (`lic_notice_sent`) are purged after 400 days; only event types
+  in the app's catalogue are published; "version not covered" needs the app's `release-date`.

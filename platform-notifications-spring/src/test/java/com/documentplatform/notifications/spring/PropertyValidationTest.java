@@ -171,7 +171,7 @@ class PropertyValidationTest {
                         P + "mail.security=starttls-please")
                 .run(ctx -> {
                     Throwable failure = WiringTest.rootOf(ctx.getStartupFailure(), NotificationsConfigException.class);
-                    assertEquals("Notifications configuration is not valid:\n - " + P
+                    assertEquals("NOTIF_SETTINGS_INVALID: Notifications configuration is not valid:\n - " + P
                             + "mail.security: must be STARTTLS, TLS or NONE", failure.getMessage());
                 });
     }
