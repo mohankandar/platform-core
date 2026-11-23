@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.documentplatform.platform</groupId>
+        <artifactId>platform-core</artifactId>
+        <version>0.5.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>platform-model-governance</artifactId>
+    <description>AI model governance (plain Java, no Spring; package com.documentplatform.modelgov;
+        docs/design/model-governance.md): the model register (models with their exact digest, uses with materiality,
+        status and review dates, versioned with history and the app's audit), validation records (insert only;
+        thresholds in force copied in), the change gate (Model approver with the separation rule, documented
+        acceptance for medium-materiality customer models, go live and rollback per entity), the gate at model start
+        (digest and configuration fingerprint), result stamping. Postgres store and SQL db/platform/modelgov (history
+        table mg_schema_history, run only by the schema step), start-up check ModelGovSchema.verify.</description>
+    <dependencies>
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-errors</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+</project>

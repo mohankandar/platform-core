@@ -38,6 +38,8 @@
         <module>platform-monitoring</module>
         <module>platform-monitoring-testkit</module>
         <module>platform-monitoring-spring</module>
+        <module>platform-model-governance</module>
+        <module>platform-model-governance-testkit</module>
         <module>platform-error-catalogue</module>
     </modules>
     <properties>

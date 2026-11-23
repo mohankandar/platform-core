@@ -84,3 +84,31 @@ For the customer's model-risk team, per product and entity, exportable on demand
 - **P034:** monitoring intake and thresholds, drift and re-validation-due events, documentation pack export (PDF + JSON, fingerprinted), Spring wiring, install guide; release.
 
 Each app then adds its test sets, pass marks, measures and admin screens in its own repo.
+
+## 9. As built (P033)
+
+Package `com.documentplatform.modelgov`, plain Java, depends only on platform-errors.
+
+- **Register:** `Model` (provider `VENDOR` / `CUSTOMER`, version, `ModelDigest` algorithm + lowercase hex, `RunsWhere`)
+  and `ModelUse` (product, feature, entity or null = every entity, purpose, `Materiality` with reason, human in the
+  loop, owners, model, configuration fingerprint, `Status`, last validation, next review due, whether an overdue
+  review refuses). `ModelDigest.sha256Of(Path)` hashes a model file; `ManifestDigests` reads a model server's OCI
+  manifest digest (`HEAD /v2/<name>/manifests/<ref>`, `Docker-Content-Digest`, no redirects). `ConfigFingerprint.of`
+  gives `sha256:` of the canonical JSON (keys sorted, no whitespace, shortest numbers) of the app's prompt and
+  settings. Every change is a new version with who, when and the changed field names (`mg_model_history`,
+  `mg_model_use_history`) and goes to the app's `ModelGovAudit`.
+- **Change gate (`ModelGovernance`):** default pass marks per use and stricter ones per entity (`MOD_THRESHOLD_LOOSER`,
+  `MOD_THRESHOLD_MISSING`); `recordValidation` copies the pass marks in force into the record (numbers only) and moves
+  the review date on (`ModelGovSettings.reviewEvery`, defaults high 90 days, medium 180, low 365);
+  `approve(validationId, Approver)` with the approver and forbidden roles named by the app's `ModelGovSettings`
+  (`MOD_APPROVER_ROLE`, `MOD_APPROVER_CONFLICT`, `MOD_VALIDATION_FAILED`, `MOD_ALREADY_APPROVED`); a failed customer
+  model is `MOD_CUSTOMER_MODEL_BLOCKED` for high materiality and needs `accept(validationId, approver, reason)` for
+  medium (`MOD_REASON_REQUIRED`, `MOD_ACCEPTANCE_NOT_APPLICABLE` otherwise); `goLive` keeps the previous live
+  validation as the rollback target, `rollback` switches back at once (`MOD_NO_ROLLBACK_TARGET`).
+- **Gate at model start (`ModelGate.requireLive`):** `MOD_RETIRED`, `MOD_NOT_VALIDATED`, `MOD_NOT_APPROVED`,
+  `MOD_NOT_LIVE`, `MOD_DIGEST_MISMATCH`, `MOD_CONFIG_CHANGED`, `MOD_REVIEW_OVERDUE` (a warning on the `LiveModel`
+  unless the use refuses it). `LiveModel.stamp()` gives the `ModelStamp` stored with each result.
+- **Storage:** `ModelGovStore`; `jdbc.PostgresModelGovStore` on the `mg_` tables (SQL `db/platform/modelgov`, history
+  table `mg_schema_history`, run only by the schema step, `jdbc.ModelGovSchema.verify` at startup, DML-only user;
+  `mg_validation`, `mg_validation_measure`, `mg_approval`, `mg_acceptance`, `mg_live_history` refuse UPDATE, DELETE
+  and TRUNCATE by trigger, even for the owner); `InMemoryModelGovStore` in the testkit with the same rules.
