@@ -287,6 +287,7 @@ public final class Outbound implements AutoCloseable {
             throw f;
         } catch (IOException e) {
             IntegrationCode code = classify(e, proxied, certificate != null);
+            if (Boolean.getBoolean("p026.debug")) debug("call", e); // TEMPORARY (P026 CI diagnosis)
             if ((code == IntegrationCode.INT_CONNECTION_LOST || code == IntegrationCode.INT_TLS_FAILED)
                     && certificate != null && !proxied
                     && scheme.equals("https") && !checked.addresses().isEmpty()
@@ -377,12 +378,21 @@ public final class Outbound implements AutoCloseable {
                 p.setEndpointIdentificationAlgorithm("HTTPS");
                 s.setSSLParameters(p);
                 s.startHandshake();
+                if (Boolean.getBoolean("p026.debug")) System.err.println("P026 probe: handshake ok");
                 return false;
             }
         } catch (SSLException e) {
+            if (Boolean.getBoolean("p026.debug")) debug("probe", e);
             return certificateAlert(e);
         } catch (IOException | RuntimeException e) {
+            if (Boolean.getBoolean("p026.debug")) debug("probe", e);
             return false;
+        }
+    }
+
+    private static void debug(String where, Throwable e) { // TEMPORARY (P026 CI diagnosis): classes and JDK texts
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            System.err.println("P026 " + where + ": " + t.getClass().getName() + ": " + t.getMessage());
         }
     }
     /** A TLS alert about the client's certificate ("Received fatal alert: bad_certificate" and the like). */
