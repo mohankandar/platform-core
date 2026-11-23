@@ -72,8 +72,9 @@ This version sets up **direct sign-in**: your people sign in with your own login
   its own zone follows the customer's. A name that is not an IANA name refuses the file
   (`SETUP_TIME_ZONE_INVALID`); a zone for a slot the licence does not list refuses the run
   (`SETUP_TIME_ZONE_SLOT_NOT_IN_LICENCE`).
-- **No secrets.** Direct sign-in needs no client secret in setup. Any field not shown above refuses the file, so a
-  secret pasted in by mistake is never read or stored (the message names the field, never its value).
+- **No secrets.** Direct sign-in needs no client secret in setup. Any field not shown above refuses the file,
+  except three optional fields per product that this example leaves out: `clientBindingsFile` and `sources`
+  (section 3a) and `integrationProfiles` (section 3b). So a secret pasted in by mistake is never read or stored (the message names the field, never its value).
 - **`issuer` is your login system's `https` address,** without a query. One exception, for testing only: a local test
   login server on the same machine may use `http`, when its host is exactly `localhost`, `127.0.0.1` or `[::1]` **and**
   the licence is a demo or test licence signed by a development key (one marked `"development": true` in the
@@ -232,7 +233,7 @@ tag. If the product's integrations use profiles, name each one in the sign-in fi
 - `file`: the profile file you received, relative to the sign-in file's folder. Keep it unchanged.
 - `tag`: the release tag the profile came from. It ends with the profile's version (here `1.2.0`).
 
-Setup checks each file before anything else: the format, every rule of the format, that the name is the one you
+Setup checks each file when it reads its input files, before the database or the key service is touched: the format, every rule of the format, that the name is the one you
 wrote, and that the tag names the file's version. The plan lists each profile as `checked`, and so does the run
 log. **Setup stores nothing for profiles**: the product's integration screens read the file when IT sets up the
 integration.
@@ -304,7 +305,8 @@ with `--no-customer-keys` gets both keys from the next run without the flag; not
 
 Refusal codes: `SETUP_BAD_OPTION`, `SETUP_FILE_UNREADABLE`, `SETUP_KEYS_INVALID`, `SETUP_LICENCE_REFUSED` (with the
 licence code, for example `LICENCE_UNKNOWN_KEY_ID`), `SETUP_SIGNIN_INVALID`, `SETUP_MODE_NOT_SUPPORTED`,
-`SETUP_HTTP_ISSUER_NOT_ALLOWED` (section 2), `SETUP_WRONG_TENANT`, `SETUP_PRODUCT_NOT_IN_LICENCE`,
+`SETUP_HTTP_ISSUER_NOT_ALLOWED`, `SETUP_TIME_ZONE_INVALID` and `SETUP_TIME_ZONE_SLOT_NOT_IN_LICENCE` (section 2),
+`SETUP_WRONG_TENANT`, `SETUP_PRODUCT_NOT_IN_LICENCE`,
 `SETUP_PRODUCT_NOT_IN_SIGNIN`, `SETUP_PRODUCT_ROLES_INVALID` (also a bad alias or `customerKeys` value),
 `SETUP_MAPPING_INVALID` (with every bad line), `SETUP_PLATFORM_ROLE_ON_ENTITY` and `SETUP_ENTITY_ROLE_PLATFORM_WIDE`
 (a role of the wrong kind on an entity or a `*` row, section 3), `SETUP_CLIENT_BINDINGS_INVALID` (with every bad line,
@@ -312,7 +314,8 @@ section 3a), `SETUP_PROFILE_INVALID` and `SETUP_PROFILE_TAG_MISSING` (section 3b
 `SETUP_DB_SETTINGS_MISSING`, `SETUP_DB_UNREACHABLE`,
 `SETUP_TABLES_NOT_READY`, `SETUP_OTHER_CUSTOMER_INSTALLED`, `SETUP_LICENCE_OLDER`, `SETUP_LICENCE_VERSION_CONFLICT`,
 `SETUP_CONFIG_OTHER_TENANT`, `SETUP_KEY_SERVICE_SETTINGS_MISSING`, `SETUP_KEY_SERVICE_FAILED`,
-`SETUP_CUSTOMER_KEYS_REQUIRED` (section 4). Failures: `SETUP_FAILED`, `SETUP_CONFIG_NOT_WRITTEN`.
+`SETUP_CUSTOMER_KEYS_REQUIRED` (section 4). Failures: `SETUP_FAILED`, `SETUP_CONFIG_NOT_WRITTEN`. Each code's cause
+and fix are in `docs/errors/platform-error-codes.md`.
 
 Two setup runs on the same database at once never mix: the second waits for the first.
 

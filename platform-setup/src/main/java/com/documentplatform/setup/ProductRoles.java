@@ -28,7 +28,9 @@ import java.util.regex.Pattern;
  * </pre>
  *
  * {@code roles} may be granted to groups per entity; {@code platformRoles} (optional) reach platform-wide screens and
- * are never granted through a mapping file. A role written in another case is refused with its canonical spelling.
+ * are granted for the customer and product only on a mapping row with {@code entity_id} {@code *} (since P028), never
+ * on an entity's row ({@code SETUP_PLATFORM_ROLE_ON_ENTITY}); a {@code *} row takes only platform roles
+ * ({@code SETUP_ENTITY_ROLE_PLATFORM_WIDE}). A role written in another case is refused with its canonical spelling.
  *
  * <p>{@code aliases} (optional): other names for roles, for example the role names a customer's identity system uses.
  * A role mapping file may use an alias; it is resolved when the file is read and stored as the role (the plan shows
