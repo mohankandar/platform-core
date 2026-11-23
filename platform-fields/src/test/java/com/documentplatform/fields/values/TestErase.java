@@ -12,4 +12,9 @@ public final class TestErase {
     public static FieldValues.Erased erase(FieldValues values, RecordRef ref) {
         return values.eraseRecord(ref);
     }
+
+    /** A ticket for {@code ref}, as only FieldValues makes one (to test that a store refuses a wrong one). */
+    public static EraseTicket ticketFor(RecordRef ref) {
+        return new EraseTicket(ref);
+    }
 }

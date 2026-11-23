@@ -142,7 +142,8 @@ public final class PostgresValueStore implements ValueStore {
     }
 
     @Override
-    public void delete(StoredRecord record) {
+    public void delete(StoredRecord record, com.documentplatform.fields.values.EraseTicket ticket) {
+        com.documentplatform.fields.values.EraseTicket.check(ticket, record);
         inTransaction("erase a record", c -> {
             try (PreparedStatement ps = c.prepareStatement(
                     "select 1 from fld_record where record_uuid = ? and version = ? for update")) {
