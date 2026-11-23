@@ -264,3 +264,7 @@ by integration; integration results keep the `INT_*` codes. The identity test si
 
 **Push callers** are identity's (`identity.push.PushCaller`, `docs/design/setup.md` section 8), not integration's
 `integration.inbound.PushCaller` as the P022 split had it: the answer comes from identity's tables only.
+
+## Decisions on the P028 report (shared-capabilities thread, 2026-11-23)
+
+P028 accepted (v0.3.0). 1. Platform grants on the IT Admin's page: app side, read-only first. 2. The app's integration page calls `PushCaller.forget()` when it switches a binding off: app side, when that page is built. 3. A certificate-only caller takes entity and source from the binding alone; a product needing more sets `requireTokenAndCertificate`.
