@@ -100,7 +100,8 @@ class SecretsNeverLeakTest {
         nowhere.setPassword("Db-Pw-SECRET-1");
         NotificationStoreException e = assertThrows(NotificationStoreException.class,
                 () -> new com.documentplatform.notifications.jdbc.PostgresOutboxStore(nowhere).find("m-1"));
-        assertTrue(e.getMessage().startsWith("Notification store failed to read an outbox message"));
+        assertTrue(e.getMessage().startsWith("NOTIF_STORE_FAILED: Notification store failed to read an outbox message"),
+                e.getMessage());
         assertFalse(e.getMessage().contains("Db-Pw-SECRET-1"));
     }
 }

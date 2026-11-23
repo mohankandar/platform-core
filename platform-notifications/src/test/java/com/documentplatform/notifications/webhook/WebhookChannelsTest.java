@@ -210,6 +210,21 @@ class WebhookChannelsTest {
         assertTrue(server.requests().isEmpty(), "the token never travelled unencrypted");
     }
 
+    /** xc-public-api-3 (P037): the test switch allows plain http to this machine only, never to another host. */
+    @Test
+    void theTestSwitchAllowsPlainHttpToThisMachineOnly() {
+        for (String other : List.of("http://webhook.corp.example/services/T000/B000/" + SLACK_TOKEN,
+                "http://10.1.2.3:8080/services/T000/B000/" + SLACK_TOKEN,
+                "http://127.0.0.2:" + URI.create(server.base()).getPort() + "/services/T000/B000/" + SLACK_TOKEN)) {
+            secrets.put(SLACK_REF, other);
+            assertEquals(FailureCode.WEBHOOK_ADDRESS_NOT_SECURE, sendSlack().failure(), other);
+        }
+        assertTrue(server.requests().isEmpty(), "the token never travelled unencrypted");
+        server.always(Reply.of(200));
+        secrets.put(SLACK_REF, server.base() + "/services/T000/B000/" + SLACK_TOKEN);
+        assertTrue(sendSlack().sent(), "this machine, with the test switch: allowed");
+    }
+
     @Test
     void addressProblemsAndSecretProblems() {
         secrets.put(SLACK_REF, "not a url SLACK-SECRET-bad");
