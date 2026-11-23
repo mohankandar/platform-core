@@ -346,6 +346,10 @@ To test the set-up, put the standard EICAR test file (from eicar.org) into a tes
 
 ## 14. Codes you can see, and what to do
 
+Every code, with its message, cause and what to do, is also in the generated catalogue
+`docs/errors/platform-error-codes.md`. The app's Support screen (`docs/install/monitoring.md`) shows each
+integration's state with its code.
+
 The app's screens, audit and logs show these codes. They never show a password, a token, a document's content or a
 value.
 
