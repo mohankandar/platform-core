@@ -148,11 +148,12 @@ Repeat for each channel that should receive notifications. Each one gets its own
 The notifications tables all start with `notif_`. There are eight: tenant, destination, event settings, outbox,
 summary items, conditions, approval requests and the schema version.
 
-**Creating and upgrading the tables is a separate schema step that you run.** It is part of the app's own schema step.
-The SQL files ship inside the app under `db/platform/notifications` (`V1__notifications.sql`, …).
-Notifications has **no history table of its own** (there is no `notif_schema_history`): the app's schema step runs
-these files with its own tool and history table, as the app's install guide describes. The app checks the version
-in the table `notif_schema_version`, which the files keep up to date.
+**Creating and upgrading the tables is a separate schema step that you run.** The SQL files ship inside the app under
+`db/platform/notifications` (`V1__notifications.sql`, …). Run them as **their own Flyway run with their own history
+table**, for example `notif_schema_history`, like the other platform modules: their version numbers start at V1, so
+they cannot share one run with the app's own files or another module's (Flyway refuses two files with the same
+version in one run). The app checks the version in the table `notif_schema_version`, which the files keep up to date,
+never in a history table, so the name of that history table is yours to choose (P040).
 
 1. **Before the first start, and after every upgrade,** run the app's schema step. Run it as a database user that may
    create tables in the app's schema, for example the schema owner.
