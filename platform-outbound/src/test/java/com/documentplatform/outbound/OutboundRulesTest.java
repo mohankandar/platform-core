@@ -27,6 +27,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class OutboundRulesTest {
 
     static final Duration T = Duration.ofSeconds(5);
+    static final String ANSWER_BODY = "ANSWER-BODY-planted-3c3c";
+    static final String ANSWER_HEADER = "ANSWER-HEADER-planted-4d4d";
     HttpServer server;
     URI base;
 
@@ -50,6 +52,13 @@ class OutboundRulesTest {
             x.getResponseBody().write(b);
             x.close();
         });
+        server.createContext("/echo", x -> {
+            byte[] b = ("{\"text\":\"" + ANSWER_BODY + "\"}").getBytes(StandardCharsets.UTF_8);
+            x.getResponseHeaders().add("X-Session", ANSWER_HEADER);
+            x.sendResponseHeaders(200, b.length);
+            x.getResponseBody().write(b);
+            x.close();
+        });
         server.start();
         base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
     }
@@ -65,6 +74,27 @@ class OutboundRulesTest {
 
     private static OutboundCode refused(Outbound o, Outbound.Call call) {
         return assertThrows(Outbound.Failure.class, () -> o.send(call, T, 1024, false)).code();
+    }
+
+    @Test
+    void aCallAndAnAnswerNeverShowHeadersBodiesOrTheAddress() throws Exception {
+        // xc-never-leak-64: toString holds the method and the status only.
+        String bearer = "BEARER-planted-1a1a";
+        String body = "BODY-planted-2b2b";
+        String query = "QUERY-planted-5e5e";
+        Outbound.Call call = new Outbound.Call("POST", base.resolve("/echo?k=" + query),
+                List.of(Map.entry("Authorization", "Bearer " + bearer), Map.entry("X-Note", bearer)),
+                HttpRequest.BodyPublishers.ofString(body), T);
+        try (Outbound o = new Outbound(Installation.onPremises().withInternalAddresses(true))) {
+            Outbound.Answer a = o.send(call, T, 1024, false);
+            assertEquals(ANSWER_HEADER, a.header("X-Session").orElseThrow(), "the answer has them");
+            assertTrue(new String(a.body(), StandardCharsets.UTF_8).contains(ANSWER_BODY));
+            for (String text : List.of(call.toString(), a.toString())) {
+                for (String planted : List.of(bearer, body, query, ANSWER_BODY, ANSWER_HEADER, "/echo", "127.0.0.1")) {
+                    assertFalse(text.contains(planted), "found " + planted + " in: " + text);
+                }
+            }
+        }
     }
 
     @Test
