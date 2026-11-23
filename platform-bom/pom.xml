@@ -133,6 +133,21 @@
             </dependency>
             <dependency>
                 <groupId>com.documentplatform.platform</groupId>
+                <artifactId>platform-monitoring</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.documentplatform.platform</groupId>
+                <artifactId>platform-monitoring-testkit</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.documentplatform.platform</groupId>
+                <artifactId>platform-monitoring-spring</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.documentplatform.platform</groupId>
                 <artifactId>platform-integration-spring</artifactId>
                 <version>${project.version}</version>
             </dependency>

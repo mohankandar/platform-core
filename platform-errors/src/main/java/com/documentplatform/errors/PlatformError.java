@@ -69,7 +69,24 @@ public final class PlatformError {
 
     /** The exact cause: the code's cause with its placeholders filled from the safe details. */
     public String cause() {
-        String c = code.cause();
+        return fillIn(code.cause(), details);
+    }
+
+    /**
+     * The code's cause with its {@code {name}} placeholders filled from these details (secret-looking values
+     * removed first, as in an error).
+     */
+    public static String fill(PlatformCode code, Map<String, ?> safeDetails) {
+        Map<String, String> d = new LinkedHashMap<>();
+        if (safeDetails != null) {
+            safeDetails.forEach((k, v) -> {
+                if (k != null && v != null) d.put(k, SafeText.forName(k, String.valueOf(v)));
+            });
+        }
+        return fillIn(code.cause(), d);
+    }
+
+    private static String fillIn(String c, Map<String, String> details) {
         Matcher m = PLACEHOLDER.matcher(c);
         StringBuilder sb = new StringBuilder();
         while (m.find()) {

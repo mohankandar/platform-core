@@ -7,13 +7,18 @@ import java.util.Objects;
  * value or ciphertext: only what was being done, ids (customer, key name and version) and neutral reasons. No cause
  * from the key service's client is attached, so nothing it carried can leak through a stack trace.
  */
-public final class CryptoException extends RuntimeException {
+public final class CryptoException extends RuntimeException implements com.documentplatform.errors.HasPlatformCode {
 
     private final CryptoError code;
 
     public CryptoException(CryptoError code, String message) {
         super(Objects.requireNonNull(code, "code") + ": " + message, null, false, true);
         this.code = code;
+    }
+
+    @Override
+    public com.documentplatform.errors.PlatformCode platformCode() {
+        return code();
     }
 
     public CryptoError code() {

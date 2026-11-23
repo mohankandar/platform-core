@@ -4,7 +4,8 @@ package com.documentplatform.fields.jdbc;
  * The field tables are not ready for the app: the message says exactly what is wrong and what to do. It holds table
  * names, versions, rights and SQL states only, never connection details.
  */
-public final class FieldSchemaException extends IllegalStateException {
+public final class FieldSchemaException extends IllegalStateException
+        implements com.documentplatform.errors.HasPlatformCode {
 
     /** What is wrong, as a stable code. */
     public enum Problem implements com.documentplatform.errors.PlatformCode {
@@ -34,6 +35,11 @@ public final class FieldSchemaException extends IllegalStateException {
     FieldSchemaException(Problem problem, String message, Throwable cause) {
         super(message, cause);
         this.problem = problem;
+    }
+
+    @Override
+    public com.documentplatform.errors.PlatformCode platformCode() {
+        return problem();
     }
 
     public Problem problem() {

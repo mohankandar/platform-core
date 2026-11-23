@@ -29,6 +29,22 @@ public final class ReferenceId {
         return sb.toString();
     }
 
+    private static final ThreadLocal<String> CURRENT = new ThreadLocal<>();
+
+    /**
+     * The reference of the request this thread is handling (set by the app's request filter, for example
+     * platform-monitoring-spring's), or null. {@link FailureLog} gives a failure this reference when there is one.
+     */
+    public static String current() {
+        return CURRENT.get();
+    }
+
+    /** Sets (or with null, clears) the current request's reference on this thread. */
+    public static void setCurrent(String reference) {
+        if (reference == null) CURRENT.remove();
+        else CURRENT.set(reference);
+    }
+
     /** Whether the text has the form of a reference. */
     public static boolean isReference(String s) {
         return s != null && s.matches("R-[0-9A-HJKMNP-TV-Z]{12}");

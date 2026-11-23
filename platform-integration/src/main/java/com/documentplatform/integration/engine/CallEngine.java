@@ -82,6 +82,7 @@ public final class CallEngine implements AutoCloseable {
     private final SecretResolver secrets;
     private final CertificateSource certificates;
     private final Clock clock;
+    private volatile java.util.function.Consumer<AttemptResult> onAttempt = r -> { };
 
     public CallEngine(Outbound outbound, SecretResolver secrets, Clock clock) {
         this(outbound, secrets, new ClientCredentialsTokens(outbound, clock), clock);
@@ -105,6 +106,16 @@ public final class CallEngine implements AutoCloseable {
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
+    /**
+     * Tells {@code listener} of every attempt's result (not Test actions), for example to count attempts by outcome
+     * (platform-monitoring-spring's metrics). Results hold codes and statuses only. A listener that throws is logged
+     * by its class name and ignored.
+     */
+    public CallEngine onAttempt(java.util.function.Consumer<AttemptResult> listener) {
+        this.onAttempt = Objects.requireNonNull(listener, "listener");
+        return this;
+    }
+
     /** One attempt of the whole step sequence (or the rest of it, after {@code delivery.resume()}). */
     public AttemptResult attempt(StoredIntegration integration, Delivery delivery) {
         return run(integration, delivery, false, CredentialState.CURRENT);
@@ -118,6 +129,13 @@ public final class CallEngine implements AutoCloseable {
         Run r = new Run(integration.config(), integration.version(), delivery, test, certificate);
         AttemptResult result = r.go();
         log(result, test ? " (test" + (certificate == CredentialState.NEXT ? ", next certificate)" : ")") : "");
+        if (!test) {
+            try {
+                onAttempt.accept(result);
+            } catch (RuntimeException listenerFailed) {
+                LOG.log(System.Logger.Level.WARNING, "Attempt listener failed: {0}", listenerFailed.getClass().getName());
+            }
+        }
         return result;
     }
 

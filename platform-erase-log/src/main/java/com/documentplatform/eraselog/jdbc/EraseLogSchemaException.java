@@ -1,7 +1,8 @@
 package com.documentplatform.eraselog.jdbc;
 
 /** The {@code erl_} tables are not usable; {@link #problem()} says how, the message what to do. */
-public final class EraseLogSchemaException extends RuntimeException {
+public final class EraseLogSchemaException extends RuntimeException
+        implements com.documentplatform.errors.HasPlatformCode {
 
     public enum Problem implements com.documentplatform.errors.PlatformCode {
         ERL_TABLES_MISSING,
@@ -18,6 +19,11 @@ public final class EraseLogSchemaException extends RuntimeException {
     public EraseLogSchemaException(Problem problem, String message) {
         super(problem + ": " + message, null, false, true);
         this.problem = problem;
+    }
+
+    @Override
+    public com.documentplatform.errors.PlatformCode platformCode() {
+        return problem();
     }
 
     public Problem problem() {

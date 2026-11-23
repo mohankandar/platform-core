@@ -1,7 +1,8 @@
 package com.documentplatform.integration.jdbc;
 
 /** The integration tables are not ready for the app; the message says what to do. */
-public final class IntegrationSchemaException extends RuntimeException {
+public final class IntegrationSchemaException extends RuntimeException
+        implements com.documentplatform.errors.HasPlatformCode {
 
     public enum Problem implements com.documentplatform.errors.PlatformCode {
         INT_TABLES_MISSING, INT_TABLES_INCOMPLETE, INT_VERSION_UNKNOWN, INT_VERSION_OLDER, INT_VERSION_NEWER,
@@ -13,6 +14,11 @@ public final class IntegrationSchemaException extends RuntimeException {
     public IntegrationSchemaException(Problem problem, String message) {
         super(problem + ": " + message);
         this.problem = problem;
+    }
+
+    @Override
+    public com.documentplatform.errors.PlatformCode platformCode() {
+        return problem();
     }
 
     public Problem problem() {

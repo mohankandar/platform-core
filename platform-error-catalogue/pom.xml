@@ -34,6 +34,8 @@
         <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-outbound-spring</artifactId><version>${project.version}</version><scope>test</scope></dependency>
         <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-integration</artifactId><version>${project.version}</version><scope>test</scope></dependency>
         <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-integration-spring</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+        <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-monitoring</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+        <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-monitoring-spring</artifactId><version>${project.version}</version><scope>test</scope></dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>

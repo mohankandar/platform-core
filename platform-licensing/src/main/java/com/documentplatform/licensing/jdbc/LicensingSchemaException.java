@@ -4,7 +4,8 @@ package com.documentplatform.licensing.jdbc;
  * The licensing tables are not ready for the app: the message says exactly what is wrong and what to do. It holds
  * table names, versions, rights and SQL states only, never connection details.
  */
-public final class LicensingSchemaException extends IllegalStateException {
+public final class LicensingSchemaException extends IllegalStateException
+        implements com.documentplatform.errors.HasPlatformCode {
 
     /** What is wrong, as a stable code. */
     public enum Problem implements com.documentplatform.errors.PlatformCode {
@@ -34,6 +35,11 @@ public final class LicensingSchemaException extends IllegalStateException {
     LicensingSchemaException(Problem problem, String message, Throwable cause) {
         super(message, cause);
         this.problem = problem;
+    }
+
+    @Override
+    public com.documentplatform.errors.PlatformCode platformCode() {
+        return problem();
     }
 
     public Problem problem() {
