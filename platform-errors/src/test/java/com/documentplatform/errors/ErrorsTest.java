@@ -77,6 +77,25 @@ class ErrorsTest {
     }
 
     @Test
+    void aPasswordInAUrlsUserPartNeverReachesAnError() {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("folder", "redis://cache-user:Url-Pw-Planted-1@cache.corp.example:6379/0");
+        details.put("note", "tried jdbc:postgresql://app:Url-Pw-Planted-2@db.corp.example:5432/app and "
+                + "https://Url-Token-Planted-3@git.corp.example/repo.git");
+        PlatformError e = PlatformError.of(SampleCode.SAMPLE_DISK_FULL, details);
+        String all = e + " " + e.details() + " " + e.cause() + " " + e.logLine();
+        for (String never : List.of("Url-Pw-Planted-1", "Url-Pw-Planted-2", "Url-Token-Planted-3", "cache-user")) {
+            assertFalse(all.contains(never), never + " in " + all);
+        }
+        assertEquals("redis://" + SafeText.REMOVED + "@cache.corp.example:6379/0", e.details().get("folder"),
+                "the address stays, the user part goes");
+        assertEquals("postgres://" + SafeText.REMOVED + "@h/db", SafeText.scrub("postgres://u:p@ss@h/db"),
+                "a password holding an @ goes whole");
+        assertEquals("https://h/a?mail=a@b.example", SafeText.scrub("https://h/a?mail=a@b.example"),
+                "an @ after the host is not a user part");
+    }
+
+    @Test
     void safeTextKeepsNamesAndAddressesOfThings() {
         assertTrue(SafeText.secretName("platform.outbound.proxy.password"));
         assertTrue(SafeText.secretName("spring.datasource.password"));

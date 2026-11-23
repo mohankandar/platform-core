@@ -49,12 +49,15 @@ class DiagnosticBundleTest {
         config.put("app.welcome-text", "token=" + JWT + " and " + PEM);
         config.put("app.ocr.url", "http://ocr.internal:8080");
         config.put("app.note", "Bearer " + KEY);
+        config.put("app.cache.url", "redis://cache-user:Url-Pw-Planted-6@cache.corp.example:6379");
+        config.put("app.reports.datasource", "jdbc:postgresql://app:Url-Pw-Planted-7@db.corp.example:5432/app");
 
         CheckResult r = new CheckResult("ocr", "services", false, CheckState.DOWN, MonitoringCode.MON_HTTP_UNREACHABLE,
                 "The service ocr at http://ocr.internal:8080/health cannot be reached. password=Planted-3 " + JWT,
                 "Check the service.", Instant.now(), Duration.ofMillis(12));
         PlatformError failure = FailureLog.recordError(MonitoringCode.MON_CHECK_FAILED, Map.of("check", "ocr",
-                "error", "client_secret=Planted-4", "password", "Planted-5"));
+                "error", "client_secret=Planted-4", "password", "Planted-5",
+                "address", "https://svc:Url-Pw-Planted-8@ocr.internal:8443/health"));
         // Content in an exception's text and in a log line: the bundle takes neither (only codes and causes).
         CheckResult thrown;
         try (CheckRunner runner = new CheckRunner()) {
@@ -76,7 +79,8 @@ class DiagnosticBundleTest {
         StringBuilder text = new StringBuilder();
         files.values().forEach(b -> text.append(new String(b, StandardCharsets.UTF_8)).append('\n'));
         for (String never : List.of("Db-Password-Planted-1", "Client-Secret-Planted-2", KEY, JWT, "MIIEvQ",
-                "Planted-3", "Planted-4", "Planted-5", CONTENT, FIELD_VALUE, "Jane Example")) {
+                "Planted-3", "Planted-4", "Planted-5", "Url-Pw-Planted-6", "Url-Pw-Planted-7", "Url-Pw-Planted-8",
+                CONTENT, FIELD_VALUE, "Jane Example")) {
             assertFalse(text.toString().contains(never), never + " in the bundle");
             assertFalse(all.contains(never), never + " in the zip bytes");
         }
@@ -86,6 +90,7 @@ class DiagnosticBundleTest {
         assertTrue(conf.contains("platform.outbound.proxy.password-secret=vault:kv/app/proxy#password"),
                 "a secret reference (a name) stays: " + conf);
         assertTrue(conf.contains("app.ocr.url=http://ocr.internal:8080"), "addresses stay");
+        assertTrue(conf.contains("app.cache.url=redis://" + SafeText.REMOVED + "@cache.corp.example:6379"), conf);
         assertTrue(new String(files.get("checks.txt"), StandardCharsets.UTF_8).contains("services/ocr DOWN "
                 + "MON_HTTP_UNREACHABLE"));
         assertTrue(new String(files.get("failures.txt"), StandardCharsets.UTF_8).contains("ref=" + failure.reference()));
