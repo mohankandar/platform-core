@@ -20,9 +20,9 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * platform-core never names, depends on or assumes any product. The build fails if a product's name appears, as a
- * whole word or as a part of an identifier ({@code x_y}, {@code X-Y}, {@code xY}), in any Java, SQL, JSON, XML, YAML or
- * properties file, in CLAUDE.md, a README, or the install guides. {@code docs/work/} and {@code docs/design/} are
- * history and examples and are not checked. The words and the old product package names are assembled here, so this
+ * whole word or as a part of an identifier ({@code x_y}, {@code X-Y}, {@code xY}), in any text file of the repository
+ * (code, data, root Markdown, install guides, the catalogue, release notes, scripts, workflows). {@code docs/work/} and
+ * {@code docs/design/} are history and examples and are not checked. The words and the old product package names are assembled here, so this
  * file passes itself.
  */
 class NoProductNamesGuardTest {
@@ -62,16 +62,29 @@ class NoProductNamesGuardTest {
         }
     }
 
-    /** The file types and places the rule covers. */
+    /** xc-independence-2 (P040): every text file outside the history folders is checked. */
+    @Test
+    void theGuardCoversEveryTextFileOutsideTheHistoryFolders() {
+        for (String p : List.of("README.md", "ANY-NOTES.md", "docs/install/identity.md", "docs/errors/code-names.txt",
+                "docs/releases/platform-core-v0.6.0.md", "scripts/build-release.sh", "scripts/build-release.ps1",
+                ".github/workflows/ci.yml", "platform-errors/pom.xml", "platform-x/src/main/resources/db/a.sql")) {
+            assertTrue(checked(Path.of(p)), p);
+        }
+        for (String p : List.of("docs/work/P001.md", "docs/design/setup.md", "platform-x/target/x.txt", ".git/HEAD")) {
+            org.junit.jupiter.api.Assertions.assertFalse(checked(Path.of(p)), p);
+        }
+    }
+
+    /**
+     * The places the rule covers (P040, xc-independence-2): every text file of the repository, root Markdown files,
+     * docs/install, docs/errors, docs/releases, scripts and workflow files included, except docs/work/ and
+     * docs/design/ (history and examples), build output and local tool folders. Binary files are skipped when read.
+     */
     static boolean checked(Path relative) {
         String p = relative.toString().replace('\\', '/');
-        if (p.startsWith(".git/") || p.contains("/target/") || p.startsWith("target/") || p.contains("/node_modules/")
-                || p.startsWith("docs/work/") || p.startsWith("docs/design/")) {
-            return false;
-        }
-        String name = relative.getFileName().toString();
-        return name.matches(".*\\.(java|sql|json|xml|yml|yaml|properties)") || name.equals("CLAUDE.md")
-                || name.startsWith("README") || p.startsWith("docs/install/");
+        return !(p.startsWith(".git/") || p.contains("/target/") || p.startsWith("target/") || p.contains("/node_modules/")
+                || p.startsWith(".claude/") || p.startsWith(".idea/") || p.startsWith(".vscode/")
+                || p.startsWith("docs/work/") || p.startsWith("docs/design/"));
     }
 
     /** The product word in this text, or null. */
