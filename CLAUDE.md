@@ -83,6 +83,15 @@ On the owner's Windows laptop, Norton 360 intercepts TLS; Maven trusts it via th
   code in `com.documentplatform.<capability>` (for example `com.documentplatform.notifications`). The identity
   modules keep their existing `com.documentplatform.identity...` packages.
 
+## Public API
+
+What apps may use is the types each module's install guide, design doc or line above names, and what an app must
+call or implement to use the module. Everything else is internal: package-private, or in a package whose name contains
+`.internal`. **`internal` packages may change in any release and are not supported for apps.** Test hooks are never
+public on production classes; testkits use public types or the internals of the module they test. JPMS is not used
+(split testkit packages, Spring reflection); `PublicApiTest` in platform-error-catalogue checks the rule. Details:
+`docs/design/public-api.md`.
+
 ## Work tracking
 
 - Tasks live in `docs/work/PNNN.md` (P001, P002, ...).
