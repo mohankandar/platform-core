@@ -358,6 +358,85 @@ class NoSecretsInLogsTest {
             }
         }
     }
+
+    /**
+     * xc-never-leak-85 (P037): drop and item IDs (the customer's file names, the source's item IDs) may hold personal
+     * data; log lines carry {@code drop=#<hex>} / {@code item=#<hex>} instead, while problem.json in the customer's own
+     * folder keeps the real name.
+     */
+    @Test
+    void dropAndItemIdsAreLoggedAsReferencesOnly(@TempDir Path dir) throws Exception {
+        String refusedDrop = "Statement-Ann-Lee-planted";
+        String incompleteDrop = "Scan-Bo-Lee-planted";
+        String infectedDrop = "Letter-Cy-Lee-planted";
+        String item = "ACCOUNT-0042-planted";
+        com.documentplatform.integration.testkit.MockFolder folder =
+                com.documentplatform.integration.testkit.MockFolder.watched(dir.resolve("inbox"));
+        java.time.Instant old = java.time.Instant.now().minus(Duration.ofMinutes(90));
+        folder.write(refusedDrop + "/a.pdf", "x", old).write(refusedDrop + "/manifest.json", "{}", old);
+        folder.write(incompleteDrop + "/a.pdf", "x", old);
+        IntegrationConfig w = IntegrationConfig.watchedFolder(Fx.ENTITY, Fx.PRODUCT, "Inbox",
+                com.documentplatform.integration.config.WatchSource.of(folder.folder(),
+                        com.documentplatform.integration.config.WatchSource.Layout.SUBFOLDER, "*.json"));
+        com.documentplatform.integration.config.PollSource src = PollingTest.source(
+                com.documentplatform.integration.config.PollSource.Paging.none());
+        try (com.documentplatform.integration.testkit.MockScanner scanner =
+                     com.documentplatform.integration.testkit.MockScanner.clamd();
+             com.documentplatform.integration.testkit.MockSource source =
+                     com.documentplatform.integration.testkit.MockSource.start(src);
+             com.documentplatform.integration.engine.CallEngine calls =
+                     new com.documentplatform.integration.engine.CallEngine(
+                             new com.documentplatform.outbound.Outbound(fx.installation), fx.secrets,
+                             Clock.systemUTC())) {
+            com.documentplatform.integration.scan.Scanning scanning = new com.documentplatform.integration.scan.Scanning(
+                    new com.documentplatform.integration.scan.ClamdScanner(new com.documentplatform.integration.scan
+                            .ScannerAddress(scanner.host(), scanner.port(), Duration.ofSeconds(2)),
+                            new com.documentplatform.outbound.AddressGuard(true)),
+                    com.documentplatform.integration.scan.ScanEvents.NONE);
+            // Refused by the app and incomplete, then (the scanner finding everything) infected.
+            new com.documentplatform.integration.watch.WatchedFolder(folder,
+                    com.documentplatform.outbound.Installation.onPremises(),
+                    com.documentplatform.integration.scan.Scanning.OFF, Clock.systemUTC())
+                    .pass(Fx.stored(w), d -> com.documentplatform.integration.intake.IntakeAnswer.refused("APP-NO"));
+            folder.write(infectedDrop + "/a.pdf", "x", old).write(infectedDrop + "/manifest.json", "{}", old);
+            scanner.infected(true);
+            new com.documentplatform.integration.watch.WatchedFolder(folder,
+                    com.documentplatform.outbound.Installation.onPremises(), scanning, Clock.systemUTC())
+                    .pass(Fx.stored(w), d -> com.documentplatform.integration.intake.IntakeAnswer.TAKEN);
+            // A polled item found infected.
+            source.add(item, "x".getBytes(), java.util.Map.of("fileName", "a.pdf", "kind", "k"));
+            source.expectBearer(BEARER);
+            IntegrationConfig c = IntegrationConfig.apiPoll(Fx.ENTITY, Fx.PRODUCT, "Source",
+                    new com.documentplatform.integration.config.Endpoint(source.address(), true),
+                    new SignIn.BearerFixed(SecretRef.of("int/bearer")), src);
+            com.documentplatform.integration.intake.PollResult r =
+                    new com.documentplatform.integration.engine.PollEngine(calls, scanning, dir)
+                            .pass(Fx.stored(c), com.documentplatform.integration.intake.CursorState.START,
+                                    i -> com.documentplatform.integration.intake.IntakeAnswer.TAKEN);
+            assertEquals(1, r.quarantined().size(), r.toString());
+        }
+        String area = com.documentplatform.integration.config.WatchSource.PROBLEM;
+        String problem = new String(folder.read(area + "/" + folder.entries(area).get(0),
+                com.documentplatform.integration.config.WatchSource.PROBLEM_FILE),
+                java.nio.charset.StandardCharsets.UTF_8);
+        assertTrue(problem.contains(refusedDrop), "problem.json in the customer's folder keeps the real name");
+
+        // platform-core's own lines (the JDK's test HTTP server logs request paths at FINE).
+        List<String> log = logged().stream().filter(l -> l.contains(" com.documentplatform.")).toList();
+        for (String line : log) {
+            for (String p : List.of(refusedDrop, incompleteDrop, infectedDrop, item, "Lee-planted", BEARER)) {
+                assertFalse(line.contains(p), "found " + p + " in: " + line);
+            }
+        }
+        for (String[] expected : new String[][]{{"drop=", refusedDrop, "_problem"}, {"drop=", incompleteDrop,
+                "has no trigger"}, {"drop=", infectedDrop, "infected"}, {"item=", item, "infected"}}) {
+            String ref = expected[0] + com.documentplatform.integration.intake.LogRef.of(expected[1]);
+            assertTrue(ref.matches("(drop|item)=#[0-9a-f]{12}"), ref);
+            assertTrue(log.stream().anyMatch(l -> l.contains(ref) && l.contains(expected[2])),
+                    "no line with " + ref + " and " + expected[2] + " in " + log);
+        }
+    }
+
     @Test
     void nothingSecretFromCertificatesOrCallbacks(@TempDir Path dir) throws Exception {
         String p12Password = "P12PW-planted-4d4d";

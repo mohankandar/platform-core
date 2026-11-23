@@ -268,3 +268,13 @@ by integration; integration results keep the `INT_*` codes. The identity test si
 ## Decisions on the P028 report (shared-capabilities thread, 2026-11-23)
 
 P028 accepted (v0.3.0). 1. Platform grants on the IT Admin's page: app side, read-only first. 2. The app's integration page calls `PushCaller.forget()` when it switches a binding off: app side, when that page is built. 3. A certificate-only caller takes entity and source from the binding alone; a product needing more sets `requireTokenAndCertificate`.
+
+## Intake IDs in log lines (P037)
+
+A watched-folder drop's ID is the customer's own file or folder name, and a polled item's ID is the source's; either
+may hold personal data (a person's name, an account number). Log lines therefore never carry them: they carry a
+short stable reference instead, `drop=#<hex>` / `item=#<hex>`, where `<hex>` is the first 12 hex characters of the
+SHA-256 of the ID (`intake.LogRef.of`). The same ID always gives the same reference, so support can match a log line
+to a drop or item from its real name. The real name stays where the customer and the app see it: `problem.json` in the
+customer's own `_problem` (or `_quarantine`) folder, `WatchResult` / `PollResult`, `ScanEvents.Infected` and the
+handler's `Drop` / `PolledItem`, which the app must not log as they are either.

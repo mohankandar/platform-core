@@ -9,6 +9,7 @@ import com.documentplatform.integration.config.WatchSource;
 import com.documentplatform.integration.intake.IntakeAnswer;
 import com.documentplatform.integration.intake.IntakeFile;
 import com.documentplatform.integration.intake.IntakeHandler;
+import com.documentplatform.integration.intake.LogRef;
 import com.documentplatform.integration.json.Json;
 import com.documentplatform.integration.result.HealthResult;
 import com.documentplatform.integration.result.Outcome;
@@ -347,8 +348,8 @@ public final class WatchedFolder {
                 if (reported.add(key)) {
                     incomplete.add(new WatchResult.Incomplete(d.id(), age.truncatedTo(ChronoUnit.SECONDS),
                             d.entries().stream().map(WatchFiles.Entry::name).sorted().toList()));
-                    LOG.log(System.Logger.Level.WARNING, "Integration {0} watch: drop {1} has no trigger after {2} "
-                            + "({3})", c.id(), d.id(), age.truncatedTo(ChronoUnit.SECONDS),
+                    LOG.log(System.Logger.Level.WARNING, "Integration {0} watch: drop={1} has no trigger after {2} "
+                            + "({3})", c.id(), LogRef.of(d.id()), age.truncatedTo(ChronoUnit.SECONDS),
                             IntegrationCode.INT_WATCH_INCOMPLETE);
                 }
             }
@@ -648,8 +649,8 @@ public final class WatchedFolder {
             if (finish(id, claim, claimId, WatchSource.QUARANTINE, IntegrationCode.INT_SCAN_INFECTED, null, threat)) {
                 quarantined.add(new WatchResult.Quarantined(id, fileName, threat));
             }
-            LOG.log(System.Logger.Level.WARNING, "Integration {0} watch: drop {1} infected ({2}); quarantined", c.id(),
-                    id, threat);
+            LOG.log(System.Logger.Level.WARNING, "Integration {0} watch: drop={1} infected ({2}); quarantined", c.id(),
+                    LogRef.of(id), threat);
             try {
                 scanning.events().infected(new ScanEvents.Infected(c.id(), c.entity(), c.product(), "watch", id,
                         fileName, threat, now));
@@ -687,7 +688,7 @@ public final class WatchedFolder {
                     if (!code.equals(IntegrationCode.INT_WATCH_REFUSED) && !code.equals(IntegrationCode.INT_SCAN_INFECTED)) {
                         problems.add(new WatchResult.Problem(id, code));
                     }
-                    LOG.log(System.Logger.Level.WARNING, "Integration {0} watch: drop {1} to {2}: {3}{4}", c.id(), id, to,
+                    LOG.log(System.Logger.Level.WARNING, "Integration {0} watch: drop={1} to {2}: {3}{4}", c.id(), LogRef.of(id), to,
                             code, appCode == null ? "" : " (" + appCode + ")");
                 }
                 files.delete(claim.resolve(CLAIM_MARKER));
@@ -741,8 +742,8 @@ public final class WatchedFolder {
                 release(id, claim);
                 if (problems.size() == before) {
                     released++;
-                    LOG.log(System.Logger.Level.WARNING, "Integration {0} watch: a stuck claim of drop {1} was put "
-                            + "back", c.id(), id);
+                    LOG.log(System.Logger.Level.WARNING, "Integration {0} watch: a stuck claim of drop={1} was put "
+                            + "back", c.id(), LogRef.of(id));
                 }
             }
         }
