@@ -46,7 +46,7 @@ final class ConfigFragment {
         String line = KEY + "=" + tenantId + System.lineSeparator();
         String text = state == State.NO_KEY
                 ? withNewline(Files.readString(file, StandardCharsets.UTF_8)) + line
-                : "# Written by the platform setup command: this installation's customer (tenant) ID, from the licence."
+                : "# Written by the platform setup command: this installation's customer ID, from the licence."
                 + System.lineSeparator() + line;
         Path dir = file.toAbsolutePath().getParent();
         Path tmp = Files.createTempFile(dir, ".platform-setup", ".tmp");
