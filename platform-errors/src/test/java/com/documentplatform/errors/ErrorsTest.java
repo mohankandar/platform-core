@@ -21,7 +21,8 @@ class ErrorsTest {
 
     /** A made-up code family; its texts are in SampleCode.codes.properties (test resources). */
     enum SampleCode implements PlatformCode {
-        SAMPLE_DISK_FULL, SAMPLE_REFUSED, SAMPLE_CONFIG_BAD, SAMPLE_CONFIG_WORSE, SAMPLE_NO_TEXTS
+        SAMPLE_DISK_FULL, SAMPLE_REFUSED, SAMPLE_CONFIG_BAD, SAMPLE_CONFIG_WORSE, SAMPLE_NO_TEXTS, SAMPLE_CONFIG_DEEP_ONE,
+        SAMPLE_NEEDS_PERSON, SAMPLE_INFO, SAMPLE_NO_MESSAGE, SAMPLE_NO_FIX, SAMPLE_GAP, SAMPLE_SLOT, SAMPLE_INTERNALS
     }
 
     static final String JWT = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJwZXJzb24ifQ.c2lnbmF0dXJlLXZhbHVl";
@@ -51,6 +52,39 @@ class ErrorsTest {
                 cat.problems().toString());
         assertTrue(cat.markdown().contains("| `SAMPLE_DISK_FULL` | ErrorsTest.SampleCode | FAILED |"));
         assertTrue(cat.json().contains("\"code\": \"SAMPLE_REFUSED\", \"kind\": \"REFUSED\""), cat.json());
+    }
+
+    /** error-codes-13, -18, xc-codes-setup-1, error-codes-6 (P037): longest prefix; what the check refuses. */
+    @Test
+    void theCatalogueCheckRefusesMissingTextsGapsSlotsAndInternals() {
+        assertEquals("Correct the deep setting.", SampleCode.SAMPLE_CONFIG_DEEP_ONE.fix(), "the longest prefix wins");
+        assertEquals("Correct it.", SampleCode.SAMPLE_CONFIG_DEEP_ONE.userMessage(), "a shorter prefix fills the rest");
+        List<String> p = Catalogue.of(List.of(SampleCode.class)).problems();
+        String f = "platform-errors/ErrorsTest.SampleCode/";
+        assertTrue(p.contains(f + "SAMPLE_NO_MESSAGE: no message"), p.toString());
+        assertTrue(p.contains(f + "SAMPLE_NO_FIX: no fix"), p.toString());
+        assertTrue(p.contains(f + "SAMPLE_GAP: the cause has a gap or a %s slot: The settings () are missing."),
+                p.toString());
+        assertTrue(p.contains(f + "SAMPLE_GAP: the fix has a gap or a %s slot: Set , and in the environment."),
+                p.toString());
+        assertTrue(p.contains(f + "SAMPLE_SLOT: the cause has a gap or a %s slot: %s could not be reached."),
+                p.toString());
+        assertTrue(p.contains(f + "SAMPLE_INTERNALS: the message names internals: An SQLException was thrown."),
+                p.toString());
+        for (String fine : List.of("SAMPLE_DISK_FULL", "SAMPLE_REFUSED", "SAMPLE_NEEDS_PERSON", "SAMPLE_INFO")) {
+            assertTrue(p.stream().noneMatch(x -> x.startsWith(f + fine + ":")), fine + " " + p);
+        }
+    }
+
+    /** error-codes-19 (P037): one code name in two modules is refused. */
+    @Test
+    void aCodeNameInTwoModulesIsRefused() throws Exception {
+        java.lang.reflect.Constructor<Catalogue> c = Catalogue.class.getDeclaredConstructor(List.class);
+        c.setAccessible(true);
+        Catalogue twice = c.newInstance(List.of(
+                new Catalogue.Entry("platform-a", "ACode", "SAME_NAME", PlatformCode.Kind.FAILED, "m", "c", "f", "s", null),
+                new Catalogue.Entry("platform-b", "BCode", "SAME_NAME", PlatformCode.Kind.FAILED, "m", "c", "f", "s", null)));
+        assertEquals(List.of("SAME_NAME: used in two modules (platform-a, platform-b)"), twice.problems());
     }
 
     @Test
@@ -178,6 +212,21 @@ class ErrorsTest {
             assertEquals(2, FailureLog.recent(10).size());
             assertEquals(SampleCode.SAMPLE_REFUSED, FailureLog.recent(10).get(0).code(), "newest first");
             assertFalse(String.join("\n", lines).contains("p@ss"));
+
+            // error-codes-33 (P037): NEEDS_PERSON logs as a warning, INFO as information.
+            lines.clear();
+            FailureLog.record(SampleCode.SAMPLE_NEEDS_PERSON);
+            FailureLog.record(SampleCode.SAMPLE_INFO);
+            assertEquals(List.of("WARNING", "INFO"), lines.stream().map(l -> l.substring(0, l.indexOf(' '))).toList(),
+                    lines.toString());
+
+            // error-codes-35 (P037): the last 200 are kept, the oldest dropped.
+            FailureLog.clear();
+            String first = FailureLog.record(SampleCode.SAMPLE_REFUSED);
+            for (int i = 0; i < FailureLog.KEEP; i++) FailureLog.record(SampleCode.SAMPLE_INFO);
+            List<PlatformError> kept = FailureLog.recent(FailureLog.KEEP + 10);
+            assertEquals(200, kept.size());
+            assertTrue(kept.stream().noneMatch(e -> e.reference().equals(first)), "the oldest is dropped");
         } finally {
             logger.removeHandler(h);
         }

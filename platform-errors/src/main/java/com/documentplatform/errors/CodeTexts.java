@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * The texts of a {@link PlatformCode} enum, read once from {@code <EnumName>.codes.properties} next to the enum
  * (UTF-8). A missing text is the empty string; the catalogue test refuses a code without a message, cause or fix.
  */
-public final class CodeTexts {
+final class CodeTexts {
 
     private static final Map<Class<?>, Properties> LOADED = new ConcurrentHashMap<>();
 
@@ -27,12 +27,12 @@ public final class CodeTexts {
     }
 
     /** The texts of this code. */
-    public static CodeTexts of(PlatformCode c) {
+    static CodeTexts of(PlatformCode c) {
         return new CodeTexts(LOADED.computeIfAbsent(enumClass(c), CodeTexts::load), c.name());
     }
 
     /** The family name: the enum's name below its package, nested enums joined with a dot. */
-    public static String family(PlatformCode c) {
+    static String family(PlatformCode c) {
         Class<?> e = enumClass(c);
         String n = e.getName();
         String pkg = e.getPackageName();
@@ -40,7 +40,7 @@ public final class CodeTexts {
     }
 
     /** The resource name of a family's texts, relative to the enum's package. */
-    public static String resourceName(Class<?> enumClass) {
+    static String resourceName(Class<?> enumClass) {
         String n = enumClass.getName();
         String pkg = enumClass.getPackageName();
         return (pkg.isEmpty() ? n : n.substring(pkg.length() + 1)).replace('$', '.') + ".codes.properties";

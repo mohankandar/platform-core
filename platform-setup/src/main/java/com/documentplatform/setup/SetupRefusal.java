@@ -76,7 +76,7 @@ public enum SetupRefusal implements com.documentplatform.errors.PlatformCode {
     SETUP_KEY_SERVICE_SETTINGS_MISSING(SetupCommand.EXIT_REFUSED, "Set " + SetupKeys.VAULT_ADDR + " and one login ("
             + SetupKeys.VAULT_TOKEN + ", " + SetupKeys.VAULT_TOKEN_FILE + ", or " + SetupKeys.VAULT_ROLE_ID + " with "
             + SetupKeys.VAULT_SECRET_ID + ") with the platform-crypto-setup policy, in the environment of this run "
-            + "only; or run with --no-keys if this installation keeps no sensitive values."),
+            + "only; or run with --no-customer-keys if this installation keeps no sensitive values."),
     /** The key service could not be reached, refused the login, or refused to read or create the keys. */
     SETUP_KEY_SERVICE_FAILED(SetupCommand.EXIT_REFUSED, "Check the key service address, the login and that its policy "
             + "is platform-crypto-setup (the CRYPTO_ code names the cause), then run setup again. Nothing was "

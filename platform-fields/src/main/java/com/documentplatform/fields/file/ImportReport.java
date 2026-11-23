@@ -26,7 +26,8 @@ public record ImportReport(boolean applied, List<Line> lines) {
         CONFLICT
     }
 
-    public enum Conflict {
+    /** Why a field of the file conflicts with the one here (P037: a {@code PlatformCode}, in the catalogue). */
+    public enum Conflict implements com.documentplatform.errors.PlatformCode {
         /** The existing field has another type. */
         TYPE_DIFFERS,
         /** Both are MONEY, in different currencies. */

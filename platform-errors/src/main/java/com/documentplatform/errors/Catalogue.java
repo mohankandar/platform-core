@@ -7,6 +7,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * The catalogue of codes: one entry per code (module, family, code, kind, message, cause, fix, support note, HTTP
@@ -19,6 +20,15 @@ public final class Catalogue {
     public record Entry(String module, String family, String code, PlatformCode.Kind kind, String message,
                         String cause, String fix, String support, Integer http) {
     }
+
+    /**
+     * A gap left where a name was dropped from a text ({@code "Set , and"}, {@code "( , )"}, {@code "()"}) or a
+     * {@code printf} slot no one fills ({@code %s}): P037, xc-codes-setup-1, xc-catalogue-1.
+     */
+    private static final Pattern GAP = Pattern.compile("\\(\\s*[,)]|,\\s*[,)]|%[sd]|\\s[,;]|\\bSet and\\b");
+    /** Internals a user message never names (error-codes-6): SQL, exceptions, stack traces, Java or driver names. */
+    private static final Pattern INTERNALS = Pattern.compile(
+            "(?i)(\\bsql|exception\\b|stack ?trace|null ?pointer|\\bjava\\.[a-z]|\\bjdbc|\\bpostgres)");
 
     private final List<Entry> entries;
 
@@ -47,7 +57,8 @@ public final class Catalogue {
 
     /**
      * What is wrong with the catalogue: a code without a message, cause or fix; a code listed twice in one family; a
-     * code name used in two modules.
+     * code name used in two modules. Also (P037) a text with a gap where a name was dropped, or a
+     * {@code %s} slot, and a user message that names internals (SQL, an exception, a stack trace, a driver).
      */
     public List<String> problems() {
         List<String> p = new ArrayList<>();
@@ -59,6 +70,13 @@ public final class Catalogue {
             if (e.message().isBlank()) p.add(id + ": no message");
             if (e.cause().isBlank()) p.add(id + ": no cause");
             if (e.fix().isBlank()) p.add(id + ": no fix");
+            for (String[] t : new String[][]{{"message", e.message()}, {"cause", e.cause()}, {"fix", e.fix()},
+                    {"support", e.support()}}) {
+                if (t[1] != null && GAP.matcher(t[1]).find()) {
+                    p.add(id + ": the " + t[0] + " has a gap or a %s slot: " + t[1]);
+                }
+            }
+            if (INTERNALS.matcher(e.message()).find()) p.add(id + ": the message names internals: " + e.message());
             String other = moduleOfCode.putIfAbsent(e.code(), e.module());
             if (other != null && !other.equals(e.module())) {
                 p.add(e.code() + ": used in two modules (" + other + ", " + e.module() + ")");
@@ -72,7 +90,7 @@ public final class Catalogue {
         StringBuilder sb = new StringBuilder();
         sb.append("# Platform error codes\n\n")
                 .append("Generated from the code enums (`PlatformCode`, module `platform-errors`); do not edit by hand. ")
-                .append("Regenerate with `mvn -pl platform-error-catalogue verify -Dplatform.errors.write=true`. ")
+                .append("Regenerate with `mvn -pl platform-error-catalogue -am verify -Dplatform.errors.write=true`. ")
                 .append("The shape and the API error format: `docs/design/error-codes.md`.\n\n")
                 .append("Kinds: REFUSED (the request is not allowed), FAILED (we or a dependency failed), NEEDS_PERSON ")
                 .append("(sent to a person for review), INFO (a result). ").append(entries.size()).append(" codes.\n");
