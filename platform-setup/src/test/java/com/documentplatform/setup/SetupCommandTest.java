@@ -470,6 +470,38 @@ class SetupCommandTest {
     }
 
     @Test
+    void theSlotsOfARenewalThatStartsLaterAreStoredAtOnce() throws Exception {
+        demo();
+        Pg db = Pg.migrated();
+        TestLicences keys = new TestLicences("test-key-1");
+        write("test-trusted-keys.json", keys.trustedKeys().toJson());
+        String trusted = dir.resolve("test-trusted-keys.json").toString();
+        write("licence-demo.json", keys.sign(licence("LIC-TEST-0200", 1, List.of(S1, S2))));
+        assertEquals(0, run(db, "apply", A, "--keys", trusted).exit());
+
+        // The renewal adds a third slot and starts after today (NOW is 2026-11-21).
+        String s3 = "ENT-DEMO-0003";
+        write("licence-demo.json", keys.sign(licence("LIC-TEST-0201", 2, List.of(S1, S2, s3),
+                LocalDate.parse("2027-01-01"), LocalDate.parse("2028-12-31"))));
+        Result r = run(db, "apply", A, "--keys", trusted);
+        assertEquals(0, r.exit(), r.all());
+        assertTrue(r.out().contains("update      licence LIC-TEST-0201 v2 stored as renewal; takes over from "
+                + "LIC-TEST-0200 v1 on 2027-01-01"), r.out());
+        assertTrue(r.out().contains("create      entity slot " + s3 + " (NOT_ACTIVATED)"), r.out());
+        assertEquals(List.of("CURRENT LIC-TEST-0200", "WAITING LIC-TEST-0201"),
+                db.strings("select slot || ' ' || licence_id from lic_licence order by 1"));
+        assertEquals(List.of(S1 + " NOT_ACTIVATED", S2 + " NOT_ACTIVATED", s3 + " NOT_ACTIVATED"),
+                db.strings("select slot_id || ' ' || status from idn_entity order by 1"),
+                "the renewal's slot is stored before the renewal starts");
+
+        // A rerun with the same renewal changes nothing.
+        Result again = run(db, "apply", A, "--keys", trusted);
+        assertEquals(0, again.exit(), again.all());
+        assertTrue(again.out().contains("unchanged   licence LIC-TEST-0201 v2"), again.out());
+        assertTrue(again.out().contains("unchanged   entity slot " + s3 + " (NOT_ACTIVATED)"), again.out());
+    }
+
+    @Test
     void grantsOfASlotTheMappingFileNoLongerNamesAreNotInTheFile() throws Exception {
         demo();
         Pg db = Pg.migrated();
