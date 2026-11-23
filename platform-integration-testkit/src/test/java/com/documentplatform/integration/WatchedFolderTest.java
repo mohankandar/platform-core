@@ -451,6 +451,7 @@ class WatchedFolderTest {
             made = false; // Windows without the right to make links
         }
         assumeTrue(made, "this account may not create symbolic links");
+        clock.plus(Duration.ofMinutes(1)); // the link itself has the time it was made: let the drop settle
         App app = new App();
         WatchResult l = watcher().pass(s, app);
         assertEquals(List.of(new WatchResult.Problem("linked", IntegrationCode.INT_WATCH_DROP_INVALID)), l.problems());

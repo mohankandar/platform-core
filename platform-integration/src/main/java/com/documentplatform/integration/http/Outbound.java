@@ -274,6 +274,7 @@ public final class Outbound implements AutoCloseable {
             // The first address checked, as the JDK client did: one connection attempt, its own failure reported.
             pinned.put(AddressGuard.normalise(uri.getHost()), new InetAddress[]{checked.addresses().get(0)});
         }
+        Answer stoppedEarly = null;
         try (ClassicHttpResponse response = client.http().executeOpen(null, b.build(), context)) {
             int status = response.getCode();
             if (proxied && status == 407) {
@@ -284,17 +285,33 @@ public final class Outbound implements AutoCloseable {
             byte[] body = new byte[0];
             if (sink != null && status / 100 == 2) {
                 InputStream in = entity == null ? InputStream.nullInputStream() : entity.getContent();
+                boolean whole;
                 try {
-                    if (!sink.read(in) && in instanceof org.apache.hc.core5.http.io.EofSensorInputStream e) {
-                        e.abort(); // stopped early: the connection is dropped, never drained
-                    }
-                    in.close();
+                    whole = sink.read(in);
                 } catch (SocketTimeoutException e) {
                     throw new Failure(IntegrationCode.INT_TIMEOUT);
                 } catch (IOException e) {
                     throw new Failure(IntegrationCode.INT_CONNECTION_LOST);
                 }
-                return new Answer(status, headers(response), body, false);
+                Answer answer = new Answer(status, headers(response), body, false);
+                if (!whole) {
+                    // Stopped early on purpose: the connection is dropped, never drained. What dropping it throws
+                    // (here or when the response closes) is not a failure of the call.
+                    stoppedEarly = answer;
+                    try {
+                        if (in instanceof org.apache.hc.core5.http.io.EofSensorInputStream e) e.abort();
+                        else in.close();
+                    } catch (IOException ignored) {
+                        // dropped
+                    }
+                    return answer;
+                }
+                try {
+                    in.close();
+                } catch (IOException e) {
+                    throw new Failure(IntegrationCode.INT_CONNECTION_LOST);
+                }
+                return answer;
             }
             if (entity != null) {
                 try (InputStream in = entity.getContent()) {
@@ -310,6 +327,7 @@ public final class Outbound implements AutoCloseable {
         } catch (Failure f) {
             throw f;
         } catch (IOException e) {
+            if (stoppedEarly != null) return stoppedEarly; // closing the dropped connection
             IntegrationCode code = classify(e, proxied, certificate != null);
             if ((code == IntegrationCode.INT_CONNECTION_LOST || code == IntegrationCode.INT_TLS_FAILED)
                     && certificate != null && !proxied
