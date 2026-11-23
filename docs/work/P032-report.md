@@ -22,7 +22,12 @@ Outcome: DONE
   identity-spring 28, identity-testkit 14, integration 50, integration-spring 8, integration-testkit 196,
   licensing 144, licensing-spring 34, licensing-testkit 47, **monitoring-spring 5**, **monitoring-testkit 16**,
   notifications 81, notifications-spring 41, notifications-testkit 132, outbound 8, outbound-spring 4, setup 39.
-- No failed check was re-run.
+- **The report PR's first CI run failed** (run 45119824506, `ProxyTest.anUnreachableProxyIsCantConnect`): a request
+  reached the mock destination through a proxy the test had just closed (the engine's log shows the first step SENT,
+  the next one CANT_CONNECT). Cause: `MockProxy.close()` returned before its accept loop stopped, so one connection
+  accepted in that moment was still forwarded. Fixed in the test mock (close waits for the accept loop and drops a
+  connection accepted while closing), in the same PR; the check was not simply re-run. No product code was involved.
+- No failed check was re-run without its cause found.
 
 ## Independence
 
