@@ -6,6 +6,7 @@ import com.documentplatform.integration.config.FolderTarget;
 import com.documentplatform.integration.config.IntegrationConfig;
 import com.documentplatform.integration.config.Kind;
 import com.documentplatform.integration.config.WatchSource;
+import com.documentplatform.integration.folder.LinkRefusedException;
 import com.documentplatform.integration.intake.IntakeAnswer;
 import com.documentplatform.integration.intake.IntakeFile;
 import com.documentplatform.integration.intake.IntakeHandler;
@@ -137,6 +138,9 @@ public final class WatchedFolder {
         if (!files.isDirectory(root)) return health(stored, Outcome.NOT_CONFIGURED, IntegrationCode.INT_WATCH_ROOT_NOT_FOUND);
         try {
             Path processing = root.resolve(WatchSource.PROCESSING);
+            if (files.link(processing)) {
+                return health(stored, Outcome.NOT_CONFIGURED, IntegrationCode.INT_WATCH_LINK_REFUSED);
+            }
             if (!files.isDirectory(processing)) files.createDirectory(processing);
             Path probe = processing.resolve(".platform-health-" + fence() + ".tmp");
             try (OutputStream out = files.create(probe)) {
@@ -254,6 +258,8 @@ public final class WatchedFolder {
                 for (String f : List.of(WatchSource.PROCESSING, WatchSource.ARCHIVE, WatchSource.PROBLEM,
                         WatchSource.QUARANTINE)) {
                     Path p = root.resolve(f);
+                    // Our own folders are never links: moving a claim into one would leave the watched folder.
+                    if (files.link(p)) throw new Stop(Outcome.NOT_CONFIGURED, IntegrationCode.INT_WATCH_LINK_REFUSED);
                     if (files.isDirectory(p)) continue;
                     try {
                         files.createDirectory(p);
@@ -270,8 +276,16 @@ public final class WatchedFolder {
             processing = root.resolve(WatchSource.PROCESSING);
         }
 
+        /** The code a drop is reported with when moving it failed: a refused link keeps its own code. */
+        IntegrationCode moveCode(Stop s) {
+            return s.code == IntegrationCode.INT_WATCH_LINK_REFUSED ? s.code : IntegrationCode.INT_WATCH_MOVE_FAILED;
+        }
+
         /** An I/O failure of the folder itself: the share is gone, or this account may not work there. */
         Stop failure(IOException e) {
+            if (e instanceof LinkRefusedException) {
+                return new Stop(Outcome.NOT_CONFIGURED, IntegrationCode.INT_WATCH_LINK_REFUSED);
+            }
             if (!files.reachable(root)) return new Stop(Outcome.CANT_CONNECT, IntegrationCode.INT_WATCH_SHARE_UNREACHABLE);
             if (e instanceof AccessDeniedException) {
                 return new Stop(Outcome.NOT_CONFIGURED, IntegrationCode.INT_WATCH_NO_PERMISSION);
@@ -478,7 +492,7 @@ public final class WatchedFolder {
                 Stop s = failure(e);
                 if (s.code == IntegrationCode.INT_WATCH_SHARE_UNREACHABLE) throw s;
                 // Most often a file still held open by the writer: the drop is tried again at the next pass.
-                held.add(new WatchResult.Problem(d.id(), IntegrationCode.INT_WATCH_MOVE_FAILED));
+                held.add(new WatchResult.Problem(d.id(), moveCode(s)));
                 return false;
             }
         }
@@ -565,18 +579,28 @@ public final class WatchedFolder {
                 intake.add(new IntakeFile(e.name(), size, sha[0], null, () -> files.open(p)));
             }
 
-            // Scan every file, the trigger too, before the app sees any of it.
+            // Scan every file, the trigger too, before the app sees any of it. The bytes the scanner reads are counted
+            // and hashed on the way: a clean verdict counts only for exactly the bytes hashed above, which are also the
+            // only bytes the app's self-checking stream accepts. A file swapped between the reads is refused.
             if (scanning.on()) {
-                Map<String, IntakeFile.Content> all = new LinkedHashMap<>();
-                for (IntakeFile f : intake) all.put(f.name(), () -> files.open(claim.resolve(f.name())));
-                all.put(trigger.name(), () -> new java.io.ByteArrayInputStream(raw));
-                for (Map.Entry<String, IntakeFile.Content> f : all.entrySet()) {
-                    long size = f.getKey().equals(trigger.name()) ? raw.length
-                            : intake.stream().filter(x -> x.name().equals(f.getKey())).findFirst().orElseThrow().size();
-                    ScanResult r = scanning.scan(f.getValue(), size);
+                Map<String, IntakeFile> byName = new LinkedHashMap<>();
+                for (IntakeFile f : intake) byName.put(f.name(), f);
+                List<String> names = new ArrayList<>(byName.keySet());
+                names.add(trigger.name());
+                for (String name : names) {
+                    IntakeFile f = byName.get(name);
+                    long size = f == null ? raw.length : f.size();
+                    ScanTap[] seen = new ScanTap[1];
+                    IntakeFile.Content content = () -> seen[0] = new ScanTap(f == null
+                            ? new java.io.ByteArrayInputStream(raw) : files.open(claim.resolve(name)));
+                    ScanResult r = scanning.scan(content, size);
                     if (!exists(claim)) throw new Lost();
+                    if (r.verdict() == ScanResult.Verdict.CLEAN && f != null
+                            && (seen[0] == null || !seen[0].is(f.size(), f.sha256()))) {
+                        throw new Refuse(IntegrationCode.INT_WATCH_FILE_CHANGED);
+                    }
                     if (r.verdict() == ScanResult.Verdict.INFECTED) {
-                        quarantine(d.id(), claim, claimId, f.getKey(), r.threat());
+                        quarantine(d.id(), claim, claimId, name, r.threat());
                         return null;
                     }
                     if (r.verdict() == ScanResult.Verdict.SCAN_FAILED) {
@@ -693,12 +717,14 @@ public final class WatchedFolder {
                             code, appCode == null ? "" : " (" + appCode + ")");
                 }
                 files.delete(claim.resolve(CLAIM_MARKER));
-                files.move(claim, root.resolve(to).resolve(id + "-" + claimId));
+                Path into = root.resolve(to);
+                if (files.link(into)) throw new LinkRefusedException(to); // swapped for a link during the pass
+                files.move(claim, into.resolve(id + "-" + claimId));
                 return true;
             } catch (IOException e) {
                 Stop s = failure(e);
                 if (s.code == IntegrationCode.INT_WATCH_SHARE_UNREACHABLE) throw s;
-                problems.add(new WatchResult.Problem(id, IntegrationCode.INT_WATCH_MOVE_FAILED));
+                problems.add(new WatchResult.Problem(id, moveCode(s)));
                 return false;
             }
         }
@@ -716,7 +742,7 @@ public final class WatchedFolder {
             } catch (IOException e) {
                 Stop s = failure(e);
                 if (s.code == IntegrationCode.INT_WATCH_SHARE_UNREACHABLE) throw s;
-                problems.add(new WatchResult.Problem(id, IntegrationCode.INT_WATCH_MOVE_FAILED));
+                problems.add(new WatchResult.Problem(id, moveCode(s)));
             }
         }
 
@@ -767,5 +793,56 @@ public final class WatchedFolder {
     private static boolean validDropName(String name) {
         return name.length() <= MAX_DROP_NAME && FolderTarget.validName(name) && !name.startsWith("_")
                 && !name.startsWith(".");
+    }
+
+    /** Counts and hashes the bytes a scanner reads, so a clean verdict is tied to exactly those bytes. */
+    private static final class ScanTap extends java.io.FilterInputStream {
+        private final MessageDigest digest;
+        private long read;
+
+        ScanTap(InputStream in) {
+            super(in);
+            try {
+                digest = MessageDigest.getInstance("SHA-256");
+            } catch (NoSuchAlgorithmException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        @Override
+        public int read() throws IOException {
+            int b = in.read();
+            if (b >= 0) {
+                digest.update((byte) b);
+                read++;
+            }
+            return b;
+        }
+
+        @Override
+        public int read(byte[] b, int off, int len) throws IOException {
+            int n = in.read(b, off, len);
+            if (n > 0) {
+                digest.update(b, off, n);
+                read += n;
+            }
+            return n;
+        }
+
+        @Override
+        public long skip(long n) {
+            return 0; // never skipped: every byte the scanner gets is hashed
+        }
+
+        @Override
+        public boolean markSupported() {
+            return false;
+        }
+
+        /** Whether exactly {@code size} bytes with this SHA-256 were read, and no more. */
+        boolean is(long size, String sha256) {
+            if (read != size) return false;
+            return HexFormat.of().formatHex(digest.digest()).equals(sha256);
+        }
     }
 }

@@ -18,10 +18,12 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -188,6 +190,7 @@ public final class FileEraseLogStore implements EraseLogStore {
 
     @Override
     public void scan(Consumer<EraseEntry> each) {
+        noLinks();
         long after = checkpoint().seq();
         try (FileChannel ch = FileChannel.open(logFile, StandardOpenOption.READ)) {
             long valid = validLength(ch);
@@ -219,7 +222,13 @@ public final class FileEraseLogStore implements EraseLogStore {
             }
             Path kept = dir.resolve(LOG_FILE + ".pruning");
             ChainPoint[] at = {null};
-            try (BufferedWriter w = Files.newBufferedWriter(kept, StandardCharsets.UTF_8)) {
+            try {
+                Files.deleteIfExists(kept); // a leftover (or a link in its place) goes; never what a link points to
+            } catch (IOException e) {
+                throw unreachable("pruned", e);
+            }
+            try (BufferedWriter w = Files.newBufferedWriter(kept, StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW,
+                    StandardOpenOption.WRITE)) {
                 scan(e -> {
                     if (e.seq() == seq) {
                         at[0] = e.point();
@@ -244,7 +253,7 @@ public final class FileEraseLogStore implements EraseLogStore {
             try {
                 force(kept);
                 Path cp = dir.resolve(CHECKPOINT_FILE + ".new");
-                Files.writeString(cp, Lines.checkpoint(logId, at[0], Instant.now()) + "\n", StandardCharsets.UTF_8);
+                fresh(cp, Lines.checkpoint(logId, at[0], Instant.now()) + "\n");
                 force(cp);
                 Files.move(cp, dir.resolve(CHECKPOINT_FILE), StandardCopyOption.ATOMIC_MOVE,
                         StandardCopyOption.REPLACE_EXISTING);
@@ -282,7 +291,7 @@ public final class FileEraseLogStore implements EraseLogStore {
             }
             UUID id = UUID.randomUUID();
             Path tmp = dir.resolve(ID_FILE + ".new");
-            Files.writeString(tmp, id + "\n", StandardCharsets.UTF_8);
+            fresh(tmp, id + "\n");
             force(tmp);
             Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             forceDirectory();
@@ -292,15 +301,50 @@ public final class FileEraseLogStore implements EraseLogStore {
         }
     }
 
+    /** The log's own files, temporary ones included: never a link, so nothing outside the location is written. */
+    private static final List<String> OWN_FILES = List.of(LOG_FILE, LOG_FILE + ".pruning", CHECKPOINT_FILE,
+            CHECKPOINT_FILE + ".new", ID_FILE, ID_FILE + ".new", LOCK_FILE);
+
+    /**
+     * Refuses when one of the log's own files is a symbolic link, a Windows junction or another reparse point: the log
+     * never writes, moves or reads through one ({@code ERASE_LOG_LINK_REFUSED}). Called before every locked operation
+     * and every scan.
+     */
+    private void noLinks() {
+        for (String name : OWN_FILES) {
+            Path p = dir.resolve(name);
+            BasicFileAttributes a;
+            try {
+                a = Files.readAttributes(p, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            } catch (IOException absent) {
+                continue;
+            }
+            if (a.isSymbolicLink() || a.isOther()) {
+                throw new EraseLogException(EraseLogError.ERASE_LOG_LINK_REFUSED, "the erase log's file " + name
+                        + " at " + dir + " is a link (symbolic link or junction); nothing was written. Remove it and "
+                        + "allow only the app's service account to write the erase log location");
+            }
+        }
+    }
+
+    /** A temporary file of the log, made new: an old one (or a link left in its place) goes first. */
+    private static void fresh(Path tmp, String text) throws IOException {
+        Files.deleteIfExists(tmp); // removes a link itself, never what it points to
+        Files.writeString(tmp, text, StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+    }
+
     /** Runs {@code work} holding this location's lock: in this JVM, and across processes by a file lock. */
     private <T> T locked(Supplier<T> work) {
         ReentrantLock jvm = LOCKS.computeIfAbsent(dir, d -> new ReentrantLock());
         jvm.lock();
-        try (FileChannel lockFile = FileChannel.open(dir.resolve(LOCK_FILE), StandardOpenOption.CREATE,
-                StandardOpenOption.WRITE); FileLock ignored = lockFile.lock()) {
-            return work.get();
-        } catch (IOException e) {
-            throw unreachable("locked", e);
+        try {
+            noLinks();
+            try (FileChannel lockFile = FileChannel.open(dir.resolve(LOCK_FILE), StandardOpenOption.CREATE,
+                    StandardOpenOption.WRITE); FileLock ignored = lockFile.lock()) {
+                return work.get();
+            } catch (IOException e) {
+                throw unreachable("locked", e);
+            }
         } finally {
             jvm.unlock();
         }

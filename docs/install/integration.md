@@ -435,6 +435,7 @@ value.
 |---|---|---|
 | `INT_FOLDER_NOT_FOUND` | The target folder does not exist (or the path is not a path on this system) | Create it, or correct the path; on Linux mount the share |
 | `INT_FOLDER_NO_PERMISSION` | The service account may not write there | Section 6: rights for the service account |
+| `INT_FOLDER_LINK_REFUSED` | A link (symbolic link or junction) stands where the app writes or removes its own package folder; nothing behind it was touched | Remove the link and find out who made it; only the service account may create entries in the export folder (section 6) |
 | `INT_FOLDER_FULL` | The disk or the account's quota is full | Free space or raise the quota |
 | `INT_FOLDER_UNREACHABLE` | The share cannot be reached | Check the file server, the share and the network |
 | `INT_FOLDER_EXISTS_DIFFERENT` | A package folder of that name is already there with other content | Move the old folder away, or check the folder name setting |
@@ -458,10 +459,11 @@ value.
 |---|---|---|
 | `INT_WATCH_ROOT_NOT_FOUND` | The watched folder does not exist | Create it, or correct the path; on Linux mount the share |
 | `INT_WATCH_NO_PERMISSION` | The service account may not work in the watched folder | Section 12: rights for the service account |
+| `INT_WATCH_LINK_REFUSED` | A link (symbolic link or junction) stands in place of `_processing`, `_archive`, `_problem`, `_quarantine` or a claimed drop; nothing behind it was touched | Remove the link and find out who made it; senders may create drops only (section 12) |
 | `INT_WATCH_SHARE_UNREACHABLE` | The share cannot be reached (also in the middle of a round) | Check the file server, the share and the network; claimed drops go back by themselves after the claim time |
 | `INT_WATCH_TRIGGER_UNREADABLE` | The trigger file is malformed, too large, too deep, or XML with a DTD; the drop is in `_problem` | Fix the trigger file, then move the drop back |
 | `INT_WATCH_DROP_INVALID` | A drop with a link or a folder in it, too many files, a file too large, or two trigger files; in `_problem` | Fix the drop, then move it back |
-| `INT_WATCH_FILE_CHANGED` | A file changed after the app took the drop; in `_problem` | Your process must finish every file before it writes the trigger |
+| `INT_WATCH_FILE_CHANGED` | A file changed after the app took the drop; in `_problem` (also when the bytes the virus scanner read differ from the ones checked) | Your process must finish every file before it writes the trigger |
 | `INT_WATCH_INCOMPLETE` | Files without a trigger after the waiting time; nothing was moved | Check whether your process stopped before writing the trigger |
 | `INT_WATCH_MOVE_FAILED` | A drop could not be moved inside the watched folder | Check the rename and delete rights, and that no program holds the files open |
 | `INT_WATCH_REFUSED` | The app refused the drop; `problem.json` has the app's own code | Look up the app's code; fix the drop and move it back |

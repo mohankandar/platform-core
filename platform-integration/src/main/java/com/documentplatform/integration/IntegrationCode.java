@@ -101,6 +101,13 @@ public enum IntegrationCode implements com.documentplatform.errors.PlatformCode 
     /** The service account may not create folders or files in the target folder. */
     INT_FOLDER_NO_PERMISSION("The app's service account may not write to the export folder. Give it the right to "
             + "create, write, rename and delete folders and files there."),
+    /**
+     * A symbolic link, junction or other reparse point stands where the export expects its own package folder or file;
+     * it was not followed, and nothing behind it was touched.
+     */
+    INT_FOLDER_LINK_REFUSED("A link (symbolic link or junction) stands in the export folder where the app writes or "
+            + "removes its own package folders. Nothing behind it was touched. Remove the link, find out who made it, "
+            + "and allow only the app's service account to create entries in the export folder."),
     /** The disk or the account's quota is full. */
     INT_FOLDER_FULL("The export folder's disk or quota is full."),
     /** The network share cannot be reached. */
@@ -135,6 +142,14 @@ public enum IntegrationCode implements com.documentplatform.errors.PlatformCode 
     /** The service account may not read, create, rename or delete in the watched folder. */
     INT_WATCH_NO_PERMISSION("The app's service account may not work in the watched folder. Give it the right to list, "
             + "read, create, rename and delete folders and files there."),
+    /**
+     * A symbolic link, junction or other reparse point stands where the watched folder expects its own folder or file
+     * (_processing, _archive, _problem, _quarantine, a claim or its marker); it was not followed, and nothing behind it
+     * was touched.
+     */
+    INT_WATCH_LINK_REFUSED("A link (symbolic link or junction) stands in the watched folder where the app keeps its "
+            + "own folders (_processing, _archive, _problem, _quarantine) or a claimed drop. Nothing behind it was "
+            + "touched. Remove the link, find out who made it, and allow senders to create drops only."),
     /** The network share cannot be reached (before or during a pass). */
     INT_WATCH_SHARE_UNREACHABLE("The watched folder's network share cannot be reached (server down, share removed, "
             + "network or sign-in problem). Drops already claimed are released by themselves after the claim time."),
@@ -147,7 +162,10 @@ public enum IntegrationCode implements com.documentplatform.errors.PlatformCode 
     /** Moving a drop (to _processing, _archive, _problem or _quarantine) failed. */
     INT_WATCH_MOVE_FAILED("A drop could not be moved inside the watched folder. Check the service account's right to "
             + "rename and delete there, and that no other program holds the files open."),
-    /** A file of the drop changed after it was claimed (its checksum or size differs). */
+    /**
+     * A file of the drop changed after it was claimed: its checksum or size differs, or the bytes the virus scanner read
+     * are not the ones checked.
+     */
     INT_WATCH_FILE_CHANGED("A file of the drop changed after the app took it. The customer's process must finish "
             + "writing every file before it writes the trigger file. The drop was moved to _problem."),
     /**

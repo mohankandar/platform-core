@@ -132,6 +132,7 @@ On any failure only the `.partial` folder is touched, and removed when possible.
 | Final folder there, other or no manifest | `REFUSED` | `INT_FOLDER_EXISTS_DIFFERENT` (nothing changed) |
 | Target folder missing | `NOT_CONFIGURED` | `INT_FOLDER_NOT_FOUND` |
 | No right to write | `NOT_CONFIGURED` | `INT_FOLDER_NO_PERMISSION` |
+| A link (symbolic link, junction, reparse point) where the package folder or its `.partial` folder belongs, or inside a folder being removed | `NOT_CONFIGURED` | `INT_FOLDER_LINK_REFUSED` (never followed; nothing behind it touched; P043) |
 | Disk or quota full (before or while writing) | `OUTAGE` | `INT_FOLDER_FULL` |
 | Share not reachable | `CANT_CONNECT` | `INT_FOLDER_UNREACHABLE` |
 | Checksum or size differs after writing | `UNCLEAR` | `INT_INTEGRITY_MISMATCH` |

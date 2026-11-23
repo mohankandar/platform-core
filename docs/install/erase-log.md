@@ -60,7 +60,8 @@ A wrong or missing setting stops the app at startup with a list of every problem
 
 - **UP**: the log can be read, its chain is intact, the database is in step.
 - **OUT_OF_SERVICE**, code `ERASE_LOG_RESTORE_DETECTED`: the database is behind the log. Run the replay (section 5).
-- **DOWN**, with a code: `ERASE_LOG_UNREACHABLE` (location not mounted or no rights), `ERASE_LOG_CHAIN_BROKEN` (the
+- **DOWN**, with a code: `ERASE_LOG_UNREACHABLE` (location not mounted or no rights), `ERASE_LOG_LINK_REFUSED` (one of
+  the log's own files is a symbolic link or junction: remove it; nothing was written through it), `ERASE_LOG_CHAIN_BROKEN` (the
   log was changed), `ERASE_LOG_BEHIND_DATABASE` (the log lost entries: restore the log from its own backup),
   `ERASE_LOG_WRONG_LOG` (the app points at another log), `ERASE_LOG_GAP` (the database is older than the backup
   retention allows), `ERASE_POSITION_FAILED` (the table cannot be read).
