@@ -18,17 +18,24 @@ public record ModelGovConfig(ModelGovSettings settings, Duration measureRetentio
                              Duration workerEvery) {
 
     /** The settings are wrong; the message lists every problem with the property to fix. */
-    public static final class Invalid extends IllegalStateException {
+    public static final class Invalid extends IllegalStateException implements com.documentplatform.errors.HasPlatformCode {
         private final List<String> problems;
 
         Invalid(List<String> problems) {
-            super("Model governance settings are not valid (" + ModelGovProperties.PREFIX + "): "
+            super(ModelGovSettingsCode.MOD_SETTINGS_INVALID.name() + ": Model governance settings are not valid ("
+                    + ModelGovProperties.PREFIX + "): "
                     + String.join("; ", problems));
             this.problems = List.copyOf(problems);
         }
 
         public List<String> problems() {
             return problems;
+        }
+
+        /** The code, for monitoring, the failure analyzer and the app's error handler. */
+        @Override
+        public com.documentplatform.errors.PlatformCode platformCode() {
+            return ModelGovSettingsCode.MOD_SETTINGS_INVALID;
         }
     }
 

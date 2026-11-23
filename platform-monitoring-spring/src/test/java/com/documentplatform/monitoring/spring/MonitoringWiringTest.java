@@ -68,6 +68,30 @@ class MonitoringWiringTest {
         return t;
     }
 
+    /** xc-catalogue-12 (P037): bad settings stop the start with MON_SETTINGS_INVALID, every problem listed. */
+    @Test
+    void badSettingsAreRefusedWithTheirCodeAndEveryProblemListed() {
+        runner("platform.monitoring.folders.export.path=/srv/export", "platform.monitoring.folders.export.warn-at=96",
+                "platform.monitoring.folders.export.down-at=101", "platform.monitoring.services.ocr.url=ftp://ocr.internal/",
+                "platform.monitoring.services.ocr.expected-status=42", "platform.monitoring.every=0s")
+                .run(ctx -> {
+                    Throwable t = ctx.getStartupFailure();
+                    while (t != null && !(t instanceof MonitoringConfigException)) t = t.getCause();
+                    MonitoringConfigException e = assertInstanceOf(MonitoringConfigException.class, t);
+                    assertEquals(MonitoringSettingsCode.MON_SETTINGS_INVALID, e.platformCode());
+                    assertTrue(e.getMessage().startsWith("MON_SETTINGS_INVALID: "), e.getMessage());
+                    assertEquals(List.of("platform.monitoring.every must be more than zero (for example 60s)",
+                            "platform.monitoring.folders.export.down-at must be 1 to 100 (per cent)",
+                            "platform.monitoring.services.ocr.url must be an http or https address",
+                            "platform.monitoring.services.ocr.expected-status must be an HTTP status (100 to 599)"),
+                            e.problems());
+                    assertNotNull(new MonitoringFailureAnalyzer().analyze(ctx.getStartupFailure()));
+                });
+        runner("platform.monitoring.folders.export.path=/srv/export", "platform.monitoring.folders.export.warn-at=96",
+                "platform.monitoring.folders.export.down-at=95").run(ctx -> assertTrue(
+                String.valueOf(ctx.getStartupFailure()).contains("warn-at must not be above down-at")));
+    }
+
     @Test
     void theAppRefusesToStartWhileARequiredCheckIsDown() {
         runner().withBean("ocrCheck", DependencyCheck.class, () -> new SwitchableCheck("ocr", true).down())
