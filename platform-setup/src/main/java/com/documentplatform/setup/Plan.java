@@ -14,7 +14,7 @@ import java.util.TreeMap;
  * What setup will do (or did): one item per record, in the order it is applied. {@link #items()} is what the person
  * sees before anything is written; the other fields are what {@link SetupRun#apply} writes.
  */
-public final class Plan {
+final class Plan {
 
     public enum Action {
         CREATE("create"),
