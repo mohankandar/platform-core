@@ -41,6 +41,20 @@ public final class FieldDefinitions {
     private final FieldValuesCheck values;
     private final Clock clock;
 
+    /**
+     * The app's answer; when its check fails, the change is refused with {@code FIELD_VALUES_CHECK_FAILED} (P037),
+     * never let through: a locked property changes only when the app says no value exists.
+     */
+    private boolean valuesExist(FieldScope scope, FieldKey key) {
+        try {
+            return values.valuesExist(scope, key);
+        } catch (RuntimeException e) {
+            throw new FieldDefinitionException(Code.FIELD_VALUES_CHECK_FAILED, "Field " + key + ": the app's "
+                    + "values check failed (" + e.getClass().getSimpleName() + "), so the type, sensitive and primary "
+                    + "settings were not changed; try again later");
+        }
+    }
+
     public FieldDefinitions(FieldStore store, FieldValuesCheck values) {
         this(store, values, Clock.systemUTC());
     }
@@ -107,7 +121,7 @@ public final class FieldDefinitions {
         boolean kindChanges = !effective.sameValueKind(current.spec());
         boolean sensitiveChanges = effective.sensitive() != current.spec().sensitive();
         boolean primaryChanges = effective.primary() != current.spec().primary();
-        if ((kindChanges || sensitiveChanges || primaryChanges) && values.valuesExist(scope, current.key())) {
+        if ((kindChanges || sensitiveChanges || primaryChanges) && valuesExist(scope, current.key())) {
             if (kindChanges) {
                 throw new FieldDefinitionException(Code.FIELD_TYPE_LOCKED, "Field " + current.key()
                         + " already has values, so its type stays " + describe(current.spec())
