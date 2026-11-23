@@ -281,6 +281,41 @@ class VaultCryptoTest {
         refused(CryptoError.CRYPTO_SETTINGS_INVALID, () -> VaultAuth.token(" "));
     }
 
+    // ---- key settings, login again ----
+
+    @Test
+    void bothKeysAreNeitherExportableNorInPlaintextBackups() {
+        CustomerId c = CustomerId.of(UUID.randomUUID());
+        setup.createKeys(c);
+        for (String name : List.of(setup.wrappingKeyName(c), setup.fingerprintKeyName(c))) {
+            Map<String, Object> key = VaultJson.object(VaultDev.root("GET", "/v1/transit/keys/" + name, null), "data")
+                    .orElseThrow();
+            assertEquals(Boolean.FALSE, key.get("exportable"), name + " exportable");
+            assertEquals(Boolean.FALSE, key.get("allow_plaintext_backup"), name + " allow_plaintext_backup");
+            assertEquals("aes256-gcm96", key.get("type"), name);
+        }
+    }
+
+    @Test
+    void anExpiredAppRoleTokenIsReplacedByOneNewLogin() throws InterruptedException {
+        // What Vault answers for an expired token: 403 (not 401).
+        String shortLived = VaultDev.tokenWithTtl("1s", "platform-crypto-app");
+        String path = "/v1/transit/keys/" + app.wrappingKeyName(A);
+        assertEquals(200, VaultDev.statusWithToken("GET", path, shortLived));
+        Thread.sleep(2_500);
+        assertEquals(403, VaultDev.statusWithToken("GET", path, shortLived), "Vault's answer to an expired token");
+
+        try (VaultClient client = new VaultClient(VaultDev.address(), null, VaultAuth.appRole("approle",
+                VaultDev.roleId(VaultDev.SHORT_ROLE), VaultDev.newSecretId(VaultDev.SHORT_ROLE)),
+                Duration.ofSeconds(10))) {
+            ValueCipher values = new ValueCipher(new VaultKeyService(client));
+            String sealed = values.seal(A, "f", PLAIN);
+            Thread.sleep(VaultDev.SHORT_TTL_SECONDS * 1000L + 1_500);
+            assertEquals(PLAIN, values.openText(A, "f", sealed), "the call after the token expired succeeds");
+            assertEquals(PLAIN, values.openText(A, "f", values.seal(A, "f", PLAIN)));
+        }
+    }
+
     // ---- KV ----
 
     @Test
