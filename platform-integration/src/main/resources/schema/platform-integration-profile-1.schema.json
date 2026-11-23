@@ -50,7 +50,7 @@
         "list": {"$ref": "#/$defs/pollStep"},
         "itemsPointer": {"type": "string", "pattern": "^((/([^~/]|~[01])*)+)?$", "maxLength": 200, "description": "Where the list answer holds the array of items; empty when the answer is the array."},
         "idPointer": {"$ref": "#/$defs/pointer", "description": "Where an item holds its stable ID, relative to the item."},
-        "values": {"type": "object", "description": "Value name → pointer relative to the item: read and handed to the app.", "additionalProperties": {"$ref": "#/$defs/pointer"}},
+        "values": {"type": "object", "description": "Value name to pointer relative to the item: read and handed to the app.", "additionalProperties": {"$ref": "#/$defs/pointer"}},
         "fileNameValue": {"$ref": "#/$defs/name"},
         "paging": {
           "type": "object",
@@ -59,8 +59,8 @@
           "properties": {
             "mode": {"enum": ["NONE", "CURSOR", "NEXT_LINK", "PAGE_NUMBER"]},
             "pointer": {"$ref": "#/$defs/pointer", "description": "CURSOR: the next cursor in the answer; NEXT_LINK: the next page's address (without it, the Link header)."},
-            "param": {"type": "string", "pattern": "^[A-Za-z0-9_.\[\]-]{1,64}$", "description": "CURSOR: the cursor's query parameter; PAGE_NUMBER: the page number's."},
-            "sizeParam": {"type": "string", "pattern": "^[A-Za-z0-9_.\[\]-]{1,64}$"},
+            "param": {"type": "string", "pattern": "^[A-Za-z0-9_.\\[\\]-]{1,64}$", "description": "CURSOR: the cursor's query parameter; PAGE_NUMBER: the page number's."},
+            "sizeParam": {"type": "string", "pattern": "^[A-Za-z0-9_.\\[\\]-]{1,64}$"},
             "pageSize": {"type": "integer", "minimum": 1, "maximum": 1000},
             "firstPage": {"type": "integer", "minimum": 0, "maximum": 1},
             "maxPagesPerPass": {"type": "integer", "minimum": 1, "maximum": 1000},
