@@ -528,6 +528,42 @@ public final class InMemoryIdentityStore implements EntityStore, LoginConnection
                 .map(b -> Set.of(b.entityUuid())).orElse(Set.of()));
     }
 
+    // ---- push-API callers
+
+    /** Push-caller reads over this store, with the same rules as {@code PostgresPushCallerDirectory}. */
+    public com.documentplatform.identity.push.PushCallerDirectory pushCallerDirectory() {
+        return new com.documentplatform.identity.push.PushCallerDirectory() {
+            @Override
+            public List<ActiveConnection> activeConnections(String productCode, URI issuer) {
+                synchronized (InMemoryIdentityStore.this) {
+                    return connections.values().stream()
+                            .filter(c -> c.status() == IdentityConnectionStatus.ACTIVE
+                                    && c.productCode().equals(productCode)
+                                    && c.issuer().toString().equals(issuer.toString()))
+                            .sorted(java.util.Comparator.comparing(LoginConnection::tenantId))
+                            .map(c -> new ActiveConnection(c.tenantId(), c.providerId(), c.issuer(), c.apiAudience()))
+                            .toList();
+                }
+            }
+
+            @Override
+            public boolean hasActiveConnection(String tenantId, String productCode) {
+                return active(tenantId, productCode).isPresent();
+            }
+
+            @Override
+            public List<BoundClient> bindings(String productCode, String clientId) {
+                synchronized (InMemoryIdentityStore.this) {
+                    return bindings.values().stream()
+                            .filter(b -> b.productCode().equals(productCode) && b.clientId().equals(clientId))
+                            .sorted(java.util.Comparator.comparing(MachineBinding::tenantId))
+                            .map(b -> new BoundClient(b, entities.get(b.slotId()).status()))
+                            .toList();
+                }
+            }
+        };
+    }
+
     // ---- sign-in lookups
 
     /** The sign-in lookups for one product, with the same rules as {@code PostgresIdentityLookup}. */

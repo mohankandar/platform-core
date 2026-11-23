@@ -236,4 +236,36 @@ class ClientBindingsSetupTest {
         assertEquals(Set.of(EntityId.of(EntityUuid.fromSlotId("ENT-DEMO-0001"))), machines.find(key, LOAN));
         assertEquals(Set.of(), machines.find(key, SCAN), "its entity is still not activated");
     }
+
+    /** P028 B3: certificate client IDs (cert-sha256:<64 lowercase hex>), with a rotation overlap. */
+    @Test
+    void certificateFingerprintsAreClientIdsAndTwoGiveARotationOverlap() throws Exception {
+        demo();
+        Pg db = Pg.migrated();
+        String current = "cert-sha256:" + "a1".repeat(32);
+        String next = "cert-sha256:" + "b2".repeat(32);
+        bindings(HEADER + current + ",ENT-DEMO-0002,demo-scanner,current certificate\n"
+                + next + ",ENT-DEMO-0002,demo-scanner,next certificate (rotation)\n");
+        Result plan = run(db, "plan", A);
+        assertEquals(0, plan.exit(), plan.all());
+        assertTrue(plan.out().contains("create      client binding PRODUCT_A: client \"" + current
+                + "\" (client certificate) -> ENT-DEMO-0002, source demo-scanner"), plan.out());
+        assertEquals(0, run(db, "apply", A).exit());
+        assertEquals(List.of(current + " ENT-DEMO-0002 demo-scanner ACTIVE v1",
+                next + " ENT-DEMO-0002 demo-scanner ACTIVE v1"), stored(db));
+
+        // The old certificate's line removed: switched off, the next one stays.
+        bindings(HEADER + next + ",ENT-DEMO-0002,demo-scanner,next certificate (rotation)\n");
+        assertEquals(0, run(db, "apply", A).exit());
+        assertEquals(List.of(current + " ENT-DEMO-0002 demo-scanner INACTIVE v2",
+                next + " ENT-DEMO-0002 demo-scanner ACTIVE v1"), stored(db));
+
+        // A fingerprint that is not 64 lowercase hex digits is refused with its line.
+        bindings(HEADER + "cert-sha256:" + "A1".repeat(32) + ",ENT-DEMO-0002,demo-scanner,\n"
+                + "cert-sha256:abc,ENT-DEMO-0002,demo-scanner,\n");
+        Result bad = run(db, "plan", A);
+        assertNotEquals(0, bad.exit());
+        assertTrue(bad.err().contains("line 2: CLIENT_ID_INVALID"), bad.err());
+        assertTrue(bad.err().contains("line 3: CLIENT_ID_INVALID"), bad.err());
+    }
 }

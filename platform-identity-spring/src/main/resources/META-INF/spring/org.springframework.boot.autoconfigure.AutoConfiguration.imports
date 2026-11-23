@@ -1,3 +1,4 @@
 com.documentplatform.identity.spring.IdentityIssuerFetchAutoConfiguration
 com.documentplatform.identity.spring.IdentityLoginConnectionStoreAutoConfiguration
 com.documentplatform.identity.spring.IdentityLoginConnectionsAutoConfiguration
+com.documentplatform.identity.spring.IdentityPushCallerAutoConfiguration
