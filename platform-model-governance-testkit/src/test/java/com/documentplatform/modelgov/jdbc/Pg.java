@@ -53,6 +53,15 @@ final class Pg {
 
     /** A login with only {@code rights} on the mg_ tables and SELECT on the version table. Its password is "pw". */
     DataSource appUser(String rights) {
+        return appUser(rights, true);
+    }
+
+    /** Full rights on the tables, but no EXECUTE on the purge function. */
+    DataSource appUserWithoutPurge() {
+        return appUser("select, insert, update, delete", false);
+    }
+
+    private DataSource appUser(String rights, boolean purge) {
         String user = schema + "_app";
         exec(admin(null), "create role " + user + " login password 'pw'", "grant usage on schema " + schema + " to " + user);
         List<String> grants = new ArrayList<>();
@@ -60,6 +69,7 @@ final class Pg {
             grants.add("grant " + rights + " on " + schema + "." + table + " to " + user);
         }
         grants.add("grant select on " + schema + "." + ModelGovSchema.VERSION_TABLE + " to " + user);
+        if (purge) grants.add("grant execute on function " + schema + "." + ModelGovSchema.PURGE_FUNCTION + "(timestamptz) to " + user);
         exec(admin(null), grants.toArray(String[]::new));
         PGSimpleDataSource ds = new PGSimpleDataSource();
         ds.setURL(CONTAINER.getJdbcUrl());

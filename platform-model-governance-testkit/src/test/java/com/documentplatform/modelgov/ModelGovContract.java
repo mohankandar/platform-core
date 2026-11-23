@@ -687,6 +687,8 @@ public abstract class ModelGovContract {
 
     @Test
     void readingsArePurgedAfterTheRetentionDriftsStay() {
+        // In the database's past: its purge never removes readings younger than 30 days of its own time (V3).
+        clock.now = Instant.parse("2025-01-01T09:00:00Z");
         ModelUse u = monitored(model(vendorModel()));
         measures.report(u.useId(), entity, "correction_rate", new BigDecimal("0.50"), over(60));
         clock.advance(Duration.ofDays(401));

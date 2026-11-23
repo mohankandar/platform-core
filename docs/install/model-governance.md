@@ -14,8 +14,9 @@ The tables are created only by the app's schema step, never at app startup.
 
 - **Schema step:** a separate Flyway run with location `classpath:db/platform/modelgov` and history table
   `mg_schema_history`, run as the schema owner, in the same database schema the app uses. Files today:
-  `V1__modelgov.sql` (register, validations, approvals, live versions) and `V2__modelgov_monitoring.sql`
-  (monitoring, re-validation).
+  `V1__modelgov.sql` (register, validations, approvals, live versions), `V2__modelgov_monitoring.sql`
+  (monitoring, re-validation) and `V3__modelgov_purge_guard.sql` (the retention purge as the schema owner, since
+  0.6.0).
 - **Runtime user:** data rights only:
 
   ```sql
@@ -23,13 +24,16 @@ The tables are created only by the app's schema step, never at app startup.
       mg_threshold, mg_live, mg_monitor_threshold to app_runtime;
   grant select, insert on mg_validation, mg_validation_measure, mg_approval, mg_acceptance, mg_live_history,
       mg_drift, mg_drift_action, mg_review_notice to app_runtime;
-  grant select, insert, delete on mg_measure to app_runtime;
+  grant select, insert on mg_measure to app_runtime;
+  grant execute on function mg_purge_measures(timestamptz) to app_runtime;
   grant select on mg_schema_version to app_runtime;
   ```
 
   The validation records, approvals, acceptances, live switches, drift events, their actions and review notices are
   **insert only**: the database refuses to change or delete them, even for the schema owner. Monitoring readings
-  (`mg_measure`) are removed only by the app's retention purge.
+  (`mg_measure`) are removed only by the retention purge, through the function `mg_purge_measures`, which runs as
+  the schema owner and never removes readings younger than 30 days of the database's time; the runtime user cannot
+  delete them itself (it needs no DELETE on `mg_measure`; a DELETE granted before 0.6.0 may be revoked).
 - **At startup** the app checks the tables (version, completeness, rights) and stops with a code naming what is
   wrong (`MG_TABLES_MISSING`, `MG_VERSION_OLDER`, `MG_VERSION_NEWER`, `MG_TABLES_INCOMPLETE`,
   `MG_PRIVILEGES_MISSING`). The fix is in `docs/errors/platform-error-codes.md`.

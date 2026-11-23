@@ -62,6 +62,7 @@ final class Pg {
             grants.add("grant " + rights + " on " + schema + "." + table + " to " + user);
         }
         grants.add("grant select on " + schema + "." + ModelGovSchema.VERSION_TABLE + " to " + user);
+        grants.add("grant execute on function " + schema + "." + ModelGovSchema.PURGE_FUNCTION + "(timestamptz) to " + user);
         exec(admin(null), grants.toArray(String[]::new));
         PGSimpleDataSource ds = new PGSimpleDataSource();
         ds.setURL(CONTAINER.getJdbcUrl());

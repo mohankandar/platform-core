@@ -27,6 +27,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class ModelGovSchemaTest {
 
     private static final Instant AT = Instant.parse("2026-11-01T09:00:00Z");
+    /** Older than the database's 30-day floor, so the purge may remove it. */
+    private static final Instant OLD = Instant.parse("2026-01-01T09:00:00Z");
 
     @Test
     void verifyPassesForTheAppUserAndCreatesNothing() {
@@ -51,7 +53,7 @@ class ModelGovSchemaTest {
         assertEquals(ModelGovSchemaException.Problem.MG_VERSION_OLDER, problem(old.owner));
 
         Pg newer = Pg.migrated();
-        newer.exec("insert into mg_schema_version (version) values (3)");
+        newer.exec("insert into mg_schema_version (version) values (" + (ModelGovSchema.VERSION + 1) + ")");
         assertEquals(ModelGovSchemaException.Problem.MG_VERSION_NEWER, problem(newer.owner));
 
         Pg incomplete = Pg.migrated();
@@ -114,7 +116,7 @@ class ModelGovSchemaTest {
         UUID reading = UUID.randomUUID();
         st.insertReading(new com.documentplatform.modelgov.Monitoring.Reading(reading, s.use.useId(), s.entity,
                 "correction_rate", new BigDecimal("0.2"), new com.documentplatform.modelgov.Monitoring.MeasurePeriod(
-                AT, AT, 60), "app", AT));
+                AT, AT, 60), "app", OLD));
         UUID drift = UUID.randomUUID();
         st.insertDrift(new com.documentplatform.modelgov.Monitoring.Drift(drift, s.use.useId(), s.entity,
                 "correction_rate", new BigDecimal("0.2"), new BigDecimal("0.1"), Threshold.Direction.LOWER_IS_BETTER,
@@ -133,10 +135,50 @@ class ModelGovSchemaTest {
                 assertTrue(String.valueOf(e.getCause().getMessage()).contains("insert-only"), sql);
             }
         }
-        assertEquals(0, st.purgeReadings(AT), "nothing older than the cut-off");
-        assertEquals(1, st.purgeReadings(AT.plusSeconds(1)));
+        assertEquals(0, st.purgeReadings(OLD), "nothing older than the cut-off");
+        assertEquals(1, st.purgeReadings(OLD.plusSeconds(1)));
         assertEquals(0, db.count("select count(*) from mg_measure"));
         assertEquals(1, db.count("select count(*) from mg_drift"));
+    }
+
+    /**
+     * model-governance-84 (P037, schema V3): only the schema owner's purge function removes readings, never one younger
+     * than 30 days; the app's user cannot delete them itself, even with DELETE and mg.purge_before set.
+     */
+    @Test
+    void onlyTheOwnersPurgeRemovesReadingsAndNeverOneYoungerThan30Days() throws Exception {
+        Pg db = Pg.migrated();
+        DataSource app = db.appUser("select, insert, update, delete");
+        PostgresModelGovStore st = new PostgresModelGovStore(app);
+        Scenario s = Scenario.write(st);
+        Instant now = Instant.now();
+        for (Instant at : List.of(OLD, now.minus(java.time.Duration.ofDays(29)), now)) {
+            st.insertReading(new com.documentplatform.modelgov.Monitoring.Reading(UUID.randomUUID(), s.use.useId(),
+                    s.entity, "correction_rate", new BigDecimal("0.2"),
+                    new com.documentplatform.modelgov.Monitoring.MeasurePeriod(at, at, 60), "app", at));
+        }
+        // The app's user sets the purge setting itself and deletes: refused, as it is not the owner.
+        try (java.sql.Connection c = app.getConnection()) {
+            c.setAutoCommit(false);
+            try (java.sql.Statement x = c.createStatement()) {
+                x.execute("select set_config('mg.purge_before', '" + now.plusSeconds(60) + "', true)");
+                java.sql.SQLException e = assertThrows(java.sql.SQLException.class,
+                        () -> x.executeUpdate("delete from mg_measure"));
+                assertTrue(e.getMessage().contains("insert-only"), e.getMessage());
+            }
+            c.rollback();
+        }
+        assertEquals(3, db.count("select count(*) from mg_measure"));
+        // Asked to purge everything: only the reading older than 30 days goes.
+        assertEquals(1, st.purgeReadings(now.plusSeconds(60)));
+        assertEquals(2, db.count("select count(*) from mg_measure"));
+        // PUBLIC cannot run the function: only the user it is granted to.
+        assertFalse(db.count("select count(*) from information_schema.routine_privileges where routine_name = "
+                + "'mg_purge_measures' and grantee = 'PUBLIC'") > 0, "revoked from PUBLIC");
+        DataSource noExecute = Pg.migrated().appUserWithoutPurge();
+        ModelGovSchemaException e = assertThrows(ModelGovSchemaException.class, () -> ModelGovSchema.verify(noExecute));
+        assertEquals(ModelGovSchemaException.Problem.MG_PRIVILEGES_MISSING, e.problem());
+        assertTrue(e.getMessage().contains("mg_purge_measures"), e.getMessage());
     }
 
     @Test

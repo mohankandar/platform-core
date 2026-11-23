@@ -31,7 +31,7 @@ public final class ModelGovSchema {
     public static final String HISTORY_TABLE = "mg_schema_history";
 
     /** The table version this code needs: the number of the last migration file. */
-    public static final int VERSION = 2;
+    public static final int VERSION = 3;
 
     /** The tables the code reads and writes at runtime. */
     public static final List<String> TABLES = List.of("mg_model", "mg_model_history", "mg_model_use",
@@ -43,13 +43,20 @@ public final class ModelGovSchema {
     public static final List<String> INSERT_ONLY_TABLES = List.of("mg_validation", "mg_validation_measure",
             "mg_approval", "mg_acceptance", "mg_live_history", "mg_drift", "mg_drift_action", "mg_review_notice");
 
-    /** Readings: insert only, plus DELETE for the retention purge. */
+    /** Readings: insert only; removed only by {@link #PURGE_FUNCTION} (schema V3). */
     public static final String READINGS_TABLE = "mg_measure";
+
+    /**
+     * The retention purge (schema V3, P037): SECURITY DEFINER, owned by the schema owner, never removes readings
+     * younger than 30 days. The app's user needs EXECUTE on it (revoked from PUBLIC); DELETE on mg_measure is not needed.
+     */
+    public static final String PURGE_FUNCTION = "mg_purge_measures";
 
     /** Holds the version of the files that were run. */
     public static final String VERSION_TABLE = "mg_schema_version";
 
-    private static final List<String> SCRIPTS = List.of("V1__modelgov.sql", "V2__modelgov_monitoring.sql");
+    private static final List<String> SCRIPTS = List.of("V1__modelgov.sql", "V2__modelgov_monitoring.sql",
+            "V3__modelgov_purge_guard.sql");
     private static final List<String> RIGHTS = List.of("SELECT", "INSERT", "UPDATE", "DELETE");
     private static final String RUN_STEP = "run the model-governance schema step (Flyway location " + LOCATION
             + ", history table " + HISTORY_TABLE + ") before starting the app";
@@ -117,11 +124,38 @@ public final class ModelGovSchema {
             }
             for (String table : TABLES) {
                 requireRights(c, table, INSERT_ONLY_TABLES.contains(table) ? List.of("SELECT", "INSERT")
-                        : READINGS_TABLE.equals(table) ? List.of("SELECT", "INSERT", "DELETE") : RIGHTS);
+                        : READINGS_TABLE.equals(table) ? List.of("SELECT", "INSERT") : RIGHTS);
             }
+            requireExecute(c);
         } catch (SQLException e) {
             throw new ModelGovSchemaException(MG_CHECK_FAILED, "Model-governance tables could not be checked: the database "
                     + "refused the check (SQL state " + e.getSQLState() + ").", e);
+        }
+    }
+
+    /** EXECUTE on the purge function; at version 3 its absence makes the tables incomplete. */
+    private static void requireExecute(Connection c) throws SQLException {
+        String signature = PURGE_FUNCTION + "(timestamptz)";
+        try (PreparedStatement ps = c.prepareStatement("select to_regprocedure(?) is not null")) {
+            ps.setString(1, signature);
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                if (!rs.getBoolean(1)) {
+                    throw new ModelGovSchemaException(MG_TABLES_INCOMPLETE, "Model-governance tables incomplete at "
+                            + "version " + VERSION + ", missing: function " + signature + "; " + RUN_STEP + ".");
+                }
+            }
+        }
+        try (PreparedStatement ps = c.prepareStatement("select has_function_privilege(?, 'EXECUTE')")) {
+            ps.setString(1, signature);
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                if (!rs.getBoolean(1)) {
+                    throw new ModelGovSchemaException(MG_PRIVILEGES_MISSING, "The app's database user lacks "
+                            + "EXECUTE on function " + signature + ": grant EXECUTE on it to that user (the retention "
+                            + "purge of readings).");
+                }
+            }
         }
     }
 

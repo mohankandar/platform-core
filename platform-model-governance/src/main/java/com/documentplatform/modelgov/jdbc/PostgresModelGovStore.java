@@ -780,13 +780,13 @@ public final class PostgresModelGovStore implements ModelGovStore {
     @Override
     public int purgeReadings(Instant before) {
         return tx("purge readings", c -> {
-            try (PreparedStatement set = c.prepareStatement("select set_config('mg.purge_before', ?, true)")) {
-                set.setString(1, before.toString());
-                set.execute();
-            }
-            try (PreparedStatement ps = c.prepareStatement("delete from mg_measure where reported_at < ?")) {
+            // As the schema owner, with the 30-day floor, through the database's own function (schema V3, P037).
+            try (PreparedStatement ps = c.prepareStatement("select " + ModelGovSchema.PURGE_FUNCTION + "(?)")) {
                 ps.setTimestamp(1, ts(before));
-                return ps.executeUpdate();
+                try (ResultSet rs = ps.executeQuery()) {
+                    rs.next();
+                    return rs.getInt(1);
+                }
             }
         });
     }
