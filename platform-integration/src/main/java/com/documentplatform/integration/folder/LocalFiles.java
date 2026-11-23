@@ -6,6 +6,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
+import java.nio.file.DirectoryStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -13,15 +15,19 @@ import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Local disks and network shares through the JDK. On Windows a share path ({@code \\server\share\...}) is used as it
  * is, under the service account's own rights; on other systems a share must be mounted and its mount path configured.
- * Files are forced to the disk when closed; symbolic links are not followed when deleting.
+ * Files are forced to the disk when closed; symbolic links are not followed when deleting or listing. Used by folder
+ * export and the watched folder.
  */
-public final class LocalFiles implements ExportFiles {
+public final class LocalFiles implements com.documentplatform.integration.watch.WatchFiles {
 
     public static final LocalFiles INSTANCE = new LocalFiles();
 
@@ -127,5 +133,36 @@ public final class LocalFiles implements ExportFiles {
     @Override
     public long usableSpace(Path p) throws IOException {
         return Files.getFileStore(p).getUsableSpace();
+    }
+
+    @Override
+    public List<Entry> list(Path folder) throws IOException {
+        List<Entry> out = new ArrayList<>();
+        try (DirectoryStream<Path> s = Files.newDirectoryStream(folder)) {
+            for (Path p : s) {
+                BasicFileAttributes a;
+                try {
+                    a = Files.readAttributes(p, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                } catch (NoSuchFileException gone) {
+                    continue; // moved away meanwhile
+                }
+                // A Windows junction is a directory that is also "other" (a reparse point): treated as a link.
+                boolean link = a.isSymbolicLink() || a.isOther();
+                out.add(new Entry(p.getFileName().toString(), a.isDirectory() && !link, link, a.size(),
+                        a.lastModifiedTime().toInstant()));
+            }
+        }
+        return out;
+    }
+
+    @Override
+    public void move(Path from, Path to) throws IOException {
+        if (Files.exists(to, LinkOption.NOFOLLOW_LINKS)) throw new FileAlreadyExistsException(to.getFileName().toString());
+        Files.move(from, to, StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    @Override
+    public Path realPath(Path p) throws IOException {
+        return p.toRealPath();
     }
 }

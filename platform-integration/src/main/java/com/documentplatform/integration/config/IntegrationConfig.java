@@ -37,12 +37,15 @@ import java.util.regex.Pattern;
  *                         comma-separated), and a profile's own settings (for example {@code senderIdentity})
  * @param folder           where a folder export writes (kind {@code FOLDER_EXPORT}); null for the other kinds
  * @param callback         the signing secret of a callback (kind {@code CALLBACK}); null for the other kinds
+ * @param poll             how an API source is polled (kind {@code API_POLL}); null for the other kinds
+ * @param watch            the watched folder or share (kind {@code WATCHED_FOLDER}); null for the other kinds
  */
 public record IntegrationConfig(UUID id, UUID entity, String product, Kind kind, String name, boolean enabled,
                                 Endpoint endpoint, SignIn signIn, Limits limits, List<CallStep> steps,
                                 String errorCodePointer, List<Rule> rules, HealthCheck health, TestMode testMode,
                                 boolean sendCorrelationId, String profile, Set<String> allowedSensitiveFields,
-                                Map<String, String> settings, FolderTarget folder, CallbackTarget callback) {
+                                Map<String, String> settings, FolderTarget folder, CallbackTarget callback,
+                                PollSource poll, WatchSource watch) {
 
     public enum TestMode {
         /** Every step, with fake data, against the destination (its test entity). */
@@ -101,7 +104,7 @@ public record IntegrationConfig(UUID id, UUID entity, String product, Kind kind,
                              String errorCodePointer, List<Rule> rules, HealthCheck health, TestMode testMode,
                              boolean sendCorrelationId, String profile) {
         this(id, entity, product, kind, name, enabled, endpoint, signIn, limits, steps, errorCodePointer, rules,
-                health, testMode, sendCorrelationId, profile, Set.of(), Map.of(), null, null);
+                health, testMode, sendCorrelationId, profile, Set.of(), Map.of(), null, null, null, null);
     }
 
     /** With a folder target, without a callback (the kinds before P026). */
@@ -111,7 +114,7 @@ public record IntegrationConfig(UUID id, UUID entity, String product, Kind kind,
                              boolean sendCorrelationId, String profile, Set<String> allowedSensitiveFields,
                              Map<String, String> settings, FolderTarget folder) {
         this(id, entity, product, kind, name, enabled, endpoint, signIn, limits, steps, errorCodePointer, rules,
-                health, testMode, sendCorrelationId, profile, allowedSensitiveFields, settings, folder, null);
+                health, testMode, sendCorrelationId, profile, allowedSensitiveFields, settings, folder, null, null, null);
     }
 
     /**
@@ -124,14 +127,60 @@ public record IntegrationConfig(UUID id, UUID entity, String product, Kind kind,
                                                      signingSecret) {
         return new IntegrationConfig(UUID.randomUUID(), entity, product, Kind.CALLBACK, name, true, receiver, signIn,
                 Limits.DEFAULT, List.of(), null, List.of(), null, TestMode.FULL, true, null, Set.of(), Map.of(), null,
-                new CallbackTarget(signingSecret));
+                new CallbackTarget(signingSecret), null, null);
     }
 
     /** The callback's signing secret. */
     public IntegrationConfig withCallback(CallbackTarget t) {
         return new IntegrationConfig(id, entity, product, kind, name, enabled, endpoint, signIn, limits, steps,
                 errorCodePointer, rules, health, testMode, sendCorrelationId, profile, allowedSensitiveFields, settings,
-                folder, t);
+                folder, t, poll, watch);
+    }
+
+    /** With a folder target and a callback, without intake sources (the kinds before P027). */
+    public IntegrationConfig(UUID id, UUID entity, String product, Kind kind, String name, boolean enabled,
+                             Endpoint endpoint, SignIn signIn, Limits limits, List<CallStep> steps,
+                             String errorCodePointer, List<Rule> rules, HealthCheck health, TestMode testMode,
+                             boolean sendCorrelationId, String profile, Set<String> allowedSensitiveFields,
+                             Map<String, String> settings, FolderTarget folder, CallbackTarget callback) {
+        this(id, entity, product, kind, name, enabled, endpoint, signIn, limits, steps, errorCodePointer, rules,
+                health, testMode, sendCorrelationId, profile, allowedSensitiveFields, settings, folder, callback, null,
+                null);
+    }
+
+    /**
+     * A new API polling configuration, switched on, with default limits, no rules or health check: the source at
+     * {@code endpoint}, read as {@code source} says.
+     */
+    public static IntegrationConfig apiPoll(UUID entity, String product, String name, Endpoint endpoint,
+                                            SignIn signIn, PollSource source) {
+        return new IntegrationConfig(UUID.randomUUID(), entity, product, Kind.API_POLL, name, true, endpoint, signIn,
+                Limits.DEFAULT, List.of(), null, List.of(), null, TestMode.CHECK_ONLY, true, null, Set.of(), Map.of(),
+                null, null, Objects.requireNonNull(source, "source"), null);
+    }
+
+    /**
+     * A new watched folder configuration, switched on, with default limits. No sign-in bundle: the folder's rights are
+     * the service account's.
+     */
+    public static IntegrationConfig watchedFolder(UUID entity, String product, String name, WatchSource source) {
+        return new IntegrationConfig(UUID.randomUUID(), entity, product, Kind.WATCHED_FOLDER, name, true, null,
+                new SignIn.None(), Limits.DEFAULT, List.of(), null, List.of(), null, TestMode.CHECK_ONLY, false, null,
+                Set.of(), Map.of(), null, null, null, Objects.requireNonNull(source, "source"));
+    }
+
+    /** How the API source is polled. */
+    public IntegrationConfig withPoll(PollSource p) {
+        return new IntegrationConfig(id, entity, product, kind, name, enabled, endpoint, signIn, limits, steps,
+                errorCodePointer, rules, health, testMode, sendCorrelationId, profile, allowedSensitiveFields, settings,
+                folder, callback, p, watch);
+    }
+
+    /** The watched folder. */
+    public IntegrationConfig withWatch(WatchSource w) {
+        return new IntegrationConfig(id, entity, product, kind, name, enabled, endpoint, signIn, limits, steps,
+                errorCodePointer, rules, health, testMode, sendCorrelationId, profile, allowedSensitiveFields, settings,
+                folder, callback, poll, w);
     }
 
     /** Without a folder target (the API kinds). */
@@ -141,7 +190,7 @@ public record IntegrationConfig(UUID id, UUID entity, String product, Kind kind,
                              boolean sendCorrelationId, String profile, Set<String> allowedSensitiveFields,
                              Map<String, String> settings) {
         this(id, entity, product, kind, name, enabled, endpoint, signIn, limits, steps, errorCodePointer, rules,
-                health, testMode, sendCorrelationId, profile, allowedSensitiveFields, settings, null, null);
+                health, testMode, sendCorrelationId, profile, allowedSensitiveFields, settings, null, null, null, null);
     }
 
     public Direction direction() {
@@ -169,21 +218,21 @@ public record IntegrationConfig(UUID id, UUID entity, String product, Kind kind,
     public static IntegrationConfig folderExport(UUID entity, String product, String name, FolderTarget target) {
         return new IntegrationConfig(UUID.randomUUID(), entity, product, Kind.FOLDER_EXPORT, name, true, null,
                 new SignIn.None(), Limits.DEFAULT, List.of(), null, List.of(), null, TestMode.FULL, true, null,
-                Set.of(), Map.of(), Objects.requireNonNull(target, "target"), null);
+                Set.of(), Map.of(), Objects.requireNonNull(target, "target"), null, null, null);
     }
 
     private IntegrationConfig with(String n, boolean on, Endpoint e, SignIn s, Limits l, List<CallStep> st, String p,
                                    List<Rule> r, HealthCheck h, TestMode t, boolean corr, String prof,
                                    Set<String> sens, Map<String, String> set) {
         return new IntegrationConfig(id, entity, product, kind, n, on, e, s, l, st, p, r, h, t, corr, prof, sens, set,
-                folder, callback);
+                folder, callback, poll, watch);
     }
 
     /** Where a folder export writes. */
     public IntegrationConfig withFolder(FolderTarget f) {
         return new IntegrationConfig(id, entity, product, kind, name, enabled, endpoint, signIn, limits, steps,
                 errorCodePointer, rules, health, testMode, sendCorrelationId, profile, allowedSensitiveFields, settings,
-                f, callback);
+                f, callback, poll, watch);
     }
 
     public IntegrationConfig withEnabled(boolean on) {

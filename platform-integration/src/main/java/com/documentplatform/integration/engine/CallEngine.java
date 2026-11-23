@@ -197,6 +197,39 @@ public final class CallEngine implements AutoCloseable {
                 c.requiredTokenClaims(), cert.certificate());
     }
 
+    /** The client certificate (mutual TLS) and sign-in headers for a run of calls, or why there are none. */
+    record Ready(ClientCertificate certificate, List<Map.Entry<String, String>> headers, Outcome failure,
+                 IntegrationCode code) {
+        boolean ok() {
+            return failure == null;
+        }
+    }
+
+    /** For the poll engine: the CURRENT certificate and the sign-in, as an attempt prepares them. */
+    Ready ready(IntegrationConfig c) {
+        Cert cert = certificate(c, CredentialState.CURRENT);
+        if (cert.failure() != null) {
+            return new Ready(null, List.of(), certificateOutcome(cert.failure()), cert.failure());
+        }
+        SignInHeaders.Prepared p = signIn.prepare(c.signIn(), c.limits(), c.endpoint().useProxy(),
+                c.requiredTokenClaims(), cert.certificate());
+        if (!p.ok()) return new Ready(null, List.of(), p.failure(), p.code());
+        return new Ready(cert.certificate(), p.headers(), null, null);
+    }
+
+    /** After a source or destination refused the sign-in: a held OAuth 2.0 token is dropped. */
+    void signInRefused(IntegrationConfig c) {
+        signIn.refused(c.signIn());
+    }
+
+    Outbound outbound() {
+        return outbound;
+    }
+
+    Clock clock() {
+        return clock;
+    }
+
     private HealthResult health(IntegrationConfig c, int version, Outcome o, IntegrationCode code, String destCode,
                                 int status, Duration retryAfter) {
         return new HealthResult(c.id(), version, o, code, destCode, status, retryAfter, clock.instant());
@@ -770,7 +803,7 @@ public final class CallEngine implements AutoCloseable {
     }
 
     /** A Location (absolute, or a path) resolved against the base address, only when it stays on the same host. */
-    private static Optional<URI> sameHost(IntegrationConfig c, String location) {
+    static Optional<URI> sameHost(IntegrationConfig c, String location) {
         try {
             if (location.length() > 2000 || location.chars().anyMatch(ch -> ch <= 0x20 || ch == 0x7f)) {
                 return Optional.empty();
@@ -879,7 +912,7 @@ public final class CallEngine implements AutoCloseable {
 
     // ---- Helpers ----
 
-    private static URI address(IntegrationConfig c, String path) {
+    static URI address(IntegrationConfig c, String path) {
         String base = c.endpoint().baseAddress().toString();
         while (base.endsWith("/")) base = base.substring(0, base.length() - 1);
         URI uri = URI.create(base + path);
@@ -897,7 +930,7 @@ public final class CallEngine implements AutoCloseable {
         };
     }
 
-    private static Object json(byte[] body) {
+    static Object json(byte[] body) {
         if (body.length == 0) return null;
         try {
             return Json.parse(new String(body, StandardCharsets.UTF_8));
@@ -906,7 +939,7 @@ public final class CallEngine implements AutoCloseable {
         }
     }
 
-    private static String destinationCode(IntegrationConfig c, Object json) {
+    static String destinationCode(IntegrationConfig c, Object json) {
         if (c.errorCodePointer() == null || json == null) return null;
         Object v = Json.at(json, c.errorCodePointer()).orElse(null);
         if (!(v instanceof String) && !(v instanceof Long)) return null;
@@ -914,7 +947,7 @@ public final class CallEngine implements AutoCloseable {
         return SAFE_CODE.matcher(s).matches() ? s : null;
     }
 
-    private static Optional<String> scalar(Optional<Object> v) {
+    static Optional<String> scalar(Optional<Object> v) {
         if (v.isEmpty()) return Optional.empty();
         Object o = v.get();
         if (!(o instanceof String) && !(o instanceof Long) && !(o instanceof Double) && !(o instanceof Boolean)) {
@@ -938,7 +971,7 @@ public final class CallEngine implements AutoCloseable {
         streams.clear();
     }
 
-    private static Map.Entry<String, String> entry(String k, String v) {
+    static Map.Entry<String, String> entry(String k, String v) {
         return new AbstractMap.SimpleImmutableEntry<>(k, v);
     }
 
