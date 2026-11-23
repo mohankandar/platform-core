@@ -53,6 +53,8 @@ class ReleasedSqlFilesTest {
             // New in this release (not in a release tag yet); pinned now so it is never edited after it ships.
             Map.entry("platform-model-governance/src/main/resources/db/platform/modelgov/V3__modelgov_purge_guard.sql",
                     "479f9446045617b0029bc1f36d606c0d4b26ad26114344233bc238de8800893f"),
+            Map.entry("platform-model-governance/src/main/resources/db/platform/modelgov/V4__modelgov_validation_location.sql",
+                    "37f64a5ce6163dbfd602a210e9e66d6aa4c66f67dc9dba0b8dba08dbdbad884f"),
             Map.entry("platform-notifications/src/main/resources/db/platform/notifications/V1__notifications.sql",
                     "0bc9fbe0a3aae64af373c86a7aaf94f1a436310a78a8484bf3ef33d95160286e")));
 
