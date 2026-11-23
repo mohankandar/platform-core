@@ -150,4 +150,19 @@ class StartupSchemaCheckTest {
         assertTrue(analysis[0].getDescription().startsWith("Notifications tables missing"));
         assertTrue(analysis[0].getAction().startsWith("Run the app's database schema step"));
     }
+
+    /** xc-schemas-3 (P037): the runtime user has data rights only; every DDL statement is refused by the database. */
+    @Test
+    void theRuntimeUserCannotRunDdl() throws Exception {
+        javax.sql.DataSource app = Db.migrated().appUser("select, insert, update, delete");
+        String table = com.documentplatform.notifications.jdbc.NotificationSchema.TABLES.get(0);
+        for (String sql : java.util.List.of("create table notif_extra (x int)", "alter table " + table + " add column note text",
+                "drop table " + table)) {
+            try (java.sql.Connection c = app.getConnection(); java.sql.Statement s = c.createStatement()) {
+                java.sql.SQLException e = org.junit.jupiter.api.Assertions.assertThrows(java.sql.SQLException.class,
+                        () -> s.execute(sql), sql);
+                org.junit.jupiter.api.Assertions.assertEquals("42501", e.getSQLState(), sql + ": " + e.getMessage());
+            }
+        }
+    }
 }
