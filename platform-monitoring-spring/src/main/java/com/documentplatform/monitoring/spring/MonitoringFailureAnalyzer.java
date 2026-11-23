@@ -5,7 +5,7 @@ import org.springframework.boot.diagnostics.FailureAnalysis;
 import org.springframework.boot.diagnostics.FailureAnalyzer;
 
 /** Turns a start-up refusal into Spring Boot's "APPLICATION FAILED TO START": one line per DOWN required check. */
-public final class MonitoringFailureAnalyzer implements FailureAnalyzer {
+final class MonitoringFailureAnalyzer implements FailureAnalyzer {
 
     @Override
     public FailureAnalysis analyze(Throwable failure) {

@@ -1,5 +1,6 @@
 package com.documentplatform.notifications.spring;
 
+import com.documentplatform.notifications.spring.internal.NotificationsConfig;
 import com.documentplatform.notifications.FailureCode;
 import com.documentplatform.notifications.email.MailAuth;
 import com.documentplatform.notifications.email.MailSecurity;

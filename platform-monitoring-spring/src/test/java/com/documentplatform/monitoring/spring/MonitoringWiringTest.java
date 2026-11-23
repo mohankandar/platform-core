@@ -106,10 +106,10 @@ class MonitoringWiringTest {
                 new org.springframework.boot.context.properties.source.MapConfigurationPropertySource(props))
                 .bindOrCreate("platform.notifications",
                         com.documentplatform.notifications.spring.NotificationsProperties.class);
-        var config = com.documentplatform.notifications.spring.NotificationsConfig.from(p);
+        var config = com.documentplatform.notifications.spring.internal.NotificationsConfig.from(p);
         CheckResult[] out = new CheckResult[1];
         runner(props.entrySet().stream().map(e -> e.getKey() + "=" + e.getValue()).toArray(String[]::new))
-                .withBean(com.documentplatform.notifications.spring.NotificationsConfig.class, () -> config)
+                .withBean(com.documentplatform.notifications.spring.internal.NotificationsConfig.class, () -> config)
                 .run(ctx -> out[0] = ctx.getBean(DependencyStatus.class).runAll().stream()
                         .filter(r -> r.name().equals("channel-mail")).findFirst().orElseThrow());
         return out[0];

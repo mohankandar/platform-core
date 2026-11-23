@@ -4,7 +4,7 @@ import org.springframework.boot.diagnostics.FailureAnalysis;
 import org.springframework.boot.diagnostics.FailureAnalyzer;
 
 /** Turns wrong outbound settings, or a missing app bean, into Spring Boot's "APPLICATION FAILED TO START". */
-public final class OutboundFailureAnalyzer implements FailureAnalyzer {
+final class OutboundFailureAnalyzer implements FailureAnalyzer {
 
     @Override
     public FailureAnalysis analyze(Throwable failure) {

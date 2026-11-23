@@ -1,5 +1,6 @@
 package com.documentplatform.notifications.spring;
 
+import com.documentplatform.notifications.spring.internal.NotificationsConfig;
 import com.documentplatform.notifications.Channel;
 import com.documentplatform.notifications.ChannelKind;
 import com.documentplatform.notifications.email.EmailChannel;
@@ -17,7 +18,7 @@ import java.util.Optional;
  * The senders the install config asks for: e-mail when a mail server is configured, Teams and Slack when they have
  * destinations. Each is observed for {@link DestinationHealth}. One mail server serves every e-mail destination.
  */
-public final class NotificationChannels implements AutoCloseable {
+final class NotificationChannels implements AutoCloseable {
 
     private final List<Channel> channels;
     private final List<AutoCloseable> closeables = new ArrayList<>();

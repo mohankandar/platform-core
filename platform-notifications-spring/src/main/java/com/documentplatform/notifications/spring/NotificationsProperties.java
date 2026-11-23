@@ -7,9 +7,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * The install config of notifications, prefix {@code platform.notifications}. Bound as given and checked at startup by
- * {@link NotificationsConfig#from(NotificationsProperties)}, which stops the app with a specific message for each
- * wrong value. Secrets never go here: the mail password and the webhook addresses are given as references into the
+ * The install config of notifications, prefix {@code platform.notifications}. Bound as given and checked at startup,
+ * which stops the app with a specific message for each wrong value. Secrets never go here: the mail password and the webhook addresses are given as references into the
  * secret store, read by the app's {@code SecretResolver} when sending.
  */
 @ConfigurationProperties(prefix = NotificationsProperties.PREFIX)
@@ -315,11 +314,6 @@ public class NotificationsProperties {
 
         public void setAuthority(String authority) {
             this.authority = authority;
-        }
-
-        boolean anySet() {
-            return directoryId != null || clientId != null || credentialType != null || credentialSecret != null
-                    || senderMailbox != null || authority != null;
         }
     }
 

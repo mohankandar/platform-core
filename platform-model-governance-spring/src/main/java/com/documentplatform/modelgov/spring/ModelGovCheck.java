@@ -21,7 +21,7 @@ import java.util.Map;
  * action, or {@code MOD_REVIEW_OVERDUE} when a use's review is overdue; else WORKING. Counts, IDs and dates only.
  * Never required at startup (the schema check at startup already refuses a wrong schema).
  */
-public final class ModelGovCheck implements DependencyCheck {
+final class ModelGovCheck implements DependencyCheck {
 
     private final DataSource dataSource;
     private final ModelReviews reviews;
@@ -29,7 +29,7 @@ public final class ModelGovCheck implements DependencyCheck {
     private final Clock clock;
 
     /** @param dataSource the database of the Postgres store, or null when the app supplies its own store */
-    public ModelGovCheck(DataSource dataSource, ModelReviews reviews, ModelMeasures measures, Clock clock) {
+    ModelGovCheck(DataSource dataSource, ModelReviews reviews, ModelMeasures measures, Clock clock) {
         this.dataSource = dataSource;
         this.reviews = reviews;
         this.measures = measures;

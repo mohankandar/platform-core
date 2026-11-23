@@ -55,7 +55,7 @@ final class BuiltInChecks {
         if (present("com.documentplatform.notifications.secret.SecretResolver", cl)) Secrets.add(out, beans, p);
         if (present("com.documentplatform.licensing.LicenceService", cl)) Licensing.add(out, beans);
         if (present("com.documentplatform.identity.store.LoginConnectionStore", cl)) Login.add(out, beans, p, env, clock);
-        if (present("com.documentplatform.notifications.spring.NotificationsConfig", cl)) Mail.add(out, beans);
+        if (present("com.documentplatform.notifications.spring.internal.NotificationsConfig", cl)) Mail.add(out, beans);
         p.getFolders().forEach((name, f) -> {
             if (f.getPath() != null && !f.getPath().isBlank()) {
                 out.add(new FileLocationCheck(name, Path.of(f.getPath()), f.isWritable(), f.getWarnAt(), f.getDownAt(),
@@ -117,7 +117,7 @@ final class BuiltInChecks {
      */
     static final class Mail {
         static void add(List<DependencyCheck> out, ListableBeanFactory beans) {
-            var config = unique(beans, com.documentplatform.notifications.spring.NotificationsConfig.class);
+            var config = unique(beans, com.documentplatform.notifications.spring.internal.NotificationsConfig.class);
             if (config == null || config.mail().isEmpty()) return;
             var m = config.mail().get();
             out.add(com.documentplatform.monitoring.checks.ChannelCheck.mail("mail", Map.of("host", m.host(),

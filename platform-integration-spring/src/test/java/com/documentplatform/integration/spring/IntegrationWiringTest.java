@@ -95,6 +95,21 @@ class IntegrationWiringTest {
                 .withBean(IntegrationStore.class, InMemoryIntegrationStore::new);
     }
 
+    /**
+     * platform-outbound-spring's failure analyzer, made the way Spring Boot makes it from {@code spring.factories}: it is
+     * package-private since P041.
+     */
+    private static org.springframework.boot.diagnostics.FailureAnalyzer outboundFailureAnalyzer() {
+        try {
+            var c = Class.forName("com.documentplatform.outbound.spring.OutboundFailureAnalyzer")
+                    .getDeclaredConstructor();
+            c.setAccessible(true);
+            return (org.springframework.boot.diagnostics.FailureAnalyzer) c.newInstance();
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
+        }
+    }
+
     private static Throwable root(Throwable t) {
         while (t != null && !(t instanceof IntegrationConfigException) && !(t instanceof IntegrationSchemaException)
                 && !(t instanceof OutboundConfigException)
@@ -252,8 +267,7 @@ class IntegrationWiringTest {
                     assertTrue(m.contains("private-ca-file must be an absolute path"), m);
                     assertTrue(m.contains("proxy.port is required"), m);
                     assertEquals(3, e.problems().size(), m);
-                    assertNotNull(new com.documentplatform.outbound.spring.OutboundFailureAnalyzer()
-                            .analyze(ctx.getStartupFailure()));
+                    assertNotNull(outboundFailureAnalyzer().analyze(ctx.getStartupFailure()));
                 });
         // No outbound settings at all: integration refuses, naming the setting, with its own problems.
         app(new InMemorySecretResolver(), new Audit(),

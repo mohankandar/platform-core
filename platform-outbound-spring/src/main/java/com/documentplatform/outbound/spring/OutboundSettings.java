@@ -16,13 +16,13 @@ import java.util.List;
  * Checks {@code platform.outbound.*} and builds the {@link Installation}. Every problem is listed at once
  * ({@link OutboundConfigException}); problems name the property, never a value (a pasted secret stays out of the log).
  */
-public final class OutboundSettings {
+final class OutboundSettings {
 
     private OutboundSettings() {
     }
 
     /** @throws OutboundConfigException listing every problem */
-    public static Installation from(OutboundProperties p) {
+    static Installation from(OutboundProperties p) {
         String prefix = OutboundProperties.PREFIX + ".";
         List<String> problems = new ArrayList<>();
 

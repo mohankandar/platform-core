@@ -28,7 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li><b>Not used yet</b>: nothing was sent to it since this instance started.</li>
  * </ul>
  */
-public final class DestinationHealth {
+final class DestinationHealth {
 
     /** Temporary failures without a success in between for this long count as Down. */
     public static final Duration DOWN_AFTER = Duration.ofMinutes(15);
