@@ -22,11 +22,21 @@ public final class Eraser {
     private final EraseLog log;
     private final ErasePosition position;
     private final EraseHandlers handlers;
+    private final EraseGuard guard;
 
     public Eraser(EraseLog log, ErasePosition position, EraseHandlers handlers) {
+        this(log, position, handlers, null);
+    }
+
+    /**
+     * @param guard told of an entry that could not be applied ({@link EraseGuard.State#lastFailure()}), for the admin
+     *              screen; may be null
+     */
+    public Eraser(EraseLog log, ErasePosition position, EraseHandlers handlers, EraseGuard guard) {
         this.log = Objects.requireNonNull(log, "log");
         this.position = Objects.requireNonNull(position, "position");
         this.handlers = Objects.requireNonNull(handlers, "handlers");
+        this.guard = guard;
     }
 
     /**
@@ -68,12 +78,12 @@ public final class Eraser {
             if (p.appliedSeq() < head.seq()) {
                 List<EraseEntry> pending = log.after(p.appliedSeq());
                 for (EraseEntry e : pending) {
-                    Applying.apply(handlers, locked, e);
+                    Applying.apply(handlers, locked, e, guard);
                     caughtUp++;
                 }
             }
             EraseEntry entry = log.record(request);
-            return new Erased(entry, Applying.apply(handlers, locked, entry), caughtUp);
+            return new Erased(entry, Applying.apply(handlers, locked, entry, guard), caughtUp);
         });
     }
 }

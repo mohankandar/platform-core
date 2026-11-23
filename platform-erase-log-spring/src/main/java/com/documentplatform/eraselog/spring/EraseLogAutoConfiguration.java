@@ -86,14 +86,15 @@ public class EraseLogAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    Eraser eraser(EraseLog log, ErasePosition position, EraseHandlers handlers) {
-        return new Eraser(log, position, handlers);
+    Eraser eraser(EraseLog log, ErasePosition position, EraseHandlers handlers, EraseGuard guard) {
+        return new Eraser(log, position, handlers, guard);
     }
 
     @Bean
     @ConditionalOnMissingBean
-    EraseReplay eraseReplay(EraseLog log, ErasePosition position, EraseHandlers handlers, ObjectProvider<Clock> clock) {
-        return new EraseReplay(log, position, handlers, clock.getIfAvailable(Clock::systemUTC));
+    EraseReplay eraseReplay(EraseLog log, ErasePosition position, EraseHandlers handlers, ObjectProvider<Clock> clock,
+                            EraseGuard guard) {
+        return new EraseReplay(log, position, handlers, clock.getIfAvailable(Clock::systemUTC), guard);
     }
 
     /** The guard, with the startup check already run. */

@@ -25,6 +25,10 @@ import java.util.UUID;
  * </ul>
  * The system also takes no work while the log cannot be read, its chain is broken, the database has applied more than
  * the log holds, belongs to another log, or is older than the log's oldest kept entry: each with its code.
+ *
+ * <p>An entry that was logged but could not be applied here ({@link Eraser} or {@link EraseReplay} given this guard)
+ * is kept as {@link State#lastFailure()}: its number, kind, record type and ID, and the handler's code, for the admin
+ * screen. It is cleared once the database has applied that entry.
  */
 public final class EraseGuard {
 
@@ -32,6 +36,7 @@ public final class EraseGuard {
     private final ErasePosition position;
     private final Clock clock;
     private volatile State state;
+    private volatile ApplyFailure lastFailure;
 
     public EraseGuard(EraseLog log, ErasePosition position, Clock clock) {
         this.log = Objects.requireNonNull(log, "log");
@@ -49,14 +54,56 @@ public final class EraseGuard {
      * @param logHead      the log's last entry
      * @param applied      the database's applied position
      * @param chainChecked whether this check walked the whole chain (startup), not only the head
+     * @param lastFailure  the last entry this instance could not apply, while it is not applied; null when none
      */
     public record State(boolean mayTakeWork, EraseLogError code, String message, UUID logId, long logHead,
-                        long applied, Instant checkedAt, boolean chainChecked) {
+                        long applied, Instant checkedAt, boolean chainChecked, ApplyFailure lastFailure) {
+
+        public State(boolean mayTakeWork, EraseLogError code, String message, UUID logId, long logHead, long applied,
+                     Instant checkedAt, boolean chainChecked) {
+            this(mayTakeWork, code, message, logId, logHead, applied, checkedAt, chainChecked, null);
+        }
+
+        State withFailure(ApplyFailure f) {
+            return new State(mayTakeWork, code, message, logId, logHead, applied, checkedAt, chainChecked, f);
+        }
 
         /** Entries in the log not yet applied in this database. */
         public long pending() {
             return Math.max(0, logHead - applied);
         }
+    }
+
+    /**
+     * An entry that was logged and could not be applied: ids and codes only, never a value (an entry holds none).
+     *
+     * @param seq         the entry's number
+     * @param handlerCode the handler's own code (for example {@code DOC_STORE_DOWN}); else the erase log's code
+     * @param code        the erase log's code ({@code ERASE_HANDLER_FAILED}, {@code ERASE_HANDLER_MISSING}, …)
+     * @param at          when it failed
+     */
+    public record ApplyFailure(long seq, String kind, String recordType, String recordId, String handlerCode,
+                               EraseLogError code, Instant at) {
+        public ApplyFailure {
+            Objects.requireNonNull(kind, "kind");
+            Objects.requireNonNull(recordType, "recordType");
+            Objects.requireNonNull(recordId, "recordId");
+            Objects.requireNonNull(handlerCode, "handlerCode");
+            Objects.requireNonNull(code, "code");
+            Objects.requireNonNull(at, "at");
+        }
+    }
+
+    /**
+     * Records that {@code entry} could not be applied ({@link Eraser} and {@link EraseReplay} call this when given the
+     * guard). Kept in the state until the database has applied the entry.
+     */
+    public void applyFailed(EraseEntry entry, EraseLogException failure) {
+        ApplyFailure f = new ApplyFailure(entry.seq(), entry.kind(), entry.request().recordType(),
+                entry.request().recordId(), failure.handlerCode().orElse(failure.code().name()), failure.code(),
+                clock.instant());
+        lastFailure = f;
+        state = state.withFailure(f);
     }
 
     public boolean mayTakeWork() {
@@ -155,7 +202,13 @@ public final class EraseGuard {
     }
 
     private State set(State s) {
-        state = s;
-        return s;
+        ApplyFailure f = lastFailure;
+        if (f != null && s.applied() >= f.seq()) {
+            lastFailure = null; // applied since: resolved
+            f = null;
+        }
+        State withFailure = s.withFailure(f);
+        state = withFailure;
+        return withFailure;
     }
 }
