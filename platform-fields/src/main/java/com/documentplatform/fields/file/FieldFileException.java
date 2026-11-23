@@ -11,7 +11,7 @@ import java.util.Objects;
  */
 public final class FieldFileException extends IllegalArgumentException {
 
-    public enum Code {
+    public enum Code implements com.documentplatform.errors.PlatformCode {
         /** Not JSON of the strict subset used (no null, whole numbers only, no repeated members). */
         FILE_UNREADABLE,
         /** Not a {@code platform-fields/1} file. */

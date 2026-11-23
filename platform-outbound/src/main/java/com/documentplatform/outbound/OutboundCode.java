@@ -5,7 +5,7 @@ package com.documentplatform.outbound;
  * integrations to their {@code INT_…} codes of the same name, so no integration result changes). Never holds an
  * address, header, body or secret.
  */
-public enum OutboundCode {
+public enum OutboundCode implements com.documentplatform.errors.PlatformCode {
     /** Could not connect (refused, unreachable, or the address cannot be used). */
     OUT_CANT_CONNECT,
     /** The host name is not known. */

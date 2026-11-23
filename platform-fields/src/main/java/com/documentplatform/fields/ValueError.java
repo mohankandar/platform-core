@@ -4,7 +4,7 @@ package com.documentplatform.fields;
  * Why a value was refused. Stable codes; each comes with a plain message that names the field's label and the rule,
  * never the value.
  */
-public enum ValueError {
+public enum ValueError implements com.documentplatform.errors.PlatformCode {
     /** The field is required and no value was given. */
     VALUE_REQUIRED,
     /** The value is blank. */

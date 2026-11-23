@@ -4,7 +4,7 @@ package com.documentplatform.crypto;
  * Why an encryption, decryption, fingerprint or key service call failed. Stable codes; the message with each names
  * what was being done and the key or setting involved, never a key, a token, a secret or a value.
  */
-public enum CryptoError {
+public enum CryptoError implements com.documentplatform.errors.PlatformCode {
     /** A setting is missing or not valid (address, mount, key prefix, login). The message names the setting. */
     CRYPTO_SETTINGS_INVALID,
     /** The key service does not answer: connection refused, no route, timeout. */

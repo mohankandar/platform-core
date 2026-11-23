@@ -10,6 +10,7 @@
     <description>Shared platform libraries for document products</description>
     <modules>
         <module>platform-bom</module>
+        <module>platform-errors</module>
         <module>platform-identity-core</module>
         <module>platform-identity-spring</module>
         <module>platform-notifications</module>
@@ -34,6 +35,7 @@
         <module>platform-integration</module>
         <module>platform-integration-testkit</module>
         <module>platform-integration-spring</module>
+        <module>platform-error-catalogue</module>
     </modules>
     <properties>
         <maven.compiler.release>21</maven.compiler.release>

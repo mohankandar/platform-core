@@ -8,7 +8,7 @@ package com.documentplatform.notifications;
  * are retried with backoff. The others need someone to change something (a refused login, a webhook that no longer
  * exists): the outbox stops at once and reports them.
  */
-public enum FailureCode {
+public enum FailureCode implements com.documentplatform.errors.PlatformCode {
     // Mail server
     MAIL_SERVER_UNREACHABLE("Mail server could not be reached", true),
     MAIL_TIMEOUT("Mail server did not answer in time", true),

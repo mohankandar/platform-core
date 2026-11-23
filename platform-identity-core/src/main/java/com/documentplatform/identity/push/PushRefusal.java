@@ -4,7 +4,7 @@ package com.documentplatform.identity.push;
  * Why a push-API caller was refused. The caller only ever gets a neutral answer ({@link PushCallerResult#NEUTRAL});
  * the log and the IT Admin get the code.
  */
-public enum PushRefusal {
+public enum PushRefusal implements com.documentplatform.errors.PlatformCode {
     /** No ACTIVE login connection for this product has the token's issuer (or, for a certificate, the customer). */
     IDN_PUSH_NO_CONNECTION,
     /** The token's audiences do not include the connection's API audience. */

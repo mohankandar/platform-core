@@ -41,7 +41,7 @@ public final class ClientBindingsFile {
         }
     }
 
-    public enum Code {
+    public enum Code implements com.documentplatform.errors.PlatformCode {
         NOT_UTF8, HEADER_WRONG, BAD_QUOTES, WRONG_COLUMN_COUNT, CLIENT_ID_INVALID, SLOT_INVALID, SOURCE_INVALID,
         DESCRIPTION_INVALID, SECRET_LIKE, DUPLICATE_CLIENT_ID, SLOT_UNKNOWN, SOURCE_UNKNOWN, CLIENT_BOUND_ELSEWHERE
     }

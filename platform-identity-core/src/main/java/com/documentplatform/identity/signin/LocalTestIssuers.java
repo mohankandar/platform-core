@@ -20,7 +20,7 @@ public final class LocalTestIssuers {
     public static final Set<String> LOOPBACK_HOSTS = Set.of("localhost", "127.0.0.1", "[::1]");
 
     /** What is wrong with an issuer address. */
-    public enum Problem {
+    public enum Problem implements com.documentplatform.errors.PlatformCode {
         /** Not an absolute https (or http) address with a host, or it has a query, fragment or user part. */
         NOT_AN_ISSUER,
         /** http, but not on this machine or not under a development licence. */

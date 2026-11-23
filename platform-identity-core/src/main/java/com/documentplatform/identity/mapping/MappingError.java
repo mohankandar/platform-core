@@ -6,7 +6,7 @@ package com.documentplatform.identity.mapping;
  */
 public record MappingError(int line, Code code, String message) {
 
-    public enum Code {
+    public enum Code implements com.documentplatform.errors.PlatformCode {
         NOT_UTF8,
         BAD_QUOTES,
         VALUE_SPANS_LINES,

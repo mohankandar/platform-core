@@ -10,7 +10,7 @@ import java.util.Objects;
  */
 public record ActivationOutcome(Result result, String slotId, EntityRecord entity) {
 
-    public enum Result {
+    public enum Result implements com.documentplatform.errors.PlatformCode {
         /** The slot is now ACTIVE with the name. The app creates its own entity row with the entity UUID. */
         ACTIVATED(false),
         RENAMED(false),

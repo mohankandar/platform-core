@@ -7,7 +7,7 @@ package com.documentplatform.identity.jdbc;
 public final class IdentitySchemaException extends IllegalStateException {
 
     /** What is wrong, as a stable code. */
-    public enum Problem {
+    public enum Problem implements com.documentplatform.errors.PlatformCode {
         /** None of the tables exist: the schema step was never run on this database schema. */
         IDN_TABLES_MISSING,
         /** Some tables exist but the version cannot be read. */

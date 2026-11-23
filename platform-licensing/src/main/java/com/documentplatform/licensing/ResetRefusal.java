@@ -1,7 +1,7 @@
 package com.documentplatform.licensing;
 
 /** Why a last-seen reset was not applied. Stable codes; nothing changes when one is refused. */
-public enum ResetRefusal {
+public enum ResetRefusal implements com.documentplatform.errors.PlatformCode {
     RESET_MISSING("No reset file was given."),
     RESET_MALFORMED("The reset is not a readable reset file."),
     RESET_UNSUPPORTED_FORMAT("The reset uses a format or signature algorithm this version does not read."),

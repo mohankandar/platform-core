@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.documentplatform.platform</groupId>
+        <artifactId>platform-core</artifactId>
+        <version>0.4.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>platform-error-catalogue</artifactId>
+    <description>Build check only (never deployed, not in the BOM): every platform code enum implements PlatformCode
+        and has a message, cause and fix; codes are unique across modules; docs/errors/platform-error-codes.md and
+        .json are up to date. Regenerate them with -Dplatform.errors.write=true.</description>
+    <properties>
+        <maven.deploy.skip>true</maven.deploy.skip>
+        <maven.install.skip>true</maven.install.skip>
+    </properties>
+    <dependencies>
+        <!-- Every module that may hold code enums, so the check sees them all. -->
+        <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-errors</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+        <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-identity-core</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+        <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-identity-jdbc</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+        <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-identity-spring</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+        <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-notifications</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+        <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-notifications-spring</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+        <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-licensing</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+        <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-licensing-spring</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+        <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-setup</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+        <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-fields</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+        <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-crypto</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+        <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-crypto-spring</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+        <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-erase-log</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+        <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-erase-log-spring</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+        <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-outbound</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+        <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-outbound-spring</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+        <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-integration</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+        <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-integration-spring</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <platform.errors.docs>${project.basedir}/../docs/errors</platform.errors.docs>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

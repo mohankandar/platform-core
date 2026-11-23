@@ -13,6 +13,12 @@
         fingerprints (HMAC-SHA256 in the key service) for exact-match search of sensitive values, and a Vault client
         (Transit and KV, token or AppRole login) with specific failure codes and no secret in any output.</description>
     <dependencies>
+        <!-- The common error-code standard: PlatformCode (texts in *.codes.properties next to each code enum). -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-errors</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>

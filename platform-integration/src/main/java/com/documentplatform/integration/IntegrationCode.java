@@ -5,7 +5,7 @@ package com.documentplatform.integration;
  * configuration problem. Logs, results and the app's audit carry these codes (and the destination's own code), never a
  * secret, a document's content or the destination's message text.
  */
-public enum IntegrationCode {
+public enum IntegrationCode implements com.documentplatform.errors.PlatformCode {
 
     // ---- One attempt: what happened ----
     /** Every step answered as expected. */

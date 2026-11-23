@@ -11,7 +11,7 @@ import java.util.Objects;
 public final class IdentityAdmissionException extends RuntimeException {
 
     /** Why the admission was refused. Lets products choose a status and a safe message per reason. */
-    public enum Reason {
+    public enum Reason implements com.documentplatform.errors.PlatformCode {
         /** Shared-issuer selection is switched off, or connections are not persisted. */
         NOT_ENABLED,
         /** The verified identity has no admissible entity. */

@@ -12,6 +12,12 @@
         file export, Postgres stores (plain JDBC) and SQL (db/platform/licensing), the licence-issuing command (ours) and the
         licence command (customer side). Plain Java, no Spring, no runtime dependencies.</description>
     <dependencies>
+        <!-- The common error-code standard: PlatformCode (texts in *.codes.properties next to each code enum). -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-errors</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>

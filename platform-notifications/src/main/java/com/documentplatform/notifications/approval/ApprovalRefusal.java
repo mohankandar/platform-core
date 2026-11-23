@@ -4,7 +4,7 @@ package com.documentplatform.notifications.approval;
  * Why a link or a decision was refused. Each has a fixed text the app's page may show as is; none repeats the token,
  * the reason or anything about the request.
  */
-public enum ApprovalRefusal {
+public enum ApprovalRefusal implements com.documentplatform.errors.PlatformCode {
     /** Tampered, malformed, made with another key, or for another tenant. */
     LINK_INVALID("This link is not valid."),
     /** An e-mail link opened by someone signed in as another person. */
