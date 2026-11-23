@@ -4,6 +4,7 @@ import com.documentplatform.notifications.jdbc.NotificationStoreException;
 import com.documentplatform.notifications.support.LogCapture;
 import com.documentplatform.notifications.support.Pg;
 import com.documentplatform.notifications.support.Stack;
+import com.documentplatform.notifications.support.TestCatalogue;
 import com.documentplatform.notifications.support.WebhookServer.Reply;
 import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
@@ -41,6 +42,7 @@ class SecretsNeverLeakTest {
                 "SECRET-TOKEN-bad", "RETIRED-SECRET-x");
         List<Object> reports = new ArrayList<>();
         List<String> sentText = new ArrayList<>();
+        List<String> recipients = new ArrayList<>();
         String logs;
         String tables;
         try (LogCapture capture = new LogCapture(); Stack s = new Stack()) {
@@ -65,6 +67,7 @@ class SecretsNeverLeakTest {
             s.hooks.requests().forEach(r -> sentText.add(r.path() + " " + r.body()));
             for (var m : s.mail.getReceivedMessages()) {
                 sentText.add(m.getSubject() + " " + m.getContent());
+                for (var a : m.getAllRecipients()) recipients.add(a.toString());
             }
             tables = Pg.dumpAllTables(s.ds);
             // The receiving side's own logger (the JDK HTTP server standing in for Teams and Slack) logs the request
@@ -80,6 +83,16 @@ class SecretsNeverLeakTest {
         }
         assertEquals(10, reports.size()); // 3 + 3 + the Slack retry + 3
         assertTrue(tables.contains("notif_outbox"));
+
+        // The outbox keeps roles (and user ids), never e-mail addresses: the recipient's address was used for the
+        // mail, yet no notif_ table holds it, nor any other address.
+        assertTrue(recipients.contains(TestCatalogue.CY.emailAddress()), "the mail went to the approver: " + recipients);
+        assertTrue(tables.contains(TestCatalogue.APPROVER.value()), "the outbox keeps the role");
+        for (String address : List.of(TestCatalogue.CY.emailAddress(), TestCatalogue.ANN.emailAddress(),
+                "notifications@customer.example", "@customer.example")) {
+            assertFalse(tables.contains(address), () -> "e-mail address in a table: " + tables.lines()
+                    .filter(l -> l.contains(address)).findFirst().orElse(""));
+        }
 
         for (String secret : secrets) {
             assertFalse(logs.contains(secret), () -> "secret in the logs: " + logs.lines()
