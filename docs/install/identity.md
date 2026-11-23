@@ -142,7 +142,9 @@ Every step is kept in `idn_login_connection_history` with who and when (source `
 `SETUP`). Two admins never overwrite each other: a step made on an out-of-date screen is refused
 (`IDN_VERSION_CONFLICT`); reload and try again. Other refusals: `IDN_DRAFT_EXISTS`, `IDN_NOT_VALIDATED`,
 `IDN_NOT_A_DRAFT`, `IDN_NO_PREVIOUS_CONNECTION`, `IDN_VALUES_INVALID`, `IDN_VALUES_REQUIRED`,
-`IDN_CONNECTION_UNKNOWN`, `IDN_CUSTOMER_UNKNOWN`, `IDN_HTTP_ISSUER_NOT_ALLOWED`.
+`IDN_CONNECTION_UNKNOWN`, `IDN_CUSTOMER_UNKNOWN`, `IDN_HTTP_ISSUER_NOT_ALLOWED`. A test sign-in that does not pass
+is `IDN_TEST_FAILED`: its report names the check that failed (one of the `IDN_TEST_*` codes above), and the draft is
+(again) a draft. Correct it and test again.
 
 **Setup and the screen together.** Running setup again never touches a draft. If the admin switched to another
 connection, setup's plan shows `conflict` and leaves it, unless you run it with `--replace-connection`
@@ -227,3 +229,27 @@ platform itself never reads such a header.
 
 The app's database user needs nothing new for this: it only reads `idn_login_connection`, `idn_machine_binding` and
 `idn_entity`.
+
+## 10. For app developers: what identity does, and apps that keep their own tables
+
+This section is for the app's developers, not for IT. It holds the still-true parts of two older notes (the
+integration notes and the schema contract for entity admission), which were removed in P040.
+
+**Where identity stops.** The shared identity modules stop at signing people in and normalising who they are. They
+do not know an app's roles beyond the names its `EntityRoleCatalog` gives, nor its business permissions, which source
+a person may use, or which intake source may send what. Each app keeps its own authorization and its own release
+cadence. The normalised identity (`AuthenticatedIdentity`) holds: provider ID, issuer, subject, user name, e-mail,
+display name, groups and the raw claims (which are never logged).
+
+**Apps that keep their own tables.** platform-identity-jdbc implements the admission interfaces over the `idn_` tables
+(section 1). An app that still keeps its own tables until its switch-over implements the same four interfaces of
+`com.documentplatform.identity.admission` over them. Table and column names are the app's choice; this is what they
+must hold. Values are compared exactly as stored: issuer, provider ID, audience, group names and client principals
+are not case folded, trimmed of slashes or normalised (see `ConnectionKey`).
+
+| Interface | What the tables must hold | Answers |
+|---|---|---|
+| `ActiveEntityCandidates` | Entity ID (UUID) and status (only an ACTIVE entity is a candidate); its login connection: entity ID, provider ID, issuer, API audience and status, ACTIVE and matching the key exactly; at most one ACTIVE connection per entity. Several entities may share one login system, so (provider ID, issuer, audience) is **not** unique across entities. | `find`: the IDs of ACTIVE entities with an ACTIVE connection for the key; an empty set for a blank provider ID or audience; `null` only when the store cannot be read. |
+| `EntityGroupGrants` | One row per group-to-role grant in one entity: entity ID, issuer, group, role name. Joined to the ACTIVE connection on entity ID **and** issuer, so a grant recorded for another issuer never applies. Group names exactly as the login system sends them (no case folding or path stripping; for Keycloak, turn "full group path" off). Only role names the app's `EntityRoleCatalog` knows; an unknown name refuses the grant. | `activeGrants`: entity → (group → role names); an empty map for a blank provider ID or audience; `null` only when the store cannot be read. |
+| `MachineEntityBindings` | Entity ID, an enabled flag and the client principal of each machine integration that signs in with a token, joined to the ACTIVE connection and ACTIVE entity as for `ActiveEntityCandidates`. | `find`: the matching entity IDs; an empty set for a blank provider ID, audience or client principal. The machine is admitted only when exactly one entity is returned, so a client principal must be unique across entities. |
+| `EntityRoleCatalog` | No table. The app names its roles: `canonicalEntityRole` maps a configured name to the canonical one (empty for an unknown name), `aliasTarget` resolves aliases, and `isPlatformRole` names the roles that reach platform-wide screens. A platform role is never granted through an entity's groups; since P028 it is granted platform-wide (section 8). | — |
