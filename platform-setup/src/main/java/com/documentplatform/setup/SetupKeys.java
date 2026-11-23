@@ -59,7 +59,7 @@ public final class SetupKeys {
         CREATE,
         /** Both keys exist: left alone. */
         PRESENT,
-        /** --no-keys: not looked at. */
+        /** --no-customer-keys: not looked at. */
         SKIPPED
     }
 

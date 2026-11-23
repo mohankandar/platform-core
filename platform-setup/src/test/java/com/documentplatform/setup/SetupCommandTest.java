@@ -670,6 +670,12 @@ class SetupCommandTest {
         assertEquals(SetupCommand.EXIT_REFUSED, missing.exit(), missing.all());
         assertTrue(missing.err().contains("SETUP_KEY_SERVICE_SETTINGS_MISSING") && missing.err().contains(
                 SetupKeys.VAULT_ADDR), missing.err());
+        // setup-111 (P037): the fix names the flag that exists; --no-keys is refused.
+        assertTrue(missing.err().contains("--no-customer-keys"), missing.err());
+        assertFalse(missing.err().contains("--no-keys"), missing.err());
+        assertTrue(SetupRefusal.SETUP_KEY_SERVICE_SETTINGS_MISSING.fix().contains("--no-customer-keys"));
+        assertTrue(SetupRefusal.SETUP_KEY_SERVICE_SETTINGS_MISSING.fix().contains(SetupKeys.VAULT_SECRET_ID));
+        assertTrue(SetupRefusal.SETUP_DB_SETTINGS_MISSING.fix().contains(SetupCommand.DB_PASSWORD));
 
         Map<String, String> env = new java.util.HashMap<>(db.appEnv(PASSWORD));
         env.put(SetupKeys.VAULT_ADDR, "http://127.0.0.1:9");

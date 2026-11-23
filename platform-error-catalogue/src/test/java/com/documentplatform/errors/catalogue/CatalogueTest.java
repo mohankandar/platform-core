@@ -202,6 +202,37 @@ class CatalogueTest {
         assertEquals(catalogue.json(), Files.readString(json, StandardCharsets.UTF_8).replace("\r\n", "\n"), stale);
     }
 
+    /**
+     * error-codes-4 (P037): codes are never renamed or removed. {@code docs/errors/code-names.txt} lists every code
+     * name ever released; the write mode only adds new names, never removes one, so a name that disappears from the
+     * code fails here until it is put back.
+     */
+    @Test
+    void noCodeNameEverDisappears() throws IOException {
+        Path file = Path.of(System.getProperty("platform.errors.docs", "../docs/errors")).resolve("code-names.txt");
+        Set<String> listed = new TreeSet<>();
+        if (Files.exists(file)) {
+            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                if (!line.isBlank() && !line.startsWith("#")) listed.add(line.strip());
+            }
+        }
+        Set<String> now = new TreeSet<>();
+        catalogue.entries().forEach(e -> now.add(e.code()));
+        if (Boolean.getBoolean("platform.errors.write")) {
+            Set<String> all = new TreeSet<>(listed);
+            all.addAll(now);
+            Files.writeString(file, "# Every platform code name ever released (P037, error-codes-4). Append only: a name "
+                    + "is never removed or renamed.\n" + String.join("\n", all) + "\n", StandardCharsets.UTF_8);
+            listed = all;
+        }
+        Set<String> gone = new TreeSet<>(listed);
+        gone.removeAll(now);
+        assertEquals(Set.of(), gone, "code names that disappeared: codes are never renamed or removed");
+        Set<String> unlisted = new TreeSet<>(now);
+        unlisted.removeAll(listed);
+        assertEquals(Set.of(), unlisted, "new codes: add them with -Dplatform.errors.write=true and commit the list");
+    }
+
     /** Every class under com.documentplatform on the test classpath (the platform modules' classes and jars). */
     static List<Class<?>> platformClasses() throws IOException, URISyntaxException {
         Set<String> names = new TreeSet<>();

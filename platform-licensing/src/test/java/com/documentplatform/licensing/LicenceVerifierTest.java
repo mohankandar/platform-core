@@ -17,6 +17,15 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class LicenceVerifierTest {
 
+    /** error-codes-15 (P037): a refusal's catalogue fix is its operator action, for every refusal. */
+    @Test
+    void everyRefusalsFixIsItsAction() {
+        for (LicenceRefusal r : LicenceRefusal.values()) {
+            assertFalse(r.action().isBlank(), r.name());
+            assertEquals(r.action(), r.fix(), r.name());
+        }
+    }
+
     private static final LocalDate START = LocalDate.parse("2026-12-01");
     private static final LocalDate END = LocalDate.parse("2027-11-30");
     private final LicenceVerifier verifier = new LicenceVerifier(trustKey1());

@@ -123,7 +123,7 @@ active connection keeps working the whole time; the change is prepared, tested, 
 
    | Code | Means |
    |---|---|
-   | `IDN_TEST_ISSUER_UNREACHABLE` | The discovery document could not be fetched (the reason code says why, for example `OUT_TLS_FAILED` or `HTTP_404`) |
+   | `IDN_TEST_ISSUER_UNREACHABLE` | The discovery document could not be fetched. The report's reason (not a code of its own) says why: an outbound code such as `OUT_TLS_FAILED`, `HTTP_<status>` such as `HTTP_404`, `FETCH_FAILED` (no answer could be read) or `TOO_LARGE` (over the size limit) |
    | `IDN_TEST_DISCOVERY_MISMATCH` | The document is not readable, or names another issuer: copy the issuer address exactly |
    | `IDN_TEST_KEYS_MISSING` | No key address, the keys could not be fetched, or no usable signing key |
    | `IDN_TEST_TOKEN_UNREADABLE` | The pasted text is not a signed token |
