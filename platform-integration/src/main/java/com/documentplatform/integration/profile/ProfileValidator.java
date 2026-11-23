@@ -13,6 +13,7 @@ import com.documentplatform.integration.config.IntegrationConfig;
 import com.documentplatform.integration.config.Kind;
 import com.documentplatform.integration.config.Limits;
 import com.documentplatform.integration.config.Packaging;
+import com.documentplatform.integration.config.PollSource;
 import com.documentplatform.integration.config.Rule;
 import com.documentplatform.integration.config.SignIn;
 import com.documentplatform.integration.config.Template;
@@ -105,7 +106,25 @@ public final class ProfileValidator {
         if (!problems.isEmpty()) return new Result(null, problems);
 
         installationData(m, "", problems);
-        List<CallStep> steps = steps(m, problems);
+        boolean polling = "API_POLL".equals(m.get("kind"));
+        PollSource poll = null;
+        List<CallStep> steps = List.of();
+        if (polling) {
+            if (m.containsKey("steps") || m.containsKey("packaging") || m.containsKey("fields")
+                    || m.containsKey("documentAttributes")) {
+                problems.add(new ProfileProblem(IntegrationCode.INT_PROFILE_STEPS, "",
+                        "API_POLL has poll, not steps, packaging, fields or document attributes"));
+            }
+            if (!"INBOUND".equals(m.get("direction"))) {
+                problems.add(new ProfileProblem(IntegrationCode.INT_PROFILE_STEPS, "/direction", "API_POLL is INBOUND"));
+            }
+            poll = poll(m, problems);
+        } else {
+            if (m.containsKey("poll")) {
+                problems.add(new ProfileProblem(IntegrationCode.INT_PROFILE_STEPS, "/poll", "only for API_POLL"));
+            }
+            steps = steps(m, problems);
+        }
         List<Rule> rules = rules(m.get("rules"), "/rules", problems);
         HealthCheck health = health(m, problems);
         List<String> signIn = strings(map(m.get("signIn")).get("types"));
@@ -115,7 +134,7 @@ public final class ProfileValidator {
         }
         if (!problems.isEmpty()) return new Result(null, problems);
 
-        IntegrationProfile profile = build(m, steps, rules, health, signIn, apiKeyHeader);
+        IntegrationProfile profile = build(m, steps, poll, rules, health, signIn, apiKeyHeader);
         declared(profile, problems);
         if (!problems.isEmpty()) return new Result(null, problems);
 
@@ -185,6 +204,38 @@ public final class ProfileValidator {
         }
     }
 
+    /** The poll section, as a poll source (its calls named list, download and acknowledge). */
+    private static PollSource poll(Map<String, Object> m, List<ProfileProblem> problems) {
+        if (!(m.get("poll") instanceof Map<?, ?> raw)) {
+            problems.add(new ProfileProblem(IntegrationCode.INT_PROFILE_STEPS, "/poll", "required for API_POLL"));
+            return null;
+        }
+        Map<String, Object> p = map(raw);
+        Map<String, Object> g = map(p.get("paging"));
+        PollSource.Paging paging = new PollSource.Paging(PollSource.Paging.Mode.valueOf((String) g.get("mode")),
+                (String) g.get("pointer"), (String) g.get("param"), (String) g.get("sizeParam"),
+                (int) num(g, "pageSize", 100), (int) num(g, "firstPage", 0),
+                (int) num(g, "maxPagesPerPass", "NONE".equals(g.get("mode")) ? 1 : 10),
+                g.get("resume") == null ? PollSource.Paging.Resume.CONTINUE
+                        : PollSource.Paging.Resume.valueOf((String) g.get("resume")));
+        Map<String, String> values = new LinkedHashMap<>();
+        if (p.get("values") instanceof Map<?, ?> v) v.forEach((k, x) -> values.put((String) k, (String) x));
+        return new PollSource(pollStep(PollSource.LIST, p.get("list"), problems), (String) p.get("itemsPointer"),
+                (String) p.get("idPointer"), values, (String) p.get("fileNameValue"), paging,
+                pollStep(PollSource.DOWNLOAD, p.get("download"), problems),
+                p.get("acknowledge") == null ? null : pollStep(PollSource.ACKNOWLEDGE, p.get("acknowledge"), problems));
+    }
+
+    private static CallStep pollStep(String name, Object raw, List<ProfileProblem> problems) {
+        Map<String, Object> s = map(raw);
+        Map<String, String> headers = new LinkedHashMap<>();
+        if (s.get("headers") instanceof Map<?, ?> h) h.forEach((k, v) -> headers.put((String) k, (String) v));
+        String body = (String) s.get("bodyTemplate");
+        return new CallStep(name, HttpMethod.valueOf((String) s.get("method")), (String) s.get("path"), headers,
+                body == null ? CallStep.Body.NONE : CallStep.Body.JSON, body, CallStep.Repeat.ONCE, Map.of(), Set.of(),
+                rules(s.get("rules"), "/poll/" + name + "/rules", problems), null, null, null);
+    }
+
     private static List<Rule> rules(Object raw, String at, List<ProfileProblem> problems) {
         List<Rule> out = new ArrayList<>();
         if (!(raw instanceof List<?> l)) return out;
@@ -222,8 +273,9 @@ public final class ProfileValidator {
         }
     }
 
-    private static IntegrationProfile build(Map<String, Object> m, List<CallStep> steps, List<Rule> rules,
-                                            HealthCheck health, List<String> signIn, String apiKeyHeader) {
+    private static IntegrationProfile build(Map<String, Object> m, List<CallStep> steps, PollSource poll,
+                                            List<Rule> rules, HealthCheck health, List<String> signIn,
+                                            String apiKeyHeader) {
         Map<String, Object> api = map(m.get("api"));
         Limits limits = Limits.DEFAULT;
         if (m.get("limits") instanceof Map<?, ?> l) {
@@ -280,7 +332,7 @@ public final class ProfileValidator {
                 : strings(map(m.get("signIn")).get("installationSupplies"));
         return new IntegrationProfile((String) m.get("name"), (String) m.get("version"), (String) api.get("title"),
                 (String) api.get("version"), (String) m.get("description"), Direction.valueOf((String) m.get("direction")),
-                Kind.valueOf((String) m.get("kind")), steps, signIn, supplies, apiKeyHeader, health, rules,
+                Kind.valueOf((String) m.get("kind")), steps, poll, signIn, supplies, apiKeyHeader, health, rules,
                 (String) m.get("errorCodePointer"), !Boolean.FALSE.equals(m.get("sendCorrelationId")),
                 IntegrationConfig.TestMode.valueOf((String) m.getOrDefault("testMode", "FULL")), limits, values, fields,
                 attributes, settings, m.get("notes") == null ? List.of() : strings(m.get("notes")));
@@ -365,7 +417,8 @@ public final class ProfileValidator {
                  INT_CONFIG_BODY_NOT_JSON, INT_CONFIG_OMIT_PLACE -> IntegrationCode.INT_PROFILE_TEMPLATE;
             case INT_CONFIG_HEADER_RESERVED, INT_CONFIG_HEADER_INVALID -> IntegrationCode.INT_PROFILE_HEADER;
             case INT_CONFIG_RULE_INVALID -> IntegrationCode.INT_PROFILE_RULE;
-            case INT_CONFIG_STEPS_INVALID, INT_CONFIG_BODY_INVALID -> IntegrationCode.INT_PROFILE_STEPS;
+            case INT_CONFIG_STEPS_INVALID, INT_CONFIG_BODY_INVALID, INT_CONFIG_POLL_INVALID ->
+                    IntegrationCode.INT_PROFILE_STEPS;
             case INT_CONFIG_SETTING_INVALID -> IntegrationCode.INT_PROFILE_SETTING;
             case INT_CONFIG_SIGN_IN_NONE_HOSTED, INT_CONFIG_SIGN_IN_NONE_OFF -> IntegrationCode.INT_PROFILE_SIGN_IN;
             default -> IntegrationCode.INT_PROFILE_SCHEMA;

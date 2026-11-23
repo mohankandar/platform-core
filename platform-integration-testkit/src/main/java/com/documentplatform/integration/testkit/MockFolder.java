@@ -3,6 +3,7 @@ package com.documentplatform.integration.testkit;
 import com.documentplatform.integration.config.FolderTarget;
 import com.documentplatform.integration.folder.ExportFiles;
 import com.documentplatform.integration.folder.LocalFiles;
+import com.documentplatform.integration.watch.WatchFiles;
 
 import java.io.FilterInputStream;
 import java.io.FilterOutputStream;
@@ -14,19 +15,22 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Instant;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
 
 /**
- * A mock export folder for folder export tests: a real folder (so a test can look at what was written) with
+ * A mock folder for folder export and watched-folder tests: a real folder (so a test can look at what was written) with
  * switches for the failures a share has: missing, read-only, full (writing fails after N bytes), slow, unreachable,
  * a disk that changes what it stores (for the checksum check), and "an existing package folder". Give
  * {@link #folder()} as the configuration's folder and this object as the exporter's {@link ExportFiles}. For tests
  * only.
  */
-public final class MockFolder implements ExportFiles {
+public final class MockFolder implements WatchFiles {
 
     private final Path folder;
     private volatile boolean missing;
@@ -37,6 +41,8 @@ public final class MockFolder implements ExportFiles {
     private volatile Duration slow = Duration.ZERO;
     private volatile long reportedSpace = -1;
     private final AtomicLong written = new AtomicLong();
+    private final AtomicInteger countdown = new AtomicInteger(-1);
+    private volatile Duration slowMoves = Duration.ZERO;
 
     private MockFolder(Path folder) {
         this.folder = folder;
@@ -69,6 +75,8 @@ public final class MockFolder implements ExportFiles {
         fullAfter = -1;
         slow = Duration.ZERO;
         reportedSpace = -1;
+        slowMoves = Duration.ZERO;
+        countdown.set(-1);
         return this;
     }
 
@@ -131,12 +139,12 @@ public final class MockFolder implements ExportFiles {
 
     /** The names directly in the export folder (package folders, {@code .partial} ones included), sorted. */
     public List<String> entries() {
-        return list(folder);
+        return names(folder);
     }
 
     /** The names in one package folder, sorted. */
     public List<String> entries(String packageFolder) {
-        return list(folder.resolve(packageFolder));
+        return names(folder.resolve(packageFolder));
     }
 
     public byte[] read(String packageFolder, String file) {
@@ -151,7 +159,7 @@ public final class MockFolder implements ExportFiles {
         return new String(read(packageFolder, FolderTarget.MANIFEST_FILE), StandardCharsets.UTF_8);
     }
 
-    private static List<String> list(Path p) {
+    private static List<String> names(Path p) {
         if (!Files.isDirectory(p)) return List.of();
         try (Stream<Path> s = Files.list(p)) {
             return s.map(x -> x.getFileName().toString()).sorted().toList();
@@ -160,9 +168,98 @@ public final class MockFolder implements ExportFiles {
         }
     }
 
+    // ---- Watched folder ----
+
+    /** A new, empty watched folder {@code inbox} under {@code parent} (a JUnit temporary folder). */
+    public static MockFolder watched(Path parent) {
+        try {
+            return new MockFolder(Files.createDirectories(parent.resolve("inbox")).toAbsolutePath());
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    /** Writes {@code relative} (folders made as needed) with this content and modification time. */
+    public MockFolder write(String relative, byte[] content, Instant modified) {
+        try {
+            Path p = folder.resolve(relative);
+            Files.createDirectories(p.getParent());
+            Files.write(p, content);
+            Files.setLastModifiedTime(p, FileTime.from(modified));
+            return this;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    public MockFolder write(String relative, String content, Instant modified) {
+        return write(relative, content.getBytes(StandardCharsets.UTF_8), modified);
+    }
+
+    /** Sets a file's (or folder's) modification time. */
+    public MockFolder modified(String relative, Instant modified) {
+        try {
+            Files.setLastModifiedTime(folder.resolve(relative), FileTime.from(modified));
+            return this;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    public boolean has(String relative) {
+        return Files.exists(folder.resolve(relative));
+    }
+
+    public Path path(String relative) {
+        return folder.resolve(relative);
+    }
+
+    /** Every move (claims, archive, problem) takes this long, so two pass runners overlap. */
+    public MockFolder slowMoves(Duration perMove) {
+        slowMoves = perMove;
+        return this;
+    }
+
+    /** The share disappears after {@code operations} more operations (in the middle of a pass); -1 for never. */
+    public MockFolder unreachableAfter(int operations) {
+        countdown.set(operations);
+        return this;
+    }
+
+    @Override
+    public List<Entry> list(Path dir) throws IOException {
+        gate();
+        if (missing && dir.equals(folder)) throw new java.nio.file.NoSuchFileException(dir.getFileName().toString());
+        return LocalFiles.INSTANCE.list(dir);
+    }
+
+    @Override
+    public void move(Path from, Path to) throws IOException {
+        writable(to);
+        Duration d = slowMoves;
+        if (!d.isZero()) {
+            try {
+                Thread.sleep(d.toMillis());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("interrupted");
+            }
+        }
+        LocalFiles.INSTANCE.move(from, to);
+    }
+
+    @Override
+    public Path realPath(Path p) throws IOException {
+        gate();
+        return LocalFiles.INSTANCE.realPath(p);
+    }
+
     // ---- ExportFiles ----
 
     private void gate() throws IOException {
+        int left = countdown.get();
+        if (left == 0) unreachable = true;
+        else if (left > 0) countdown.decrementAndGet();
         if (unreachable) throw new IOException("The network path was not found");
     }
 

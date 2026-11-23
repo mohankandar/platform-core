@@ -96,6 +96,7 @@ public final class IntegrationProfile {
     final Direction direction;
     final Kind kind;
     final List<CallStep> steps;
+    final com.documentplatform.integration.config.PollSource poll;
     final List<String> signInTypes;
     final List<String> installationSupplies;
     final String apiKeyHeader;
@@ -112,7 +113,8 @@ public final class IntegrationProfile {
     final List<String> notes;
 
     IntegrationProfile(String name, String version, String apiTitle, String apiVersion, String description,
-                       Direction direction, Kind kind, List<CallStep> steps, List<String> signInTypes,
+                       Direction direction, Kind kind, List<CallStep> steps,
+                       com.documentplatform.integration.config.PollSource poll, List<String> signInTypes,
                        List<String> installationSupplies, String apiKeyHeader, HealthCheck health, List<Rule> rules,
                        String errorCodePointer, boolean sendCorrelationId, IntegrationConfig.TestMode testMode,
                        Limits limits, List<Value> values, Fields fields, List<DocumentAttribute> attributes,
@@ -125,6 +127,7 @@ public final class IntegrationProfile {
         this.direction = direction;
         this.kind = kind;
         this.steps = List.copyOf(steps);
+        this.poll = poll;
         this.signInTypes = List.copyOf(signInTypes);
         this.installationSupplies = List.copyOf(installationSupplies);
         this.apiKeyHeader = apiKeyHeader;
@@ -169,9 +172,14 @@ public final class IntegrationProfile {
         return kind;
     }
 
-    /** The steps (a packaging preset already expanded). */
+    /** The steps (a packaging preset already expanded); empty for API polling. */
     public List<CallStep> steps() {
         return steps;
+    }
+
+    /** How the source is polled (kind {@code API_POLL}); else null. */
+    public com.documentplatform.integration.config.PollSource poll() {
+        return poll;
     }
 
     public List<String> signInTypes() {
@@ -259,6 +267,11 @@ public final class IntegrationProfile {
 
         if (fields == null && !c.fieldMapping().isEmpty()) {
             throw new IllegalArgumentException("Profile " + name + " takes no case fields");
+        }
+        if (kind == Kind.API_POLL) {
+            return new IntegrationConfig(UUID.randomUUID(), c.entity(), c.product(), kind, c.name(), true,
+                    c.endpoint(), c.signIn(), limits, List.of(), errorCodePointer, rules, health, testMode,
+                    sendCorrelationId, name, Set.of(), all, null, null, poll, null);
         }
         List<CallStep> completed = new ArrayList<>();
         for (CallStep s : steps) {

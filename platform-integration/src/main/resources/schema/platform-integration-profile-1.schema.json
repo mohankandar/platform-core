@@ -41,6 +41,36 @@
         "headers": {"$ref": "#/$defs/headers"}
       }
     },
+    "poll": {
+      "type": "object",
+      "description": "API polling (kind API_POLL), in place of steps or packaging: the list call (paged), the download call per item (its answer is the document) and the optional acknowledge call per item, made only after the app took the item. The per-item calls may use {item.id} and {item.<name>} (values read from the item); the list call only {correlationId}. The engine adds the paging parameters to the list call's query string.",
+      "required": ["list", "itemsPointer", "idPointer", "paging", "download"],
+      "additionalProperties": false,
+      "properties": {
+        "list": {"$ref": "#/$defs/pollStep"},
+        "itemsPointer": {"type": "string", "pattern": "^((/([^~/]|~[01])*)+)?$", "maxLength": 200, "description": "Where the list answer holds the array of items; empty when the answer is the array."},
+        "idPointer": {"$ref": "#/$defs/pointer", "description": "Where an item holds its stable ID, relative to the item."},
+        "values": {"type": "object", "description": "Value name → pointer relative to the item: read and handed to the app.", "additionalProperties": {"$ref": "#/$defs/pointer"}},
+        "fileNameValue": {"$ref": "#/$defs/name"},
+        "paging": {
+          "type": "object",
+          "required": ["mode"],
+          "additionalProperties": false,
+          "properties": {
+            "mode": {"enum": ["NONE", "CURSOR", "NEXT_LINK", "PAGE_NUMBER"]},
+            "pointer": {"$ref": "#/$defs/pointer", "description": "CURSOR: the next cursor in the answer; NEXT_LINK: the next page's address (without it, the Link header)."},
+            "param": {"type": "string", "pattern": "^[A-Za-z0-9_.\[\]-]{1,64}$", "description": "CURSOR: the cursor's query parameter; PAGE_NUMBER: the page number's."},
+            "sizeParam": {"type": "string", "pattern": "^[A-Za-z0-9_.\[\]-]{1,64}$"},
+            "pageSize": {"type": "integer", "minimum": 1, "maximum": 1000},
+            "firstPage": {"type": "integer", "minimum": 0, "maximum": 1},
+            "maxPagesPerPass": {"type": "integer", "minimum": 1, "maximum": 1000},
+            "resume": {"enum": ["CONTINUE", "FROM_START"]}
+          }
+        },
+        "download": {"$ref": "#/$defs/pollStep"},
+        "acknowledge": {"$ref": "#/$defs/pollStep"}
+      }
+    },
     "steps": {"type": "array", "minItems": 1, "maxItems": 20, "items": {"$ref": "#/$defs/step"}},
     "signIn": {
       "type": "object",
@@ -169,6 +199,18 @@
         "outcome": {"enum": ["SENT", "ALREADY_RECEIVED", "REFUSED", "SIGN_IN_FAILED", "CANT_CONNECT", "BUSY", "OUTAGE", "UNCLEAR", "NOT_CONFIGURED"]},
         "platformCode": {"type": "string", "pattern": "^INT_[A-Z_]+$"},
         "attemptUsed": {"type": "boolean"}
+      }
+    },
+    "pollStep": {
+      "type": "object",
+      "required": ["method", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "method": {"enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]},
+        "path": {"$ref": "#/$defs/path"},
+        "headers": {"$ref": "#/$defs/headers"},
+        "bodyTemplate": {"type": "string", "maxLength": 65536, "description": "A JSON body; none without it."},
+        "rules": {"$ref": "#/$defs/rules"}
       }
     },
     "step": {
