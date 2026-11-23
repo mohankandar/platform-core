@@ -18,7 +18,7 @@ full list of codes, with what to do for each: `docs/errors/platform-error-codes.
 | `secret-store` | each secret named in `platform.monitoring.secrets` is in the secret store (the names only are shown) | no |
 | `login-system` | your login system's addresses (discovery and signing keys) answer, for the active login connection | no |
 | `licence` | the licence is there, signed, yours, started; how many days are left, grace, expired | no |
-| `channel-mail` | the mail settings are complete and the mail server can be reached (nothing is sent) | no |
+| `channel-mail` | the mail settings are complete and the mail server can be reached (nothing is sent); it uses the settings the notifications sender uses (`platform.notifications.mail.*`: the port from the security when none is set, and with Microsoft 365 the default host and the sender mailbox) | no |
 | `folder-<name>` | a folder exists, the app may read and write it, and its disk is not nearly full (warning 90 %, down 95 %) | if you set `required` |
 | `service-<name>` | another service the app uses answers on its health address | if you set `required` |
 | `integration-<id>` | each switched-on integration's other system answers (as on its health check) | **never** |
@@ -31,7 +31,7 @@ full, a busy system) or **down**.
 | Property | Default | |
 |---|---|---|
 | `platform.monitoring.enabled` | `true` | `false` switches the checks off |
-| `platform.monitoring.every` | `60s` | how often each check runs |
+| `platform.monitoring.every` | `60s` | how often each check runs, unless the check sets its own interval |
 | `platform.monitoring.startup-checks` | `true` | refuse to start while a required check is down |
 | `platform.monitoring.customer-keys-required` | `false` | `true` when the product's `customerKeys` is `required`: the key service is then required at start-up |
 | `platform.monitoring.product-code`, `.tenant-id` | none; tenant from `platform.licensing.tenant-id` | for the login-system check |

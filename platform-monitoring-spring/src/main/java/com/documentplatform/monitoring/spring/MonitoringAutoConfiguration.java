@@ -61,7 +61,7 @@ public class MonitoringAutoConfiguration {
             Supplier<List<DependencyCheck>> integrations = IntegrationSource.of(beans);
             if (integrations != null) sources.add(integrations);
         }
-        DependencyStatus status = new DependencyStatus(checks, sources, new CheckRunner(c), c);
+        DependencyStatus status = new DependencyStatus(checks, sources, new CheckRunner(c), c, p.getEvery());
         listeners.orderedStream().forEach(l -> status.onChange(l::changed));
         return status;
     }

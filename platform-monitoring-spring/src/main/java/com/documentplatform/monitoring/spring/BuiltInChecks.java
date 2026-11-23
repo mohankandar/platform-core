@@ -55,12 +55,7 @@ final class BuiltInChecks {
         if (present("com.documentplatform.notifications.secret.SecretResolver", cl)) Secrets.add(out, beans, p);
         if (present("com.documentplatform.licensing.LicenceService", cl)) Licensing.add(out, beans);
         if (present("com.documentplatform.identity.store.LoginConnectionStore", cl)) Login.add(out, beans, p, env, clock);
-        String mailHost = env.getProperty("platform.notifications.mail.host");
-        if (mailHost != null && !mailHost.isBlank()) {
-            int port = env.getProperty("platform.notifications.mail.port", Integer.class, 587);
-            out.add(com.documentplatform.monitoring.checks.ChannelCheck.mail("mail", Map.of("host", mailHost,
-                    "from-address", env.getProperty("platform.notifications.mail.from-address", "")), mailHost, port));
-        }
+        if (present("com.documentplatform.notifications.spring.NotificationsConfig", cl)) Mail.add(out, beans);
         p.getFolders().forEach((name, f) -> {
             if (f.getPath() != null && !f.getPath().isBlank()) {
                 out.add(new FileLocationCheck(name, Path.of(f.getPath()), f.isWritable(), f.getWarnAt(), f.getDownAt(),
@@ -112,6 +107,21 @@ final class BuiltInChecks {
             com.documentplatform.crypto.KeyService keys = unique(beans, com.documentplatform.crypto.KeyService.class);
             if (keys != null) out.add(new com.documentplatform.monitoring.checks.KeyServiceCheck(keys,
                     p.isCustomerKeysRequired()));
+        }
+    }
+
+    /**
+     * The mail check from notifications-spring's checked settings (P039, monitoring-34): the same host, port (from the
+     * security when not set: 587, 465 or 25) and sender as the sender uses, Microsoft 365 included (its default host,
+     * and the sender mailbox as the from-address).
+     */
+    static final class Mail {
+        static void add(List<DependencyCheck> out, ListableBeanFactory beans) {
+            var config = unique(beans, com.documentplatform.notifications.spring.NotificationsConfig.class);
+            if (config == null || config.mail().isEmpty()) return;
+            var m = config.mail().get();
+            out.add(com.documentplatform.monitoring.checks.ChannelCheck.mail("mail", Map.of("host", m.host(),
+                    "from-address", m.fromAddress() == null ? "" : m.fromAddress()), m.host(), m.port()));
         }
     }
 
