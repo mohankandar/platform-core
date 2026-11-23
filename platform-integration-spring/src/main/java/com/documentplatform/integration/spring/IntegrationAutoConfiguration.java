@@ -3,7 +3,16 @@ package com.documentplatform.integration.spring;
 import com.documentplatform.integration.config.FieldLists;
 import com.documentplatform.integration.config.Limits;
 import com.documentplatform.integration.engine.CallEngine;
+import com.documentplatform.integration.engine.PollEngine;
 import com.documentplatform.integration.engine.TestAction;
+import com.documentplatform.integration.safety.AddressGuard;
+import com.documentplatform.integration.scan.ClamdScanner;
+import com.documentplatform.integration.scan.FileScanner;
+import com.documentplatform.integration.scan.IcapScanner;
+import com.documentplatform.integration.scan.ScanEvents;
+import com.documentplatform.integration.scan.Scanning;
+import com.documentplatform.integration.watch.WatchFiles;
+import com.documentplatform.integration.watch.WatchedFolder;
 import com.documentplatform.integration.folder.ExportFiles;
 import com.documentplatform.integration.folder.FolderExport;
 import com.documentplatform.integration.folder.LocalFiles;
@@ -31,6 +40,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -58,7 +68,9 @@ import java.util.List;
  * {@link FolderExport}, {@link TestAction}, {@link ProfileFolder} (when {@code profile-folder} is set), since P026
  * {@link CredentialStore} and {@link IntegrationCredentials} (client certificates; the call engine presents them),
  * {@link CredentialExpiry}, {@link CallbackOutbox} and {@link Callbacks} (signed callbacks), the
- * {@link IntegrationWorker} (callbacks due, timed certificate switches; {@code worker.enabled}) and, with
+ * {@link IntegrationWorker} (callbacks due, timed certificate switches; {@code worker.enabled}), since P027 the
+ * scanner ({@link FileScanner} from {@code scanner.*}, {@link Scanning}; the app may supply {@link ScanEvents}),
+ * {@link PollEngine} and {@link WatchedFolder} (the app may supply {@link WatchFiles}) and, with
  * Actuator, the {@code integrations} health contributor. Every bean backs off when the app defines its own.
  */
 @AutoConfiguration(afterName = "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration")
@@ -242,6 +254,44 @@ public class IntegrationAutoConfiguration {
         return new TestAction(engine, folders, app.audit());
     }
 
+    // ---- Intake: the scanner, API polling, the watched folder ----
+
+    /** The customer's scanner, from {@code scanner.*}; none (scanning off) when {@code scanner.type} is NONE. */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnExpression("'${platform.integration.scanner.type:NONE}'.toUpperCase() != 'NONE'")
+    FileScanner integrationFileScanner(IntegrationSettings settings, Installation installation) {
+        AddressGuard guard = new AddressGuard(installation.allowInternalAddresses());
+        FileScanner s = settings.scannerType() == IntegrationProperties.Scanner.Type.ICAP
+                ? new IcapScanner(settings.scanner(), settings.icapService(), guard)
+                : new ClamdScanner(settings.scanner(), guard);
+        LOG.log(Level.INFO, "Integrations: incoming files are scanned ({0})", s.kind());
+        return s;
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    Scanning integrationScanning(ObjectProvider<FileScanner> scanner, ObjectProvider<ScanEvents> events) {
+        FileScanner s = scanner.getIfUnique();
+        if (s == null) LOG.log(Level.INFO, "Integrations: no virus scanner is configured; scanning is off");
+        return new Scanning(s, events.getIfAvailable(() -> ScanEvents.NONE));
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    PollEngine integrationPollEngine(CallEngine engine, Scanning scanning, IntegrationSettings settings) {
+        return settings.intakeWorkFolder() == null ? new PollEngine(engine, scanning)
+                : new PollEngine(engine, scanning, settings.intakeWorkFolder());
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    WatchedFolder integrationWatchedFolder(Installation installation, ObjectProvider<WatchFiles> files,
+                                           Scanning scanning, ObjectProvider<Clock> clock) {
+        return new WatchedFolder(files.getIfAvailable(() -> LocalFiles.INSTANCE), installation, scanning,
+                clock.getIfAvailable(Clock::systemUTC));
+    }
+
     @Bean
     @ConditionalOnMissingBean
     @ConditionalOnProperty(prefix = IntegrationProperties.PREFIX, name = "profile-folder")
@@ -260,10 +310,11 @@ public class IntegrationAutoConfiguration {
         @Bean(name = "integrationsHealthContributor")
         @ConditionalOnMissingBean(name = "integrationsHealthContributor")
         IntegrationHealthContributor integrationsHealthContributor(IntegrationConfigs configs, CallEngine engine,
-                                                                   FolderExport folders, IntegrationSettings settings,
+                                                                   FolderExport folders, WatchedFolder watched,
+                                                                   Scanning scanning, IntegrationSettings settings,
                                                                    ObjectProvider<Clock> clock) {
-            return new IntegrationHealthContributor(configs, engine, folders, settings.healthCacheFor(),
-                    clock.getIfAvailable(Clock::systemUTC));
+            return new IntegrationHealthContributor(configs, engine, folders, watched, scanning,
+                    settings.healthCacheFor(), clock.getIfAvailable(Clock::systemUTC));
         }
     }
 }

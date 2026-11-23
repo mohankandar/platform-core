@@ -361,4 +361,75 @@ class IntegrationWiringTest {
                 .withBean(DataSource.class, () -> none)
                 .run(ctx -> assertInstanceOf(IntegrationSchemaException.class, root(ctx.getStartupFailure())));
     }
+
+    @Test
+    void intakeBeansTheScannerAndTheirHealth(@TempDir Path dir) throws Exception {
+        // Off by default: polling and the watched folder are wired, scanning is off, no scanner health entry.
+        app(new InMemorySecretResolver(), new Audit(), "platform.integration.installation=ON_PREMISES")
+                .run(ctx -> {
+                    assertNull(ctx.getStartupFailure(), () -> String.valueOf(ctx.getStartupFailure()));
+                    assertNotNull(ctx.getBean(com.documentplatform.integration.engine.PollEngine.class));
+                    assertNotNull(ctx.getBean(com.documentplatform.integration.watch.WatchedFolder.class));
+                    assertFalse(ctx.getBean(com.documentplatform.integration.scan.Scanning.class).on());
+                    assertTrue(ctx.getBeansOfType(com.documentplatform.integration.scan.FileScanner.class).isEmpty());
+                    CompositeHealthContributor h = ctx.getBean("integrationsHealthContributor",
+                            CompositeHealthContributor.class);
+                    assertNull(h.getContributor(IntegrationHealthContributor.SCANNER));
+                });
+        // A clamd scanner from the properties, its health; a watched folder's health.
+        try (com.documentplatform.integration.testkit.MockScanner scanner =
+                     com.documentplatform.integration.testkit.MockScanner.clamd()) {
+            MockFolder inbox = MockFolder.watched(dir);
+            app(new InMemorySecretResolver(), new Audit(), "platform.integration.installation=ON_PREMISES",
+                    "platform.integration.allow-internal-addresses=true", "platform.integration.scanner.type=clamd",
+                    "platform.integration.scanner.host=" + scanner.host(),
+                    "platform.integration.scanner.port=" + scanner.port(),
+                    "platform.integration.intake.work-folder=" + dir.toAbsolutePath())
+                    .run(ctx -> {
+                        assertNull(ctx.getStartupFailure(), () -> String.valueOf(ctx.getStartupFailure()));
+                        assertInstanceOf(com.documentplatform.integration.scan.ClamdScanner.class,
+                                ctx.getBean(com.documentplatform.integration.scan.FileScanner.class));
+                        assertTrue(ctx.getBean(com.documentplatform.integration.scan.Scanning.class).on());
+                        CompositeHealthContributor h = ctx.getBean("integrationsHealthContributor",
+                                CompositeHealthContributor.class);
+                        Health sh = ((HealthIndicator) h.getContributor(IntegrationHealthContributor.SCANNER)).health();
+                        assertEquals(Status.UP, sh.getStatus());
+                        assertEquals("clamd", sh.getDetails().get("scanner"));
+                        IntegrationConfigs configs = ctx.getBean(IntegrationConfigs.class);
+                        StoredIntegration w = configs.create(IntegrationConfig.watchedFolder(ENTITY, "PRODUCT_A",
+                                "Inbox", com.documentplatform.integration.config.WatchSource.of(inbox.folder(),
+                                        com.documentplatform.integration.config.WatchSource.Layout.SUBFOLDER,
+                                        "*.json")), "it-admin");
+                        Health wh = ((HealthIndicator) h.getContributor(w.id().toString())).health();
+                        assertEquals(Status.UP, wh.getStatus(), wh.toString());
+                        assertEquals("INT_HEALTHY", wh.getDetails().get("code"));
+                    });
+            // The scanner down: its entry is DOWN with the code, nothing else changes.
+            scanner.down(true);
+            app(new InMemorySecretResolver(), new Audit(), "platform.integration.installation=ON_PREMISES",
+                    "platform.integration.allow-internal-addresses=true", "platform.integration.scanner.type=CLAMD",
+                    "platform.integration.scanner.host=" + scanner.host(),
+                    "platform.integration.scanner.port=" + scanner.port(),
+                    "platform.integration.scanner.timeout=2s")
+                    .run(ctx -> {
+                        CompositeHealthContributor h = ctx.getBean("integrationsHealthContributor",
+                                CompositeHealthContributor.class);
+                        Health sh = ((HealthIndicator) h.getContributor(IntegrationHealthContributor.SCANNER)).health();
+                        assertEquals(Status.DOWN, sh.getStatus());
+                        assertEquals("INT_SCAN_UNREACHABLE", sh.getDetails().get("code"));
+                    });
+        }
+        // An ICAP scanner without a host, a bad service and a relative work folder: every problem listed.
+        app(new InMemorySecretResolver(), new Audit(), "platform.integration.installation=ON_PREMISES",
+                "platform.integration.scanner.type=ICAP", "platform.integration.scanner.icap-service=a b",
+                "platform.integration.intake.work-folder=relative/tmp")
+                .run(ctx -> {
+                    IntegrationConfigException e = assertInstanceOf(IntegrationConfigException.class,
+                            root(ctx.getStartupFailure()));
+                    assertEquals(3, e.problems().size(), e.getMessage());
+                    assertTrue(e.getMessage().contains("scanner.host is required"));
+                    assertTrue(e.getMessage().contains("scanner.icap-service"));
+                    assertTrue(e.getMessage().contains("intake.work-folder must be an absolute path"));
+                });
+    }
 }

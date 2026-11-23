@@ -37,6 +37,12 @@ import java.util.List;
  * platform.integration.callbacks.keep-finished=30d
  * platform.integration.worker.enabled=true                    # callbacks out, timed certificate switches
  * platform.integration.worker.every=15s
+ * platform.integration.scanner.type=NONE                      # NONE (off), CLAMD or ICAP
+ * platform.integration.scanner.host=scanner.corp.example
+ * platform.integration.scanner.port=3310                      # default 3310 (clamd), 1344 (ICAP)
+ * platform.integration.scanner.icap-service=avscan
+ * platform.integration.scanner.timeout=60s
+ * platform.integration.intake.work-folder=/var/app/intake     # downloads while the app takes them
  * </pre>
  */
 @ConfigurationProperties(prefix = IntegrationProperties.PREFIX)
@@ -140,6 +146,86 @@ public class IntegrationProperties {
         public void setEvery(Duration every) {
             this.every = every;
         }
+    }
+
+    /** The virus scanner the customer provides (requirement 11); none: scanning is off. */
+    public static class Scanner {
+        public enum Type { NONE, CLAMD, ICAP }
+
+        private Type type = Type.NONE;
+        /** The scanner's host name or address (an internal address is allowed on premises). */
+        private String host;
+        /** Its port; default 3310 for clamd, 1344 for ICAP. */
+        private Integer port;
+        /** ICAP only: the service path ({@code avscan}, {@code srv_clamav}). */
+        private String icapService = "avscan";
+        /** To connect and for each answer (1 second to 10 minutes). */
+        private Duration timeout = Duration.ofSeconds(60);
+
+        public Type getType() {
+            return type;
+        }
+
+        public void setType(Type type) {
+            this.type = type;
+        }
+
+        public String getHost() {
+            return host;
+        }
+
+        public void setHost(String host) {
+            this.host = host;
+        }
+
+        public Integer getPort() {
+            return port;
+        }
+
+        public void setPort(Integer port) {
+            this.port = port;
+        }
+
+        public String getIcapService() {
+            return icapService;
+        }
+
+        public void setIcapService(String icapService) {
+            this.icapService = icapService;
+        }
+
+        public Duration getTimeout() {
+            return timeout;
+        }
+
+        public void setTimeout(Duration timeout) {
+            this.timeout = timeout;
+        }
+    }
+
+    /** Intake (API polling and the watched folder). */
+    public static class Intake {
+        /** Where downloads are kept while the app's handler runs (removed after each item); the system's by default. */
+        private String workFolder;
+
+        public String getWorkFolder() {
+            return workFolder;
+        }
+
+        public void setWorkFolder(String workFolder) {
+            this.workFolder = workFolder;
+        }
+    }
+
+    private final Scanner scanner = new Scanner();
+    private final Intake intake = new Intake();
+
+    public Scanner getScanner() {
+        return scanner;
+    }
+
+    public Intake getIntake() {
+        return intake;
     }
 
     public Credentials getCredentials() {

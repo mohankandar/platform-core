@@ -3,6 +3,7 @@ package com.documentplatform.integration.spring;
 import com.documentplatform.integration.config.Limits;
 import com.documentplatform.integration.safety.Installation;
 import com.documentplatform.integration.safety.ProxySettings;
+import com.documentplatform.integration.scan.ScannerAddress;
 import com.documentplatform.notifications.secret.SecretRef;
 
 import java.io.IOException;
@@ -25,9 +26,14 @@ import java.util.Objects;
  * @param profileFolder where published profile files are, or null when none is set
  * @param health        whether the health contributor is on
  * @param healthCacheFor how long one health result is kept
+ * @param scannerType    NONE (scanning off), CLAMD or ICAP
+ * @param scanner        where the scanner listens, or null when off
+ * @param icapService    the ICAP service path, or null
+ * @param intakeWorkFolder where downloads are kept while the app takes them, or null for the system's
  */
 public record IntegrationSettings(Installation installation, Limits defaultLimits, Path profileFolder, boolean health,
-                                  Duration healthCacheFor) {
+                                  Duration healthCacheFor, IntegrationProperties.Scanner.Type scannerType,
+                                  ScannerAddress scanner, String icapService, Path intakeWorkFolder) {
 
     public IntegrationSettings {
         Objects.requireNonNull(installation, "installation");
@@ -105,12 +111,50 @@ public record IntegrationSettings(Installation installation, Limits defaultLimit
             problems.add(prefix + "health.cache-for must be 5 seconds to 1 hour");
         }
 
+
+        ScannerAddress scanner = null;
+        IntegrationProperties.Scanner sc = p.getScanner();
+        IntegrationProperties.Scanner.Type type = sc.getType() == null ? IntegrationProperties.Scanner.Type.NONE
+                : sc.getType();
+        if (type != IntegrationProperties.Scanner.Type.NONE) {
+            int port = sc.getPort() != null ? sc.getPort()
+                    : type == IntegrationProperties.Scanner.Type.CLAMD ? 3310 : 1344;
+            if (sc.getHost() == null || sc.getHost().isBlank()) {
+                problems.add(prefix + "scanner.host is required for a scanner");
+            } else {
+                try {
+                    scanner = new ScannerAddress(sc.getHost().strip(), port, sc.getTimeout());
+                } catch (IllegalArgumentException | NullPointerException e) {
+                    problems.add(prefix + "scanner: the host, a port 1-65535 and a timeout of 1 second to 10 minutes");
+                }
+            }
+            if (type == IntegrationProperties.Scanner.Type.ICAP && (sc.getIcapService() == null
+                    || !sc.getIcapService().matches("/?[A-Za-z0-9_.~/-]{1,200}"))) {
+                problems.add(prefix + "scanner.icap-service is not a service path");
+            }
+        }
+
+        Path work = null;
+        if (p.getIntake().getWorkFolder() != null && !p.getIntake().getWorkFolder().isBlank()) {
+            try {
+                work = Path.of(p.getIntake().getWorkFolder().strip());
+                if (!work.isAbsolute()) {
+                    problems.add(prefix + "intake.work-folder must be an absolute path");
+                } else if (!Files.isDirectory(work) || !Files.isWritable(work)) {
+                    problems.add(prefix + "intake.work-folder is not a folder this account may write to");
+                }
+            } catch (InvalidPathException e) {
+                problems.add(prefix + "intake.work-folder is not a valid path");
+            }
+        }
         if (!problems.isEmpty()) {
             throw new IntegrationConfigException(problems);
         }
         Installation installation = new Installation(hosted, p.isAllowInternalAddresses(), p.isAllowSignInNone(),
                 proxy, pem);
-        return new IntegrationSettings(installation, limits, profiles, p.getHealth().isEnabled(), cache);
+        return new IntegrationSettings(installation, limits, profiles, p.getHealth().isEnabled(), cache,
+                scanner == null ? IntegrationProperties.Scanner.Type.NONE : type, scanner,
+                scanner == null ? null : sc.getIcapService(), work);
     }
 
     private static long bytes(org.springframework.util.unit.DataSize d) {
