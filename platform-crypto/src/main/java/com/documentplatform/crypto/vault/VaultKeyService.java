@@ -236,12 +236,12 @@ public final class VaultKeyService implements KeyService {
     /**
      * For each of the customer's two keys: reads its versions, allows its deletion
      * ({@code keys/<name>/config deletion_allowed=true}), deletes it ({@code DELETE keys/<name>}), then checks it is
-     * gone. Needs {@code read} and {@code update} on {@code transit/keys/customer-*} (the set-up policy) and
-     * {@code delete} on the same paths (the offboard policy, given to the offboarding run only). Before changing a key,
-     * the login's own rights on it are asked ({@code sys/capabilities-self}, allowed by Vault's default policy): a
-     * login without {@code delete} (the set-up policy alone, the runtime policy) is refused with
-     * {@code CRYPTO_PERMISSION_DENIED} and nothing is changed. When Vault cannot answer that question, the steps run
-     * and Vault refuses the one the login may not do.
+     * gone. Needs {@code read} and {@code delete} on {@code transit/keys/customer-*} and {@code update} on
+     * {@code transit/keys/customer-*}{@code /config}: the offboard policy, given alone to the offboarding run. Before
+     * changing a key, the login's own rights on it are asked ({@code sys/capabilities-self}, allowed by Vault's default
+     * policy): a login without {@code delete} (the set-up policy, the runtime policy), and a login whose rights Vault
+     * cannot report, are refused with {@code CRYPTO_PERMISSION_DENIED} and nothing is changed (P044, SEC-48: the key is
+     * never left marked {@code deletion_allowed} by a delete that then fails).
      */
     @Override
     public KeyDestruction destroyCustomerKeys(CustomerId customer) {
@@ -280,17 +280,20 @@ public final class VaultKeyService implements KeyService {
         String path = mount + "/keys/" + name;
         VaultClient.Reply r = vault.call("POST", "/v1/sys/capabilities-self",
                 VaultJson.write(Map.of("paths", List.of(path))));
-        if (!r.ok()) {
-            return;
-        }
-        Object caps = r.body().get(path);
-        if (!(caps instanceof List<?>)) {
+        Object caps = r.ok() ? r.body().get(path) : null;
+        if (r.ok() && !(caps instanceof List<?>)) {
             caps = r.body().get("capabilities");
         }
-        if (caps instanceof List<?> list && !list.contains("delete") && !list.contains("root")) {
+        if (!(caps instanceof List<?> list)) {
+            throw new CryptoException(CryptoError.CRYPTO_PERMISSION_DENIED, vault.where() + ": the rights of this login "
+                    + "on key " + name + " could not be checked (sys/capabilities-self, HTTP " + r.status() + "); "
+                    + "nothing was changed. Give the offboarding login Vault's default policy and platform-crypto-"
+                    + "offboard.");
+        }
+        if (!list.contains("delete") && !list.contains("root")) {
             throw new CryptoException(CryptoError.CRYPTO_PERMISSION_DENIED, vault.where() + ": this login may not "
                     + "delete key " + name + "; destroying a customer's keys needs the platform-crypto-offboard "
-                    + "policy as well as platform-crypto-setup. Nothing was changed.");
+                    + "policy (given alone to the offboarding run). Nothing was changed.");
         }
     }
 

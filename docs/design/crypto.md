@@ -171,12 +171,16 @@ path "transit/hmac/customer-*"              { capabilities = ["update"] }
 path "transit/keys/customer-*"              { capabilities = ["read"] }
 path "secret/data/platform/*"               { capabilities = ["read"] }
 
-# platform-crypto-setup: the set-up step. Creates the customer's keys and rotates the wrapping key. No delete.
-path "transit/keys/customer-*"              { capabilities = ["create", "update", "read"] }
+# platform-crypto-setup: the set-up step. Creates the customer's keys and rotates the wrapping key. It can never make
+# a key unreadable (P044, SEC-2): a key's settings, trim, import and delete are not granted ("+" is one segment;
+# a trailing "*" would cover <name>/config and <name>/trim too).
+path "transit/keys/+"                         { capabilities = ["create", "update", "read"] }
+path "transit/keys/+/rotate"                  { capabilities = ["update"] }
 
-# platform-crypto-offboard: customer exit only (section 11). Delete, nothing else, on the same paths. Given together
-# with platform-crypto-setup to the offboarding run only; never to the set-up step or the app.
-path "transit/keys/customer-*"              { capabilities = ["delete"] }
+# platform-crypto-offboard: customer exit only (section 11), the only policy that destroys key material. Given alone
+# to the offboarding run; never to the set-up step or the app.
+path "transit/keys/+"                         { capabilities = ["read", "delete"] }
+path "transit/keys/+/config"                  { capabilities = ["update"] }
 ```
 
 Retiring a version (`transit/keys/<name>/config`, `min_decryption_version`) is an operator action with an admin token.
@@ -287,15 +291,16 @@ record, value, document and backup of that customer unreadable. The offboarding 
 - **Destroyed looks like never created (P021 decision 10):** Vault cannot tell "destroyed" from "never created", so
   both give `CRYPTO_KEY_MISSING` (the in-memory key service's message says "destroyed"). After a customer exit this
   code is expected: do **not** run the setup command to create keys again, since new keys open nothing old.
-- **Who may (P022):** only the offboarding run's login, which has **both** `platform-crypto-setup` (its `read` gives
-  the versions, its `update` covers `config` `deletion_allowed`) and `platform-crypto-offboard` (`delete` only, the
-  same paths). The set-up step's login no longer has `delete`, so no set-up run can destroy keys.
+- **Who may (P022, P044):** only the offboarding run's login, which has **only** `platform-crypto-offboard` (`read`
+  for the versions, `update` on `config` for `deletion_allowed`, `delete`). Since P044 the set-up policy denies a
+  key's `config`, `trim` and import outright, so no set-up run can destroy or trim keys, and the two policies are never
+  given together (the set-up deny would stop the offboarding run).
   - Before changing a key, `VaultKeyService` asks Vault what the login may do on it (`sys/capabilities-self`, allowed
-    by Vault's default policy). Without `delete` (the set-up policy alone, the runtime policy) it refuses with
+    by Vault's default policy). Without `delete` (the set-up policy, the runtime policy) it refuses with
     `CRYPTO_PERMISSION_DENIED`, naming the offboard policy, and nothing is changed: the key is not even marked
     `deletion_allowed`.
-  - When Vault cannot answer that question (a login without the default policy), the steps run as before and Vault
-    refuses the one the login may not do.
+  - When Vault cannot answer that question (a login without the default policy), it refuses too (P044, SEC-48): before,
+    the key was marked `deletion_allowed` and only the delete itself was refused, leaving that latch open.
 - **The command** (`command.CryptoCommand`, `crypto destroy-customer-keys`):
 
   ```
@@ -305,7 +310,7 @@ record, value, document and backup of that customer unreadable. The offboarding 
 
   - Key service login from the environment only, the same variables as the setup command
     (`PLATFORM_SETUP_VAULT_*`, `vault.VaultEnvironment`, which `SetupKeys` now uses too), but a login with the
-    set-up **and** offboard policies, given to this run only.
+    offboard policy only, given to this run only.
   - `--backup-retention-days`: the backup retention of the installation, 30 to 90, default 35 (the erase log's).
     Outside that range → `CRYPTO_COMMAND_USAGE`, before the key service is called.
   - The tenant ID must be **typed back**: `--confirm`, or on the console when it is not given. Missing →

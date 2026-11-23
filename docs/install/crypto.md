@@ -11,11 +11,17 @@ policies:
 
 - `platform-crypto-app` for the **running app**: make data keys, unwrap, rewrap, fingerprints, read key versions.
   It cannot create, rotate, export or delete keys.
-- `platform-crypto-setup` for the **setup command** only (`docs/install/setup.md`), which creates the customer's keys.
-  It has `create`, `update` and `read` on `transit/keys/customer-*`, **no** `delete`.
-- `platform-crypto-offboard` for `crypto destroy-customer-keys` at customer exit only (section 5). It has `delete`
-  and nothing else, on the same paths. The offboarding run gets a login with both `platform-crypto-setup` and
-  `platform-crypto-offboard`; no other login ever gets the offboard policy.
+- `platform-crypto-setup` for the **setup command** only (`docs/install/setup.md`), which creates the customer's keys
+  and rotates the wrapping key: `create`, `update` and `read` on a key (`transit/keys/+`, one path segment) and
+  `update` on its `rotate`, nothing else. A key's settings (`…/config`), trimming old versions (`…/trim`), importing
+  key material and deleting are **not granted**, so **it can never make a key unreadable**: no lowest usable version,
+  no export or plaintext backup, no delete (P044).
+- `platform-crypto-offboard` for `crypto destroy-customer-keys` at customer exit only (section 5): `read` and `delete`
+  on a key, `update` on its `…/config` (to allow deletion). The offboarding run gets a login with **only**
+  `platform-crypto-offboard`; no other login ever gets it.
+- The set-up and offboard policies are for the Transit mount that holds the customer keys (keep other keys in other
+  mounts). Do not write them with a trailing `*` (`transit/keys/customer-*`): in a Vault policy that also covers every
+  path below a key, its `config` and `trim` included.
 
   ```hcl
   # platform-crypto-app
@@ -25,14 +31,17 @@ policies:
   path "transit/hmac/customer-*" { capabilities = ["update"] }
   path "transit/keys/customer-*" { capabilities = ["read"] }
   path "secret/data/platform/*" { capabilities = ["read"] }
-  # platform-crypto-setup
-  path "transit/keys/customer-*" { capabilities = ["create", "update", "read"] }
   # platform-crypto-offboard
-  path "transit/keys/customer-*" { capabilities = ["delete"] }
+  path "transit/keys/+" { capabilities = ["read", "delete"] }
+  path "transit/keys/+/config" { capabilities = ["update"] }
+  # platform-crypto-setup
+  path "transit/keys/+" { capabilities = ["create", "update", "read"] }
+  path "transit/keys/+/rotate" { capabilities = ["update"] }
   ```
 
-  An installation set up before P022 removes `delete` from its `platform-crypto-setup` policy and adds
-  `platform-crypto-offboard`.
+  **Upgrading from 0.6 or earlier (P044):** replace both policies with the text above, and give the offboarding run a
+  login with `platform-crypto-offboard` only. Before, `update` on `transit/keys/customer-*` also covered a key's
+  `config` and `trim`, so a set-up login could have thrown old key versions away for good.
 
 - **The app's own policy is the guard.** The app's `KeyService` bean has a `destroyCustomerKeys` method and its
   Vault client can read KV secrets, so what the running app may do in Vault is decided by its policy alone. The
@@ -86,8 +95,9 @@ of the app's database. **This cannot be undone.** It is a step of the offboardin
 the offboarding certificate.
 
 1. Agree the date with the customer, and that their data will not be needed again.
-2. Get a Vault login with the `platform-crypto-setup` **and** `platform-crypto-offboard` policies, for this run
-   only. A login with the set-up policy alone is refused with `CRYPTO_PERMISSION_DENIED` and nothing is changed.
+2. Get a Vault login with **only** the `platform-crypto-offboard` policy, for this run only. A login without it (the
+   set-up policy, the runtime policy) is refused with `CRYPTO_PERMISSION_DENIED` and nothing is changed; so is a run
+   whose rights Vault cannot report.
    Set it in the environment, as for the setup command:
 
    | Variable | |
@@ -116,6 +126,9 @@ the offboarding certificate.
    **unreadable everywhere, including backups, from** (`unreadableEverywhereFrom` = that day + the backup
    retention). The command prints both.
 5. Revoke the Vault login.
+   **If the run stopped half-way** (for example the network failed after the first key), run it again with a new
+   `--result-out`: a key that is already gone is reported `ABSENT`, the other one is destroyed. Keep **both** result
+   files: the first holds the version of the key destroyed then, the second the rest (P044).
 6. **Vault backups:** Vault snapshots taken before the run still hold the keys until they expire. The second date
    holds only if snapshot retention is at most the backup retention (section 6).
 

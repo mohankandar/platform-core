@@ -37,8 +37,8 @@ import java.util.regex.Pattern;
  *                              [--backup-retention-days 35]
  *
  * Key service: PLATFORM_SETUP_VAULT_ADDR and one login (see VaultEnvironment) from the environment only, with the
- * platform-crypto-setup and platform-crypto-offboard policies, given to this offboarding run only. The set-up policy
- * alone, and the app's runtime policy, cannot destroy keys.
+ * platform-crypto-offboard policy only, given to this offboarding run only. The set-up policy and the app's runtime
+ * policy cannot destroy, trim or reconfigure keys.
  * </pre>
  *
  * <p>Destroys the customer's wrapping key and fingerprint key ({@link KeyService#destroyCustomerKeys}). This is
