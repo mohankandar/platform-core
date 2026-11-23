@@ -30,6 +30,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -175,6 +176,39 @@ class PollingTest {
             assertEquals(3, r.pages(), g.toString());
             assertEquals(5, source.acknowledged().size());
             source.close();
+        }
+        source = null;
+    }
+
+    @Test
+    void aNextLinkToAnotherServerStopsThePassWithoutCallingIt() {
+        // integration-module-134: NEXT_LINK paging follows links on the base origin only.
+        for (PollSource.Paging g : List.of(PollSource.Paging.nextLink("/paging/next"),
+                PollSource.Paging.nextLink(null))) {
+            PollSource ps = source(g.withMaxPagesPerPass(10));
+            try (MockSource other = MockSource.start(ps)) {
+                other.add("other-1", "x".getBytes());
+                for (URI elsewhere : List.of(other.address(), URI.create("http://items.example"))) {
+                    StoredIntegration s = start(ps, 5);
+                    source.pageSize(2).nextLinkTo(elsewhere);
+                    App app = new App();
+                    PollResult r = engine().pass(s, CursorState.START, app);
+                    assertFalse(r.ok(), g + " " + r);
+                    assertEquals(Outcome.UNCLEAR, r.failure().outcome());
+                    assertEquals(IntegrationCode.INT_POLL_NEXT_PAGE_INVALID, r.failure().code());
+                    assertEquals(PollSource.LIST, r.failure().step());
+                    assertEquals(2, r.taken(), "the first page is handled");
+                    assertEquals(1, source.listCalls());
+                    assertEquals(0, other.listCalls(), "no call to the other server");
+                    // A stored position on another server is not followed either.
+                    PollResult stored = engine().pass(s, CursorState.of(other.address() + "/api/items?offset=2"),
+                            app);
+                    assertEquals(IntegrationCode.INT_POLL_NEXT_PAGE_INVALID, stored.failure().code());
+                    assertEquals(0, other.listCalls());
+                    assertEquals(1, source.listCalls());
+                    source.close();
+                }
+            }
         }
         source = null;
     }
