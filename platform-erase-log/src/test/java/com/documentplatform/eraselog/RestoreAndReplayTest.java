@@ -104,9 +104,78 @@ class RestoreAndReplayTest {
             return stored.remove(id) ? Applied.ERASED : Applied.ALREADY_GONE;
         }
 
+        RuntimeException verifyFailure;
+
         @Override
         public Verified verify(EraseEntry entry) {
+            if (verifyFailure != null) {
+                throw verifyFailure;
+            }
             return stored.contains(entry.request().recordId()) ? Verified.READABLE : Verified.GONE;
+        }
+    }
+
+    /** A handler of the "app" erasing in the app's own database through the position's connection. */
+    static final class DbDocuments implements EraseHandler {
+        volatile boolean failAfterWrite;
+
+        @Override
+        public String kind() {
+            return "document";
+        }
+
+        @Override
+        public Applied apply(EraseEntry entry, Context ctx) {
+            Connection c = ctx.connection().orElseThrow();
+            int n;
+            try (java.sql.PreparedStatement ps = c.prepareStatement("delete from app_document where id = ?")) {
+                ps.setString(1, entry.request().recordId());
+                n = ps.executeUpdate();
+            } catch (java.sql.SQLException e) {
+                throw new EraseHandlerException("DOC_DB_FAILED", "the delete failed (SQL state " + e.getSQLState()
+                        + ")");
+            }
+            if (failAfterWrite) {
+                throw new EraseHandlerException("DOC_STORE_DOWN", "the copy store did not answer");
+            }
+            return n > 0 ? Applied.ERASED : Applied.ALREADY_GONE;
+        }
+
+        @Override
+        public Verified verify(EraseEntry entry) {
+            return Verified.GONE;
+        }
+    }
+
+    /** Records the order entries were applied in, slowly, so that overlapping applies would show. */
+    static final class OrderedDocuments implements EraseHandler {
+        final List<Long> applied = java.util.Collections.synchronizedList(new ArrayList<>());
+        final java.util.concurrent.atomic.AtomicInteger inside = new java.util.concurrent.atomic.AtomicInteger();
+        final java.util.concurrent.atomic.AtomicInteger overlaps = new java.util.concurrent.atomic.AtomicInteger();
+
+        @Override
+        public String kind() {
+            return "document";
+        }
+
+        @Override
+        public Applied apply(EraseEntry entry, Context ctx) {
+            if (inside.incrementAndGet() > 1) {
+                overlaps.incrementAndGet();
+            }
+            try {
+                Thread.sleep(2);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            applied.add(entry.seq());
+            inside.decrementAndGet();
+            return Applied.ERASED;
+        }
+
+        @Override
+        public Verified verify(EraseEntry entry) {
+            return Verified.GONE;
         }
     }
 
@@ -389,5 +458,197 @@ class RestoreAndReplayTest {
         EraseGuard.State gap = new EraseGuard(log, position, clock).checkAtStartup();
         assertEquals(EraseLogError.ERASE_LOG_GAP, gap.code());
         assertFalse(gap.mayTakeWork());
+    }
+
+    /** erase-log-22: the admin screen reads the pending entry and its handler's code from the guard's state. */
+    @Test
+    void anEntryThatCouldNotBeAppliedIsInTheGuardsStateUntilItIsApplied(@TempDir Path logDir) throws Exception {
+        EraseLog log = new EraseLog(new FileEraseLogStore(logDir), clock);
+        EraseGuard guard = new EraseGuard(log, position, clock);
+        assertTrue(guard.checkAtStartup().mayTakeWork());
+        Eraser eraser = new Eraser(log, position, handlers, guard);
+        List<String> backup = backupPositions();
+        documents.stored.addAll(Set.of("d1", "d2"));
+        documents.failOn = "d1";
+        assertThrows(EraseLogException.class, () -> eraser.erase(document("d1")));
+        EraseGuard.ApplyFailure failed = new EraseGuard.ApplyFailure(1, "document", CASE, "d1", "DOC_STORE_DOWN",
+                EraseLogError.ERASE_HANDLER_FAILED, T0);
+        assertEquals(failed, guard.state().lastFailure());
+        EraseGuard.State running = guard.refresh();
+        assertTrue(running.mayTakeWork(), "an erase in progress");
+        assertEquals(1, running.pending());
+        assertEquals(failed, running.lastFailure(), "kept across the recheck");
+        assertEquals(failed, guard.fullCheck().lastFailure(), "and the daily check");
+
+        clock.now = T0.plusSeconds(5);
+        assertThrows(EraseLogException.class, () -> eraser.erase(document("d2")));
+        assertEquals(new EraseGuard.ApplyFailure(1, "document", CASE, "d1", "DOC_STORE_DOWN",
+                EraseLogError.ERASE_HANDLER_FAILED, T0.plusSeconds(5)), guard.state().lastFailure(),
+                "a later erasure stops at the same entry");
+
+        documents.failOn = null;
+        eraser.erase(document("d2"));
+        assertNull(guard.refresh().lastFailure(), "cleared once the entry is applied");
+
+        // The replay given the guard reports the entry it stopped at.
+        restorePositions(backup);
+        documents.stored.addAll(Set.of("d1", "d2"));
+        assertFalse(guard.checkAtStartup().mayTakeWork());
+        documents.failOn = "d2";
+        EraseReplay replay = new EraseReplay(log, position, handlers, clock, guard);
+        assertEquals(2L, replay.run().stoppedAt());
+        EraseGuard.State blocked = guard.refresh();
+        assertEquals(EraseLogError.ERASE_LOG_RESTORE_DETECTED, blocked.code());
+        assertEquals(2, blocked.lastFailure().seq());
+        assertEquals("d2", blocked.lastFailure().recordId());
+        assertEquals("DOC_STORE_DOWN", blocked.lastFailure().handlerCode());
+        documents.failOn = null;
+        assertTrue(replay.run().passed());
+        EraseGuard.State lifted = guard.refresh();
+        assertTrue(lifted.mayTakeWork());
+        assertNull(lifted.lastFailure());
+    }
+
+    /** erase-log-51: two instances (eraser, eraser, replay) on one database and one log location at once. */
+    @Test
+    void twoErasersAndAReplayAtOnceApplyEveryEntryOnceAndInOrder(@TempDir Path logDir) throws Exception {
+        OrderedDocuments ordered = new OrderedDocuments();
+        EraseHandlers one = EraseHandlers.of(ordered);
+        // Entries logged by an instance that stopped before applying them: whoever takes the lock first applies them.
+        EraseLog first = new EraseLog(new FileEraseLogStore(logDir), clock);
+        for (int i = 0; i < 5; i++) {
+            first.record(document("p" + i));
+        }
+        int each = 15;
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(3);
+        java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+        List<java.util.concurrent.Future<?>> done = new ArrayList<>();
+        for (String instance : List.of("a", "b")) {
+            Eraser eraser = new Eraser(new EraseLog(new FileEraseLogStore(logDir), clock),
+                    new PostgresErasePosition(app), one);
+            done.add(pool.submit(() -> {
+                go.await();
+                for (int i = 0; i < each; i++) {
+                    eraser.erase(document(instance + i));
+                }
+                return null;
+            }));
+        }
+        EraseReplay replay = new EraseReplay(new EraseLog(new FileEraseLogStore(logDir), clock),
+                new PostgresErasePosition(app), one, clock);
+        List<EraseReplay.Report> reports = java.util.Collections.synchronizedList(new ArrayList<>());
+        done.add(pool.submit(() -> {
+            go.await();
+            for (int i = 0; i < 5; i++) {
+                reports.add(replay.run());
+            }
+            return null;
+        }));
+        go.countDown();
+        for (java.util.concurrent.Future<?> f : done) {
+            f.get(2, java.util.concurrent.TimeUnit.MINUTES);
+        }
+        pool.shutdown();
+
+        long total = 5 + 2L * each;
+        List<Long> expected = java.util.stream.LongStream.rangeClosed(1, total).boxed().toList();
+        assertEquals(expected, ordered.applied, "every entry once, in order");
+        assertEquals(0, ordered.overlaps.get(), "one at a time");
+        assertEquals(total, position.read(first.logId()).appliedSeq());
+        EraseLog.ChainCheck chain = first.verify();
+        assertTrue(chain.intact(), chain.message());
+        assertEquals(total, chain.entries());
+        for (EraseReplay.Report r : reports) {
+            assertTrue(r.passed(), r.describe());
+        }
+    }
+
+    /** erase-log-57: a handler erasing through {@code ctx.connection()} commits with the position or not at all. */
+    @Test
+    void aHandlersWriteThroughThePositionsConnectionCommitsWithThePositionOrNotAtAll(@TempDir Path logDir)
+            throws Exception {
+        db.exec("create table app_document (id text primary key)", "insert into app_document values ('d1'), ('d2')",
+                "grant select, delete on app_document to " + db.schema + "_app");
+        DbDocuments inDb = new DbDocuments();
+        EraseLog log = new EraseLog(new FileEraseLogStore(logDir), clock);
+        Eraser eraser = new Eraser(log, position, EraseHandlers.of(inDb));
+        inDb.failAfterWrite = true;
+        EraseLogException e = assertThrows(EraseLogException.class, () -> eraser.erase(document("d1")));
+        assertEquals("DOC_STORE_DOWN", e.handlerCode().orElseThrow());
+        assertEquals(List.of("d1", "d2"), documentRows(), "the handler's delete was rolled back");
+        assertEquals(0, position.read(log.logId()).appliedSeq(), "and the position did not move");
+        assertEquals(1, log.head().seq());
+
+        inDb.failAfterWrite = false;
+        Eraser.Erased next = eraser.erase(document("d2"));
+        assertEquals(1, next.caughtUp());
+        assertEquals(List.of(), documentRows(), "both deletes committed with the position");
+        assertEquals(2, position.read(log.logId()).appliedSeq());
+    }
+
+    List<String> documentRows() throws Exception {
+        List<String> ids = new ArrayList<>();
+        try (Connection c = db.owner.getConnection(); Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery("select id from app_document order by id")) {
+            while (rs.next()) {
+                ids.add(rs.getString(1));
+            }
+        }
+        return ids;
+    }
+
+    /** erase-log-67: the daily full check sees a pending entry as an erase in progress and records nothing. */
+    @Test
+    void theFullCheckWhileRunningNeverRecordsARestore(@TempDir Path logDir) {
+        EraseLog log = new EraseLog(new FileEraseLogStore(logDir), clock);
+        Eraser eraser = new Eraser(log, position, handlers);
+        documents.stored.add("d1");
+        documents.failOn = "d1";
+        assertThrows(EraseLogException.class, () -> eraser.erase(document("d1")));
+        EraseGuard guard = new EraseGuard(log, position, clock);
+        EraseGuard.State s = guard.fullCheck();
+        assertTrue(s.mayTakeWork(), s.message());
+        assertNull(s.code());
+        assertTrue(s.chainChecked());
+        assertEquals(1, s.pending());
+        assertEquals("In step; 1 erase(s) in progress", s.message());
+        assertFalse(position.read(log.logId()).replayRequired(), "nothing recorded in the database");
+        assertTrue(guard.refresh().mayTakeWork());
+        assertTrue(new EraseGuard(log, position, clock).refresh().mayTakeWork(), "nor for another instance");
+    }
+
+    /** erase-log-73: a verify check that throws is {@code ERASE_VERIFY_FAILED} with its code; the system stays blocked. */
+    @Test
+    void aVerifyCheckThatThrowsKeepsTheSystemBlockedWithItsCode(@TempDir Path logDir) throws Exception {
+        EraseLog log = new EraseLog(new FileEraseLogStore(logDir), clock);
+        List<String> backup = backupPositions();
+        documents.stored.add("d1");
+        new Eraser(log, position, handlers).erase(document("d1"));
+        restorePositions(backup);
+        EraseGuard guard = new EraseGuard(log, position, clock);
+        assertFalse(guard.checkAtStartup().mayTakeWork());
+        EraseReplay replay = new EraseReplay(log, position, handlers, clock);
+
+        documents.verifyFailure = new EraseHandlerException("DOC_STORE_DOWN", "the document store did not answer");
+        EraseReplay.Report refused = replay.run();
+        assertEquals(EraseLogError.ERASE_VERIFY_FAILED, refused.code());
+        assertEquals("DOC_STORE_DOWN", refused.handlerCode());
+        assertTrue(refused.describe().contains("NOT complete: ERASE_VERIFY_FAILED (DOC_STORE_DOWN)"),
+                refused.describe());
+        assertEquals(1, refused.appliedCount(), "the replay itself ran");
+        assertFalse(guard.refresh().mayTakeWork());
+        assertTrue(position.read(log.logId()).replayRequired());
+
+        documents.verifyFailure = new IllegalStateException("the store's client broke");
+        EraseReplay.Report crashed = replay.run();
+        assertEquals(EraseLogError.ERASE_VERIFY_FAILED, crashed.code());
+        assertEquals(EraseLogError.ERASE_HANDLER_ERROR.name(), crashed.handlerCode());
+        assertFalse(crashed.message().contains("the store's client broke"), crashed.message());
+        assertFalse(guard.refresh().mayTakeWork());
+        assertTrue(position.read(log.logId()).replayRequired());
+
+        documents.verifyFailure = null;
+        assertTrue(replay.run().passed());
+        assertTrue(guard.refresh().mayTakeWork());
     }
 }
