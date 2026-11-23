@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.documentplatform.platform</groupId>
         <artifactId>platform-core</artifactId>
-        <version>0.4.0</version>
+        <version>0.5.0-SNAPSHOT</version>
     </parent>
     <artifactId>platform-monitoring-spring</artifactId>
     <description>Spring Boot wiring for platform-monitoring: platform.monitoring.* (validated), the built-in checks
