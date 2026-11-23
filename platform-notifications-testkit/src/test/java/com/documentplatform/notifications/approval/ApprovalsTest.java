@@ -194,6 +194,26 @@ class ApprovalsTest {
                 ApprovalFixture.APPROVED, ApprovalFixture.DECLINED, APPROVER).validFor(Duration.ofMinutes(1)));
     }
 
+    /** notifications-167: a request type stays open between 5 minutes and 30 days, both ends included. */
+    @Test
+    void aRequestTypeIsOpenBetweenFiveMinutesAndThirtyDays() {
+        ApprovalType base = ApprovalType.of("x", ApprovalFixture.WAITING, ApprovalFixture.APPROVED,
+                ApprovalFixture.DECLINED, APPROVER);
+        for (Duration accepted : List.of(Duration.ofMinutes(5), Duration.ofDays(30))) {
+            assertEquals(accepted, base.validFor(accepted).validFor());
+            assertEquals(accepted, new ApprovalType("x", ApprovalFixture.WAITING, ApprovalFixture.APPROVED,
+                    ApprovalFixture.DECLINED, APPROVER, accepted).validFor());
+        }
+        for (Duration refused : List.of(Duration.ofMinutes(5).minusSeconds(1), Duration.ofDays(30).plusSeconds(1),
+                Duration.ZERO, Duration.ofMinutes(-10))) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> base.validFor(refused),
+                    refused.toString());
+            assertEquals("A request stays open between 5 minutes and 30 days", e.getMessage());
+            assertThrows(IllegalArgumentException.class, () -> new ApprovalType("x", ApprovalFixture.WAITING,
+                    ApprovalFixture.APPROVED, ApprovalFixture.DECLINED, APPROVER, refused, null), refused.toString());
+        }
+    }
+
     @Test
     void aMessageNotSentBeforeTheRequestClosedIsNotSentAtAll() {
         f.email.failWith(FailureCode.MAIL_SERVER_UNREACHABLE);
