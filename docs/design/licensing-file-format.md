@@ -67,14 +67,20 @@ IDs are 16 random Crockford base32 characters (80 bits) after the prefix, in gro
 | Check | Code |
 |---|---|
 | nothing stored (null, empty, blank) | `LICENCE_MISSING` |
-| not UTF-8, not JSON, missing/extra envelope fields, signature not 64 bytes of Base64 | `LICENCE_MALFORMED` |
-| `format` not `platform-licence/1`, or `algorithm` not `Ed25519` | `LICENCE_UNSUPPORTED_FORMAT` |
+| not UTF-8, not JSON, `format` missing or not a string | `LICENCE_MALFORMED` |
+| `format` not `platform-licence/1` | `LICENCE_UNSUPPORTED_FORMAT` |
+| missing/extra envelope fields, signature not 64 bytes of Base64 | `LICENCE_MALFORMED` |
+| `algorithm` not `Ed25519` | `LICENCE_UNSUPPORTED_FORMAT` |
 | `keyId` not among the app's trusted keys | `LICENCE_UNKNOWN_KEY_ID` |
 | SHA-256 of the signed message ≠ `payloadSha256` (payload or digest edited) | `LICENCE_TAMPERED` |
 | signature does not verify with the named key | `LICENCE_FORGED` |
 | signed payload breaks the model (for example perpetual with an expiry) | `LICENCE_MALFORMED` |
 | `tenantId` ≠ the installation's tenant (when known) | `LICENCE_WRONG_CUSTOMER` |
 | storing only: older version than one stored / same version, different licence | `LICENCE_OLDER_VERSION` / `LICENCE_VERSION_CONFLICT` |
+
+`format` is compared before the envelope's field set is checked (`SignedDocument.open`), so a file of another format
+with extra fields gives `LICENCE_UNSUPPORTED_FORMAT`, not `LICENCE_MALFORMED`. The same order applies to the
+last-seen reset (section 7).
 
 Every message is `CODE: meaning. exact cause.` with IDs and dates only — never signatures, keys or other content.
 
@@ -136,6 +142,17 @@ What apps ship: `{"format":"platform-licence-keys/1","keys":[{"algorithm":"Ed255
 `publicKey` is Base64 of the X.509 SubjectPublicKeyInfo encoding (44 bytes for Ed25519). A rotation adds a key;
 old keys stay until no licence signed with them is in use.
 
+A key may also carry the optional field `"development": true` (P031): a **development key**, for demo and local
+test licences only, which no production release lists. A few local test features (an `http` login issuer on this
+machine, P031) are allowed only for a licence signed by such a key (`TrustedKeys.isDevelopmentKey`). The field is
+`true` or `false`; any other value is refused, and a file without it loads as before (every key a normal key). Other
+fields in a key are refused.
+
+```json
+{ "format": "platform-licence-keys/1",
+  "keys": [ { "algorithm": "Ed25519", "development": true, "keyId": "dev-local-01", "publicKey": "…" } ] }
+```
+
 ## 4. Issuing command files (our side only)
 
 - **Issued records** (`--records`, JSON Lines, append only): one canonical object per licence with `licenceId`,
@@ -144,7 +161,8 @@ old keys stay until no licence signed with them is in use.
   New IDs are checked against every ID in this file.
 - **Run log** (`--run-log`, default `<records>.runs.log`, JSON Lines): one line per run, issued or refused:
   `at`, `outcome` (`ISSUED`, `RESET_ISSUED`, `KEYS_EXPORTED`, `REFUSED`, `FAILED`), `code`, `licenceId`, `version`,
-  `tenantId`, `kind`, `keyId` (the key that signed, with its version), `keyIds` (an export), `out` (file name),
+  `tenantId`, `kind`, `resetId`, `resetTo`, `notAfter` (a last-seen reset, section 7), `keyId` (the key that signed,
+  with its version), `keyIds` (an export), `out` (file name),
   `signer` (`vault-transit`), `signerAuditRefs` (the Vault request IDs of this run's signatures, which match Vault's
   audit log). Never a token, a key or a signature.
 - **Signing** (since P011): through the `Signer` interface, `sign(keyId, bytes)`. The command uses

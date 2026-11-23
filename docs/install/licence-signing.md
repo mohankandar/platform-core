@@ -100,6 +100,18 @@ export VAULT_ADDR=https://vault.internal:8200     # or --vault-addr
 export VAULT_NAMESPACE=licensing                  # only on Vault Enterprise / HCP, if you use namespaces
 ```
 
+The Vault options, the same for every form of the command (licence, last-seen reset, key export):
+
+| Option | Default | What it is |
+|---|---|---|
+| `--vault-addr` | `VAULT_ADDR` | Vault's address. One of the two is required. |
+| `--vault-mount` | `transit` | The path where the Transit engine is mounted, if not `transit`. |
+| `--vault-login` | `token` | `token` (from `VAULT_TOKEN`) or `userpass` (2.2). |
+| `--vault-user` | none | Your Vault user name, with `--vault-login userpass` only. |
+| `--vault-login-mount` | `userpass` | The path where the userpass method is mounted, if not `userpass`. |
+
+`VAULT_NAMESPACE` is read from the environment only.
+
 The command uses the Java runtime's trust store and proxy settings. If Vault's certificate is signed by an internal
 CA, add that CA to the trust store the command runs with (`-Djavax.net.ssl.trustStore=…`); otherwise the command stops
 with `ISSUE_VAULT_TLS`.
@@ -186,7 +198,8 @@ Match a run to Vault's audit log by the request IDs in `signerAuditRefs`.
 
 ## 5. Refusals
 
-The command stops with a stable code and the exact cause; nothing is written when signing fails.
+The command stops with a stable code and the exact cause; nothing is written when signing fails. Every code is also
+in `docs/errors/platform-error-codes.md`.
 
 | Code | Cause | What to do |
 |---|---|---|
@@ -195,8 +208,8 @@ The command stops with a stable code and the exact cause; nothing is written whe
 | `ISSUE_VAULT_PERMISSION_DENIED` | the token lacks the `licensing-signer` policy, or expired | Log in again; ask the Vault administrator for the policy |
 | `ISSUE_VAULT_UNREACHABLE` | connection refused, timeout or unknown host | Check `VAULT_ADDR` and the network |
 | `ISSUE_VAULT_TLS` | Vault's certificate is not trusted | Add the CA to the Java trust store (2.1) |
-| `ISSUE_VAULT_SEALED` | Vault is sealed or in standby | Unseal Vault, or use the active node |
-| `ISSUE_VAULT_ERROR` | another Vault error or an unexpected reply | Read the HTTP status and Vault's message in the output |
+| `ISSUE_VAULT_SEALED` | Vault answered HTTP 503: it is sealed (or otherwise not able to serve) | Unseal Vault |
+| `ISSUE_VAULT_ERROR` | another Vault error or an unexpected reply; also a standby node that redirects (redirects are not followed, the output says "use the active node's address") | Read the HTTP status and Vault's message in the output; for a standby node, point `--vault-addr` / `VAULT_ADDR` at the active node |
 | `ISSUE_KEY_NOT_FOUND` | no such Transit key, or no such version | Check `--key-id` and `vault read transit/keys/<name>` |
 | `ISSUE_KEY_INVALID` | the key is not of type `ed25519` | Create an `ed25519` key |
 | `ISSUE_KEY_EXPORTABLE` | the key allows export or plaintext backup | Create a new key without them (1.2) |

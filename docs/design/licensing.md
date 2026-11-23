@@ -10,7 +10,8 @@ Source of truth: the owner's Shared capabilities thread (project doc `Licensing-
 - **Signing:** Ed25519. Private key only in the secret store (never in the repo, never exported); apps ship the public keys. Each licence names its key ID so keys can rotate without breaking old licences.
 - **Entity slots:** the licence pre-issues slot IDs, unique across all customers. The customer's Business Admin activates and names a slot in the app. IDs always come from us.
 - **Adding entities or changing allowances:** a new licence version.
-- **Install licence:** short (30–60 days). Usage under an install licence is recorded but marked **not billable**.
+- **Install licence:** short: at most 60 days, with no minimum (P009 decision 7, section 8; the issuing command refuses
+  a longer one with `ISSUE_INSTALL_TOO_LONG`). Usage under an install licence is recorded but marked **not billable**.
 
 ## 2. Where the licence lives
 
@@ -38,10 +39,18 @@ Source of truth: the owner's Shared capabilities thread (project doc `Licensing-
 - The module provides a **usage ledger**: the app records units at its own meter point (e.g. pages processed, daily peak of concurrent seats, named seats assigned, storage). Records carry entity slot, period, amount, billable flag (false under an install licence or when the app marks it free), and a hash chained to the previous record so edits are detected.
 - Usage per entity per month can be read for the app's screens and notifications.
 - **Usage file export** for any period, on demand: tamper-evident, no document data, no prices. How often it is sent is a contract term; nothing in the software reacts to a late file.
+- **The export anchor is the app's.** Each export continues from the previous file's sequence, final chain value and
+  last period (`ExportAnchor`). The app keeps the anchor of the last file it exported (`UsageExport.nextAnchor()`);
+  there is no `lic_` table for it. If the usage tables are wiped but the app keeps its anchor, the next export holds
+  no records and continues the file chain. Only when the anchor is lost too does the next file start from the
+  beginning, and the file check shows `EXPORT_START_MISMATCH` (owner answer Q5, section 8).
 
 ## 5. Licence-issuing command (our side only)
 
-- Builds and signs a licence from an input file (customer, products, entity slots and allowances, kind, dates, deployment).
+- Builds and signs a licence from **command options**, not an input file: `--customer`, `--products`, `--slot` (one
+  per entity slot, with its allowances), `--type`, `--kind`, `--starts`, `--expires` or `--updates-until`,
+  `--deployment`, `--tenant-id` for a new version of an existing tenant, `--key-id`. Set-up and the Vault options:
+  `docs/install/licence-signing.md`.
 - Generates tenant and entity-slot IDs unique across all customers (random, collision-checked against its own issued records).
 - Reads the signing key from the secret store; writes a record of every licence issued (no key material in it); every
   run logged. *(Since P011 the key never leaves the secret store: signing happens in Vault Transit; see section 8.)*
@@ -49,7 +58,12 @@ Source of truth: the owner's Shared capabilities thread (project doc `Licensing-
 
 ## 6. Setup command (`platform-setup`, later task)
 
-Reads the licence, stores it, creates customer, tenant and entity slots, loads the sign-in config file into the login hub. Idempotent: never duplicates or deletes. No inserts at app startup; the schema step stays separate.
+Reads the licence, stores it, creates customer, tenant and entity slots, loads the sign-in config file into the login hub. Idempotent: never duplicates. No inserts at app startup; the schema step stays separate.
+
+The first rule here was "never deletes". Later setup decisions changed that, on request only: `--remove-unlisted-grants`
+removes group access that is no longer in the role mapping file, and a line removed from a client-binding file
+switches that binding off (kept, never deleted). Customers, entities and slots are still never deleted. The rules as
+built are in `docs/design/setup.md` (section 2 rule 6, sections 5 and 6).
 
 ## 7. Rules that always apply
 
@@ -134,8 +148,10 @@ Reads the licence, stores it, creates customer, tenant and entity slots, loads t
   it into `platform-tenant.properties`.
 - **Q3. Reset validity:** 7 days by default, at most 30. Confirmed.
 - **Q4. Resets stay out of the issued records** (run log only).
-- **Q5. Wiping both usage tables accepted:** it looks like a new, empty ledger; the next usage export shows a chain
-  start that does not match the previous file (`EXPORT_START_MISMATCH`).
+- **Q5. Wiping both usage tables accepted:** it looks like a new, empty ledger. The export anchor is kept by the
+  app, not in a `lic_` table (section 4), so the next export continues from the app's anchor with no records. Only if
+  the app's anchor is lost too does the next usage export show a chain start that does not match the previous file
+  (`EXPORT_START_MISMATCH`).
 
 ### P011 decisions (notification events and Vault signing)
 
