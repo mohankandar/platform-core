@@ -623,6 +623,64 @@ class PostgresValueStoreTest {
         assertEquals(3, db.count("select count(*) from fld_record"));
     }
 
+    /** case-fields-63: without a primary value there is no identity, so each record ID is a record of its own. */
+    @Test
+    void aRecordWithoutPrimaryValuesIsARecordOfItsOwn() {
+        define(B, FieldSpec.builder("remark", "Remark", FieldType.TEXT).sensitive(false).build());
+        FieldValues.Claim first = values.claim(ref(B, "n1"), vals("remark", "same text"));
+        FieldValues.Claim second = values.claim(ref(B, "n2"), vals("remark", "same text"));
+        assertEquals(new FieldValues.Claim(ref(B, "n1"), true, true), first);
+        assertEquals(new FieldValues.Claim(ref(B, "n2"), true, true), second, "not joined to n1");
+        assertEquals(2, db.count("select count(*) from fld_record"));
+        assertEquals(2, db.count("select count(*) from fld_record where identity is null"));
+        assertEquals(ref(B, "n1"), values.claim(ref(B, "n1"), vals("remark", "same text")).record(),
+                "the same ID again is the same record");
+        assertEquals(2, db.count("select count(*) from fld_record"));
+    }
+
+    /** case-fields-73: a sealed value is bound to its field and position, not only to the record. */
+    @Test
+    void aSealedValueMovedToAnotherFieldOrPositionDoesNotOpen() {
+        values.claim(ref(A, "c1"), vals("contract_number", "AB-1001", "borrower_name",
+                List.of("Alice Smith", "Bob Jones"), "mailing_address", ADDRESS));
+        RecordValues before = values.readSensitive(ref(A, "c1"));
+        String where = " where record_uuid = (select record_uuid from fld_record where record_id = 'c1')";
+        String first = "(select sealed_value from fld_value" + where + " and field_key = 'borrower_name' and "
+                + "position = 0)";
+        String second = "(select sealed_value from fld_value" + where + " and field_key = 'borrower_name' and "
+                + "position = 1)";
+        List<String> original = db.strings("select field_key || '/' || position || '=' || sealed_value from fld_value"
+                + where + " and sensitive order by 1");
+        assertEquals(3, original.size());
+
+        // The two names swapped between positions 0 and 1.
+        db.exec("update fld_value set sealed_value = case position when 0 then " + second + " else " + first
+                + " end" + where + " and field_key = 'borrower_name'");
+        CryptoException swapped = assertThrows(CryptoException.class, () -> values.readSensitive(ref(A, "c1")));
+        assertEquals(CryptoError.CRYPTO_CIPHERTEXT_INVALID, swapped.code());
+        restore(original, where);
+        assertEquals(before, values.readSensitive(ref(A, "c1")));
+
+        // A name moved into the address field.
+        db.exec("update fld_value set sealed_value = " + first + where + " and field_key = 'mailing_address'");
+        CryptoException moved = assertThrows(CryptoException.class, () -> values.readSensitive(ref(A, "c1")));
+        assertEquals(CryptoError.CRYPTO_CIPHERTEXT_INVALID, moved.code());
+        for (String secret : SECRETS) {
+            assertFalse(moved.getMessage().toLowerCase(Locale.ROOT).contains(secret), moved.getMessage());
+        }
+        restore(original, where);
+        assertEquals(before, values.readSensitive(ref(A, "c1")));
+    }
+
+    private void restore(List<String> original, String where) {
+        for (String row : original) {
+            String[] kv = row.split("=", 2);
+            String[] keyPos = kv[0].split("/");
+            db.exec("update fld_value set sealed_value = '" + kv[1] + "'" + where + " and field_key = '" + keyPos[0]
+                    + "' and position = " + keyPos[1]);
+        }
+    }
+
     @Test
     void concurrentWritersOfTheSamePrimaryValueEndUpOnOneRecord() throws Exception {
         int writers = 8;
