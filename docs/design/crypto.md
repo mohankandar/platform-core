@@ -125,7 +125,7 @@ lower case. Give it the field's normalised value (platform-fields) and the field
 | `CRYPTO_KEY_SERVICE_TLS` | TLS handshake failed (Vault's CA not in the Java trust store) |
 | `CRYPTO_KEY_SERVICE_SEALED` | Vault sealed or not ready (HTTP 503) |
 | `CRYPTO_LOGIN_REFUSED` | AppRole login refused, token file unreadable or empty |
-| `CRYPTO_PERMISSION_DENIED` | the token's policy does not allow the call (401/403; an AppRole or token-file login is repeated once first) |
+| `CRYPTO_PERMISSION_DENIED` | the token's policy does not allow the call (HTTP 403, also what Vault answers for an expired token; a 403 on an AppRole or token-file login is answered by logging in once more and repeating the call; tested with Vault 1.17, P038) |
 | `CRYPTO_KEY_MISSING` | the customer's key does not exist |
 | `CRYPTO_KEY_DISABLED` | the data's key version is switched off (below the lowest usable version) |
 | `CRYPTO_KEY_SERVICE_ERROR` | any other unusable answer |
