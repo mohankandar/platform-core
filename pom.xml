@@ -45,6 +45,8 @@
         <greenmail.version>2.1.15</greenmail.version>
         <testcontainers.version>2.0.5</testcontainers.version>
         <postgresql.version>42.7.14</postgresql.version>
+        <!-- The integrations' HTTP client (connection pinning): the version Spring Boot 3.3.x manages. -->
+        <httpclient5.version>5.3.1</httpclient5.version>
     </properties>
     <distributionManagement>
         <!-- Releases only (tags platform-core-vX.Y.Z, published by .github/workflows/release.yml). -->

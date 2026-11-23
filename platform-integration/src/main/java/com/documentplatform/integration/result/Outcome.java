@@ -22,10 +22,16 @@ public enum Outcome {
     /** A 2xx answer that does not match what the configuration expects. */
     UNCLEAR,
     /** Nothing was sent: the integration is off, invalid, or a secret or value is missing. */
-    NOT_CONFIGURED;
+    NOT_CONFIGURED,
+    /**
+     * The destination accepted the request for later processing (202 Accepted, on a step that declares it): nothing
+     * failed, the work is not done yet. The result holds a {@code PendingStatus}; the app asks again with
+     * {@code CallEngine.checkStatus} at or after its next check time. No attempt is used.
+     */
+    ACCEPTED;
 
     /** Whether the app should count this as a used attempt, unless a rule said otherwise. */
     public boolean usesAttemptByDefault() {
-        return this != BUSY;
+        return this != BUSY && this != ACCEPTED;
     }
 }

@@ -46,7 +46,10 @@ final class Pg {
         if (tables()) {
             exec(admin(null), "grant select, insert, update on " + schema + ".int_integration to " + user,
                     "grant select, insert on " + schema + ".int_integration_version to " + user,
-                    "grant select on " + schema + "." + IntegrationSchema.VERSION_TABLE + " to " + user);
+                    "grant select on " + schema + "." + IntegrationSchema.VERSION_TABLE + " to " + user,
+                    "grant select, insert, update on " + schema + ".int_credential to " + user,
+                    "grant select, insert on " + schema + ".int_credential_change to " + user,
+                    "grant select, insert, update, delete on " + schema + ".int_callback_outbox to " + user);
         }
         PGSimpleDataSource ds = new PGSimpleDataSource();
         ds.setURL(CONTAINER.getJdbcUrl());

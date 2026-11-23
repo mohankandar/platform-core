@@ -243,4 +243,106 @@ class NoSecretsInLogsTest {
             }
         }
     }
+
+    /**
+     * P026: a client certificate's private key, the PKCS#12 and keystore passwords, and a callback's signing secret go
+     * through uploads (right and every refusal), keystores, calls with mutual TLS (presented, refused, expired, key
+     * service down), the Test action of NEXT, the switch, the expiry check, callbacks (sent, refused, given up) and the
+     * verifier; none of it reaches a log line, a result, a view, an exception's text or the mock's records.
+     */
+    @Test
+    void nothingSecretFromCertificatesOrCallbacks(@TempDir Path dir) throws Exception {
+        String p12Password = "P12PW-planted-4d4d";
+        String keystorePassword = "KSPW-planted-5e5e";
+        String signingSecret = "SIGN-planted-6f6f";
+        TestCertificates.Ca ca = TestCertificates.ca(dir, "logs-ca");
+        TestCertificates.Credential good = TestCertificates.credential(dir, "logs-good", -1, 60);
+        TestCertificates.Credential next = TestCertificates.credential(dir, "logs-next", -1, 90);
+        TestCertificates.Credential other = TestCertificates.credential(dir, "logs-other", -1, 60);
+        TestCertificates.Server server = TestCertificates.serverTrusting(dir, ca, "logs-server", "dns:localhost",
+                good.certificate(), next.certificate());
+        List<String> outputs = new ArrayList<>();
+        com.documentplatform.crypto.testkit.InMemoryKeyService keys =
+                new com.documentplatform.crypto.testkit.InMemoryKeyService().createKeysOnDemand();
+        com.documentplatform.integration.testkit.InMemoryCredentialStore store =
+                new com.documentplatform.integration.testkit.InMemoryCredentialStore();
+        fx.secrets.put(SecretRef.of("int/ks"), keystorePassword).put(SecretRef.of("int/sign"), signingSecret);
+        com.documentplatform.integration.credential.IntegrationCredentials credentials =
+                new com.documentplatform.integration.credential.IntegrationCredentials(store,
+                        new com.documentplatform.crypto.envelope.ValueCipher(keys),
+                        e -> com.documentplatform.crypto.CustomerId.fromTenantId("TEN-LOGS-1"), fx.secrets,
+                        IntegrationAudit.NONE, Clock.systemUTC());
+        try (MockDestination mtls = MockDestination.startMutualTls(server.context());
+             com.documentplatform.integration.engine.CallEngine engine =
+                     new com.documentplatform.integration.engine.CallEngine(
+                             new com.documentplatform.integration.http.Outbound(fx.installation.withPrivateCa(ca.pem())),
+                             fx.secrets, credentials, Clock.systemUTC())) {
+            mtls.expectNone();
+            com.documentplatform.integration.store.StoredIntegration s = Fx.stored(Fx.twoStep(mtls.addressByName(),
+                    SignIn.MutualTls.alone()));
+            for (byte[] bad : List.of("junk".getBytes(), TestCertificates.pkcs12(good, p12Password))) {
+                outputs.add(assertThrows(RuntimeException.class, () -> credentials.upload(s, bad,
+                        "wrong-planted".toCharArray(), null, "admin")).getMessage());
+            }
+            outputs.add(engine.attempt(s, Fx.delivery(1, TEXT)).toString()); // no certificate yet
+            outputs.add(credentials.upload(s, TestCertificates.pkcs12(other, p12Password), p12Password.toCharArray(),
+                    null, "admin").toString());
+            outputs.add(engine.attempt(s, Fx.delivery(1, TEXT)).toString()); // refused by the destination
+            outputs.add(credentials.upload(s, TestCertificates.pkcs12(good, p12Password), p12Password.toCharArray(),
+                    null, "admin").toString());
+            outputs.add(new TestAction(engine, IntegrationAudit.NONE).runWithNext(s, "admin").toString());
+            outputs.add(credentials.switchToNext(s.id(), "admin").toString());
+            outputs.add(engine.attempt(s, Fx.delivery(1, TEXT)).toString());
+            outputs.add(engine.health(s).toString());
+            keys.down(true);
+            outputs.add(engine.attempt(s, Fx.delivery(1, TEXT)).toString());
+            keys.down(false);
+            Path ks = TestCertificates.keystore(next, dir.resolve("logs-ks.p12"), "client", keystorePassword);
+            com.documentplatform.integration.store.StoredIntegration s2 = Fx.stored(Fx.twoStep(mtls.addressByName(),
+                    SignIn.MutualTls.alone()));
+            outputs.add(credentials.useKeystore(s2, new com.documentplatform.integration.credential.KeystoreRef(
+                    ks.toString(), SecretRef.of("int/ks"), "client"), null, "admin").toString());
+            outputs.add(engine.attempt(s2, Fx.delivery(1, TEXT)).toString());
+            outputs.add(credentials.list(s.id()).toString() + credentials.history(s.id()) + store.rows());
+            outputs.add(new com.documentplatform.integration.credential.CredentialExpiry(store)
+                    .check(java.time.Instant.now().plus(Duration.ofDays(365))).toString());
+            String records = mtls.received() + " " + mtls.clientCertificates();
+            for (TestCertificates.Credential c : List.of(good, next, other)) {
+                assertFalse(records.contains(c.keyBase64().substring(0, 40)), "the mock recorded a key");
+            }
+        }
+        // Callbacks: sent, refused, given up; the verifier's results.
+        IntegrationConfig cb = IntegrationConfig.callback(Fx.ENTITY, Fx.PRODUCT, "Hooks",
+                new com.documentplatform.integration.config.Endpoint(fx.mock.address(), false), new SignIn.None(),
+                SecretRef.of("int/sign"));
+        com.documentplatform.integration.store.StoredIntegration stored = Fx.stored(cb);
+        fx.mock.reset();
+        fx.mock.expectNone();
+        outputs.add(fx.engine.sendCallback(stored, java.util.UUID.randomUUID(), "{\"note\":\"" + VALUE + "\"}")
+                .toString());
+        fx.mock.refuse(400, "MOCK-CB-1");
+        outputs.add(fx.engine.sendCallback(stored, java.util.UUID.randomUUID(), "{}").toString());
+        outputs.add(com.documentplatform.integration.callback.CallbackVerifier.verify(
+                java.util.Map.of(com.documentplatform.integration.callback.CallbackSignature.SIGNATURE_HEADER,
+                        "t=1,v1=00", com.documentplatform.integration.callback.CallbackSignature.ID_HEADER, "x")::get,
+                VALUE.getBytes(), List.of(signingSecret),
+                com.documentplatform.integration.callback.CallbackVerifier.SeenIds.inMemory(10),
+                java.time.Instant.now()).toString());
+
+        List<String> all = new ArrayList<>(outputs);
+        synchronized (lines) {
+            all.addAll(lines);
+        }
+        assertTrue(lines.stream().anyMatch(l -> l.contains("client certificate change")), "certificate changes log");
+        List<String> planted = new ArrayList<>(List.of(p12Password, keystorePassword, signingSecret, "wrong-planted",
+                TEXT, VALUE));
+        for (TestCertificates.Credential c : List.of(good, next, other)) planted.add(c.keyBase64().substring(0, 40));
+        for (String line : all) {
+            for (String p : planted) {
+                assertFalse(line.contains(p), "found " + p + " in: " + line);
+            }
+        }
+        // The mock records header values for callbacks only as names it checks; never the signing secret.
+        assertFalse((fx.mock.received().toString()).contains(signingSecret));
+    }
 }

@@ -30,6 +30,13 @@ import java.util.List;
  * platform.integration.profile-folder=/etc/app/integration-profiles
  * platform.integration.health.enabled=true
  * platform.integration.health.cache-for=60s
+ * platform.integration.credentials.expiry-warning-days=30,7,1
+ * platform.integration.callbacks.first-delay=1m
+ * platform.integration.callbacks.max-delay=6h
+ * platform.integration.callbacks.give-up-after=24h
+ * platform.integration.callbacks.keep-finished=30d
+ * platform.integration.worker.enabled=true                    # callbacks out, timed certificate switches
+ * platform.integration.worker.every=15s
  * </pre>
  */
 @ConfigurationProperties(prefix = IntegrationProperties.PREFIX)
@@ -55,6 +62,97 @@ public class IntegrationProperties {
     /** Where the installation's IT puts the published profile files. */
     private String profileFolder;
     private final Health health = new Health();
+    private final Credentials credentials = new Credentials();
+    private final Callbacks callbacks = new Callbacks();
+    private final Worker worker = new Worker();
+
+    /** Client certificates (mutual TLS). */
+    public static class Credentials {
+        /** The days before a certificate ends at which CredentialExpiry warns (1 to 365 each). */
+        private List<Integer> expiryWarningDays = new ArrayList<>(List.of(30, 7, 1));
+
+        public List<Integer> getExpiryWarningDays() {
+            return expiryWarningDays;
+        }
+
+        public void setExpiryWarningDays(List<Integer> d) {
+            this.expiryWarningDays = d;
+        }
+    }
+
+    /** Signed callbacks out: the retry schedule and how long finished ones are kept. */
+    public static class Callbacks {
+        private Duration firstDelay = Duration.ofMinutes(1);
+        private Duration maxDelay = Duration.ofHours(6);
+        private Duration giveUpAfter = Duration.ofHours(24);
+        private Duration keepFinished = Duration.ofDays(30);
+
+        public Duration getFirstDelay() {
+            return firstDelay;
+        }
+
+        public void setFirstDelay(Duration d) {
+            this.firstDelay = d;
+        }
+
+        public Duration getMaxDelay() {
+            return maxDelay;
+        }
+
+        public void setMaxDelay(Duration d) {
+            this.maxDelay = d;
+        }
+
+        public Duration getGiveUpAfter() {
+            return giveUpAfter;
+        }
+
+        public void setGiveUpAfter(Duration d) {
+            this.giveUpAfter = d;
+        }
+
+        public Duration getKeepFinished() {
+            return keepFinished;
+        }
+
+        public void setKeepFinished(Duration d) {
+            this.keepFinished = d;
+        }
+    }
+
+    /** The background worker: callbacks due, certificates whose switch time came, daily purge. */
+    public static class Worker {
+        private boolean enabled = true;
+        private Duration every = Duration.ofSeconds(15);
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public Duration getEvery() {
+            return every;
+        }
+
+        public void setEvery(Duration every) {
+            this.every = every;
+        }
+    }
+
+    public Credentials getCredentials() {
+        return credentials;
+    }
+
+    public Callbacks getCallbacks() {
+        return callbacks;
+    }
+
+    public Worker getWorker() {
+        return worker;
+    }
 
     public static class Proxy {
         private String host;

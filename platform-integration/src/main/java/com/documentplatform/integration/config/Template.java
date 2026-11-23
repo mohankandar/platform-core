@@ -240,7 +240,7 @@ public final class Template {
         if (FORBIDDEN_ROOTS.contains(root.toLowerCase()) || FORBIDDEN_DOC.contains(name)) {
             throw new Problem(IntegrationCode.INT_CONFIG_PLACEHOLDER_FORBIDDEN, name);
         }
-        if (FIXED.contains(name)) return;
+        if (FIXED.contains(name) || name.equals(CallStep.Accepted.REFERENCE)) return;
         String[] seg = name.split("\\.", -1);
         if (seg.length == 2 && seg[0].equals("value") && NAME.matcher(seg[1]).matches()) return;
         if (seg.length == 3 && seg[0].equals("doc") && seg[1].equals("attr") && NAME.matcher(seg[2]).matches()) {

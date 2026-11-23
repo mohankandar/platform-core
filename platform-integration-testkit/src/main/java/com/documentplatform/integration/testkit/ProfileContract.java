@@ -82,6 +82,7 @@ public final class ProfileContract {
             body(s, op, schemas, where, out);
             reads(s, op, spec, where, out);
             codes(op, s.rules(), profile.rules(), where, out);
+            if (s.accepted() != null) accepted(profile, s, op, spec, where, out);
         }
         if (profile.health() != null) {
             Optional<OpenApiSpec.Operation> h = spec.find(profile.health().method().name(), profile.health().path());
@@ -217,6 +218,55 @@ public final class ProfileContract {
                 out.add(new Problem(where, "the value " + r.getKey() + " (" + r.getValue() + ") is not in the answer"));
             }
         }
+    }
+
+    /**
+     * "Accepted, check later": the operation answers 202 with the status reference (the property the pointer names,
+     * or a Location header); the status call is an operation of the spec whose 2xx answer holds the state, and
+     * every value read from it; its codes are named by rules.
+     */
+    private static void accepted(IntegrationProfile profile, CallStep s, OpenApiSpec.Operation op, OpenApiSpec spec,
+                                 String where, List<Problem> out) {
+        CallStep.Accepted a = s.accepted();
+        Optional<OpenApiSpec.Answer> accepted = op.answer("202");
+        if (accepted.isEmpty()) {
+            out.add(new Problem(where, "the step accepts 202 but the spec has no 202 answer"));
+        } else if (a.referencePointer() != null) {
+            if (!hasProperty(spec, accepted.get().schema(), a.referencePointer())) {
+                out.add(new Problem(where, "the status reference (" + a.referencePointer()
+                        + ") is not in the 202 answer"));
+            }
+        } else if (accepted.get().headers() == null || accepted.get().headers().keySet().stream()
+                .noneMatch(h -> h.equalsIgnoreCase("Location"))) {
+            out.add(new Problem(where, "the status reference is the Location header, which the 202 answer lacks"));
+        }
+        if (a.statusPath() == null) return; // a Location: the spec's own operation behind it is not named
+        String path = a.statusPath().replaceAll("\\{[^}]+}", "00000000-0000-4000-8000-000000000000");
+        Optional<OpenApiSpec.Operation> status = spec.find(a.statusMethod().name(), path);
+        String sw = where + " status";
+        if (status.isEmpty()) {
+            out.add(new Problem(sw, a.statusMethod() + " " + a.statusPath() + " is not an operation of the spec"));
+            return;
+        }
+        Optional<OpenApiSpec.Answer> ok = status.get().answers().entrySet().stream()
+                .filter(e -> e.getKey().startsWith("2")).map(Map.Entry::getValue).filter(x -> x.schema() != null)
+                .findFirst();
+        if (ok.isEmpty() || !hasProperty(spec, ok.get().schema(), a.statePointer())) {
+            out.add(new Problem(sw, "the state (" + a.statePointer() + ") is not in the status answer"));
+        }
+        for (Map.Entry<String, String> r : a.read().entrySet()) {
+            if (ok.isEmpty() || !hasProperty(spec, ok.get().schema(), r.getValue())) {
+                out.add(new Problem(sw, "the value " + r.getKey() + " (" + r.getValue() + ") is not in the status "
+                        + "answer"));
+            }
+        }
+        codes(status.get(), s.rules(), profile.rules(), sw + " (" + status.get().id() + ")", out);
+    }
+
+    private static boolean hasProperty(OpenApiSpec spec, Map<String, Object> schema, String pointer) {
+        if (schema == null) return false;
+        String first = pointer.substring(1).split("/")[0];
+        return spec.resolve(schema).get("properties") instanceof Map<?, ?> p && p.containsKey(first);
     }
 
     /** Every listed code of every answer is named by a rule (exactly or by prefix) for that status. */

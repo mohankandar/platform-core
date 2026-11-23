@@ -109,7 +109,7 @@ class PostgresIntegrationStoreTest {
         assertEquals(IntegrationSchemaException.Problem.INT_VERSION_OLDER, assertThrows(
                 IntegrationSchemaException.class, () -> IntegrationSchema.verify(older.owner)).problem());
         Pg newer = Pg.migrated();
-        newer.exec("insert into int_schema_version (version) values (2)");
+        newer.exec("insert into int_schema_version (version) values (" + (IntegrationSchema.VERSION + 1) + ")");
         assertEquals(IntegrationSchemaException.Problem.INT_VERSION_NEWER, assertThrows(
                 IntegrationSchemaException.class, () -> IntegrationSchema.verify(newer.owner)).problem());
 

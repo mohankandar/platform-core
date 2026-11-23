@@ -4,8 +4,8 @@ The app sends documents to your other systems through integrations. It sends the
 writes them into a folder or network share with a manifest file (folder export). Each integration is set up in the
 app's integration screens, and every change is kept as a new version. This page lists what the installation itself
 needs: the settings below (module `platform-integration-spring`), the outbound proxy, your private certificate
-authority, the profile files, and the rights on an export share. It ends with every code you can see, and what to do
-about it.
+authority, the profile files, the rights on an export share, client certificates, and signed callbacks to your own
+systems. It ends with every code you can see, and what to do about it.
 
 Secrets never go into these settings or into an integration's configuration. Only a **reference** goes there: the
 name under which the secret is kept in your secret store, for example `integration/proxy-password`. The app reads the
@@ -33,6 +33,13 @@ secret at the moment it is needed, so a changed password works without a restart
 | `platform.integration.profile-folder` | none | the folder where you put profile files (section 5) |
 | `platform.integration.health.enabled` | `true` | one health check per integration (section 7) |
 | `platform.integration.health.cache-for` | `60s` | how long one health result is kept: 5 seconds to 1 hour |
+| `platform.integration.credentials.expiry-warning-days` | `30,7,1` | when the app warns before a client certificate ends (section 8) |
+| `platform.integration.callbacks.first-delay` | `1m` | callbacks: the first wait after a failed send; it doubles each time (section 9) |
+| `platform.integration.callbacks.max-delay` | `6h` | callbacks: the longest wait between two sends |
+| `platform.integration.callbacks.give-up-after` | `24h` | callbacks: given up this long after they were created (or resent) |
+| `platform.integration.callbacks.keep-finished` | `30d` | callbacks sent or given up are deleted after this |
+| `platform.integration.worker.enabled` | `true` | the background work: callbacks that are due, and certificate switches at their set time |
+| `platform.integration.worker.every` | `15s` | how often the background work runs |
 
 The limits are defaults: each integration keeps its own copy, which the integration screens can change.
 
@@ -40,8 +47,21 @@ If a setting is wrong, the app does not start. Its log then shows `INTEGRATION_S
 at once, for example `platform.integration.installation is required: ON_PREMISES or HOSTED`.
 
 The app's database user needs only these rights on the integration tables (created by the app's schema step, never
-at startup): `SELECT, INSERT, UPDATE` on `int_integration`, `SELECT, INSERT` on `int_integration_version`, and
-`SELECT` on `int_schema_version`. If the tables are missing or at another version, the app does not start.
+at startup; schema version 2):
+
+| Table | Rights |
+|---|---|
+| `int_integration`, `int_credential` | `SELECT, INSERT, UPDATE` |
+| `int_integration_version`, `int_credential_change` | `SELECT, INSERT` |
+| `int_callback_outbox` | `SELECT, INSERT, UPDATE, DELETE` |
+| `int_schema_version` | `SELECT` |
+
+If the tables are missing or at another version, the app does not start. After an upgrade from version 1, run the
+schema step once (it adds the version 2 tables) and grant the new rights.
+
+**Logging.** Never set the log level of `org.apache.hc.client5.http.wire` or `org.apache.hc.client5.http.headers` to
+`DEBUG`. That is the HTTP library's own trace, and it would write every request header, sign-in included, to the log.
+The app's own logs never hold a secret.
 
 ## 2. The outbound proxy
 
@@ -56,17 +76,10 @@ platform.integration.proxy.password-secret=integration/proxy-password
 Every call of an integration that uses the proxy goes through it, including the calls that fetch sign-in tokens. Hosts
 on the bypass list are called directly. An integration can also be set not to use the proxy at all.
 
-**When the proxy asks for a user and password (Basic sign-in):** set `proxy.user` and `proxy.password-secret`, and
-**start the app with this Java option**:
-
-```
--Djdk.http.auth.tunneling.disabledSchemes=
-```
-
-The option ends with `=` and has nothing after it. Java's own default stops Basic sign-in from being sent to a proxy
-for `https` calls. The app never changes Java settings by itself. Without the option, every `https` call through the
-proxy stops before it connects, with `INT_PROXY_SIGN_IN_DISABLED_BY_JVM`, and the app logs a warning at startup.
-Where to put the option: in the service's start command, or in `JAVA_TOOL_OPTIONS` for the service account.
+**When the proxy asks for a user and password (Basic sign-in):** set `proxy.user` and `proxy.password-secret`. The
+app sends them with the first request to the proxy, also for `https` calls. No Java start option is needed any more:
+since this release the app's HTTP client sends the proxy sign-in itself. The Java option
+`-Djdk.http.auth.tunneling.disabledSchemes=` that the earlier release needed does no harm and can be removed.
 
 The proxy password is only sent to the proxy, never to the systems behind it.
 
@@ -87,10 +100,12 @@ A call is refused (`INT_ADDRESS_BLOCKED`) if any of them is:
 - a loopback or private address (`10.x`, `172.16–31.x`, `192.168.x`, `127.x`, `fc00::/7`): refused unless
   `allow-internal-addresses=true`. That setting is on premises only, and never on the hosted service.
 
-What it does not guarantee yet: the connection is not pinned to the address that was checked. A name server that
-gives a different address between the check and the connection (DNS rebinding) is not stopped by this check alone.
-Pinning comes with mutual TLS (the next integration release), and the hosted service does not go live without it. On
-premises, use name servers you control.
+**Pinning.** The connection goes to the address that was checked, not to a new lookup of the name. A name server that
+gives a safe address to the check and an internal or metadata address a moment later (DNS rebinding) is not followed.
+The certificate is still checked against the name in the address, and the name is still sent to the server (SNI), so
+certificates work as before. Pinning applies to every call: API calls, token requests, health checks, the login
+connection test and callbacks. When a name has several addresses, the first one that passed the check is used. Through
+the proxy, the app connects to the proxy, and the proxy looks up the name; the check of the name is made before.
 
 Plain `http` is allowed only where internal addresses are. Redirects are never followed.
 
@@ -109,7 +124,7 @@ ships no profiles. When you receive one:
    `SETUP_PROFILE_TAG_MISSING`, with the place in the file.
 
 The integration screens read the file each time IT sets up an integration from it, so a replaced file is used without
-a restart. A file with problems is refused with `INT_PROFILE_*` codes (section 8).
+a restart. A file with problems is refused with `INT_PROFILE_*` codes (section 11).
 
 ## 6. Folder export: the share and the service account
 
@@ -146,7 +161,89 @@ health (liveness and readiness probes), keep `integrations` out of those groups.
 probes are on. If you list health contributors yourself, do not add it to
 `management.endpoint.health.group.liveness.include`.
 
-## 8. Codes you can see, and what to do
+## 8. Client certificates (mutual TLS)
+
+Some systems accept a call only when the app shows a **client certificate**: sign-in type `MUTUAL_TLS`, alone or
+together with another sign-in type (for example with OAuth 2.0; the token request can show the same certificate). Each
+integration has its own certificate. There are two ways to give it.
+
+**Upload it** in the integration's certificate screen. Use a PKCS#12 file (`.p12`, `.pfx`, with its password) or a PEM
+file. A PEM file holds the certificate (`-----BEGIN CERTIFICATE-----`, intermediates after it) and the private key
+without a password (`-----BEGIN PRIVATE KEY-----`). The app checks that the key belongs to the certificate and that the
+certificate has not expired. It then stores both **encrypted with your customer key** in the key service. The file and
+the password are not kept.
+
+**Or point to a keystore** that you manage: the file's full path, the alias of the entry, and where its password is
+kept in the secret store (a reference). Nothing is copied. The app reads the file when a call needs the certificate,
+so you can also renew the certificate in the file itself. The app then shows the new one and records the change. The
+app's service account must be able to read the file.
+
+The screen shows only the certificate's subject, issuer, serial number, SHA-256 fingerprint and validity dates. The
+private key and the file are never shown, logged or returned.
+
+**Renewing without downtime.** An integration can hold two certificates, CURRENT and NEXT:
+
+1. Upload (or point to) the new certificate. It becomes NEXT; the calls still use CURRENT.
+2. Give the system's owner the new certificate's fingerprint, so they trust it.
+3. Run the integration's **Test** with NEXT. It sends only fake data and shows the certificate.
+4. Switch: press *Switch to next*, or set a time at which NEXT becomes CURRENT by itself (the background work does
+   it, section 1). The old certificate is kept as RETIRED for the history, without its key.
+
+To cancel, *Discard next*. Each step is kept in the integration's history with who and when.
+
+**Expiry warnings.** The app warns IT 30, 7 and 1 days before a certificate in use ends, and again once it has ended.
+It uses its own notices; the days can be changed with `credentials.expiry-warning-days`. A CURRENT certificate that
+has expired stops every call of the integration (`INT_CREDENTIAL_EXPIRED`) until you switch to a valid one.
+
+## 9. Callbacks (telling your system that a case is done)
+
+A **callback** integration sends a short JSON message to an address of yours when a case is done or failed. It holds
+the case's identifiers and state, never a document. The same address checks apply as for every call (section 4).
+Each message is **signed** with a secret that only the app and your receiver know. Put the secret in the secret store
+and give the integration its reference. The receiver may also want a sign-in on top (for example a client
+certificate, section 8).
+
+A message that cannot be delivered is sent again: after 1 minute, then 2, 4, 8 and so on, at most 6 hours apart, for
+24 hours (section 1). A `Retry-After` from your receiver is followed. A message your receiver refuses (a 4xx answer
+other than sign-in) is not sent again. Messages that were given up are listed for the app's IT screen, which can send
+them again.
+
+**What your receiver checks**, for every message, in plain steps:
+
+1. Read the header `Platform-Signature`. It looks like `t=1700000000,v1=c374d8b6…`. `t` is the time it was sent (Unix
+   seconds) and `v1` is the signature.
+2. Take the message body exactly as it arrived, byte for byte (do not parse it and write it again).
+3. Compute HMAC-SHA256 with the signing secret as the key over: the value of `t`, then a full stop `.`, then the body.
+   Write the result as lower-case hex.
+4. Compare it with `v1` using a constant-time comparison. If they differ, refuse the message (401).
+5. Check that `t` is within 5 minutes of your clock. If not, refuse it: it is old or replayed.
+6. Read `Platform-Callback-Id`. If you have seen this ID before, answer 200 and do nothing else: it is a repeat (the
+   app sends the same ID again when it did not get your answer).
+7. Answer `2xx` quickly, then do the work.
+
+Example: secret `whsec-test-1`, `t=1700000000`, body `{"case":"C-1","state":"DONE"}`. The signed text is
+`1700000000.{"case":"C-1","state":"DONE"}`, and `v1` is
+`c374d8b6f6e2240e381b93831661f2782ad111ecee63e50f09fbdd061ad70464`
+(`printf '%s' '1700000000.{"case":"C-1","state":"DONE"}' | openssl dgst -sha256 -hmac 'whsec-test-1'`).
+
+**Changing the secret** without losing messages:
+
+1. Make your receiver accept the old **and** the new secret (step 4 above: either may match).
+2. Put the new secret in the secret store (under the same reference, or a new reference set in the integration). From
+   the next message on, the app signs with it.
+3. When no message signed with the old secret is waiting any more (after the 24-hour window at most), remove the old
+   secret from the receiver.
+
+An app that **receives** signed callbacks from another system checks them the same way (`CallbackVerifier`).
+
+## 10. "Accepted, check later"
+
+Some systems answer a delivery with *202 Accepted* and do the work later. The integration then says how to ask for
+the status, and the app asks again on its own schedule. It asks at the time the system gives in `Retry-After`, or
+after the configured wait. A status of done counts as delivered. A status of failed is shown with the system's own
+code (`INT_STATUS_FAILED`). Nothing is needed from IT for this beyond the integration's settings.
+
+## 11. Codes you can see, and what to do
 
 The app's screens, audit and logs show these codes. They never show a password, a token, a document's content or a
 value.
@@ -155,7 +252,7 @@ value.
 
 | Code | What happened | What to do |
 |---|---|---|
-| `INT_PROXY_SIGN_IN_DISABLED_BY_JVM` | The proxy needs Basic sign-in, but Java does not send it for https | Start the app with `-Djdk.http.auth.tunneling.disabledSchemes=` (section 2) |
+| `INT_PROXY_SIGN_IN_DISABLED_BY_JVM` | No longer given since this release (section 2) | — |
 | `INT_PROXY_SIGN_IN_REFUSED` | The proxy refused the user or password (407), or asks for sign-in that is not set | Check `proxy.user` and the password in the secret store |
 | `INT_PROXY_REFUSED` | The proxy refused the connection | Allow the destination on the proxy, or add it to the bypass list |
 | `INT_CANT_CONNECT`, `INT_CONNECT_TIMEOUT` | No connection to the destination or proxy | Check the address, the firewall and that the system is up |
@@ -179,6 +276,44 @@ value.
 | `INT_TOKEN_CREDENTIAL_REFUSED`, `INT_TOKEN_CLIENT_UNKNOWN` | The client ID or its secret or certificate was refused | Check the client registration |
 | `INT_TOKEN_CREDENTIAL_INVALID`, `INT_TOKEN_CREDENTIAL_EXPIRED` | The certificate credential is not usable, or expired | Replace it in the secret store |
 | `INT_TOKEN_UNEXPECTED_REPLY`, `INT_TOKEN_CLAIMS_MISSING` | The token is not what the integration needs | Check the token issuer's settings |
+
+**Client certificates** (section 8)
+
+| Code | What happened | What to do |
+|---|---|---|
+| `INT_CREDENTIAL_FILE_INVALID` | The file is not a PKCS#12 or PEM file with one certificate and its private key (or it is over 32 KB) | Export the certificate together with its private key, then upload again |
+| `INT_CREDENTIAL_PASSWORD_WRONG` | The file's or keystore's password is wrong, or the PEM key has a password | Check the password; for PEM, export the key without a password |
+| `INT_CREDENTIAL_KEY_MISMATCH` | The private key does not belong to the certificate | Upload the certificate with its own key |
+| `INT_CREDENTIAL_EXPIRED` | The certificate has expired (refused at upload; a CURRENT one stops every call) | Add the renewed one as NEXT and switch |
+| `INT_CREDENTIAL_NOT_YET_VALID` | The certificate's start date is in the future | Keep it as NEXT and switch once it is valid |
+| `INT_CREDENTIAL_MISSING` | The integration signs in with a certificate, but none is set (or no NEXT for a Test of next) | Upload one, or point to a keystore |
+| `INT_CREDENTIAL_KEY_SERVICE_FAILED` | The key service could not encrypt or decrypt the stored certificate | Check the key service (its health); the next attempt tries again |
+| `INT_CREDENTIAL_REFUSED` | The system refused the certificate during the TLS handshake | Give its owner the certificate's fingerprint and check that they trust it and it is not revoked |
+| `INT_CREDENTIAL_KEYSTORE_UNREADABLE` | The keystore file is missing, not readable, or not a keystore | Check the path and the service account's read right |
+| `INT_CREDENTIAL_ALIAS_NOT_FOUND` | The keystore has no key entry under that alias | Check the alias (`keytool -list -keystore <file>`) |
+| `INT_CREDENTIAL_NEXT_EXISTS`, `INT_CREDENTIAL_NO_NEXT` | There is already a NEXT; or there is none to switch to or discard | Switch to or discard NEXT first; or add one |
+| `INT_CREDENTIAL_CONFLICT` | Someone else changed the certificates at the same time | Reload the screen and try again |
+| `INT_CONFIG_MUTUAL_TLS_INVALID` | A certificate over plain `http`, or with sign-in NONE | Use `https`; choose "certificate alone" instead of NONE |
+
+**Callbacks** (section 9)
+
+| Code | What happened | What to do |
+|---|---|---|
+| `INT_CALLBACK_SIGNATURE` | A callback received with a missing, malformed or wrong signature | Check that both sides use the same secret; during a change, accept both |
+| `INT_CALLBACK_EXPIRED` | A callback received more than 5 minutes from its time | Check both clocks (NTP); an old message may be a replay |
+| `INT_CALLBACK_REPLAYED` | A callback received whose ID was already accepted | Nothing: a repeat is ignored |
+| `INT_CALLBACK_BODY_INVALID` | The app tried to send a body that is not one JSON object, or over 64 KB | An app fault: check the app's log |
+| `INT_CALLBACK_NOT_FOUND` | No given-up callback with that ID to send again | Reload the list |
+| `INT_CONFIG_CALLBACK_INVALID` | A callback without a signing secret | Put the secret in the secret store and set its reference |
+
+**Accepted, check later** (section 10)
+
+| Code | What happened | What to do |
+|---|---|---|
+| `INT_ACCEPTED` | The system accepted the delivery and works on it later | Nothing: the app asks for the status |
+| `INT_STATUS_FAILED` | The system says the work failed; its own code is shown | Look up the system's code with its owner |
+| `INT_STATUS_REFERENCE_MISSING`, `INT_STATUS_UNKNOWN` | The 202 answer had no status reference, or a status the integration does not know | Check with the system's owner whether the API changed |
+| `INT_CONFIG_ACCEPTED_INVALID` | The "check later" settings are not valid (not on the last step, no done or failed values) | Correct the integration's settings; the screen names the field |
 
 **Folder export**
 

@@ -49,7 +49,8 @@
       "properties": {
         "types": {
           "type": "array", "minItems": 1, "uniqueItems": true,
-          "items": {"enum": ["NONE", "BASIC", "API_KEY", "BEARER_FIXED", "OAUTH2_CLIENT_CREDENTIALS"]}
+          "description": "The sign-in types the API takes. MUTUAL_TLS: the API requires a client certificate; listed with the type used together with it, if any (for example MUTUAL_TLS and OAUTH2_CLIENT_CREDENTIALS).",
+          "items": {"enum": ["NONE", "BASIC", "API_KEY", "BEARER_FIXED", "OAUTH2_CLIENT_CREDENTIALS", "MUTUAL_TLS"]}
         },
         "installationSupplies": {
           "type": "array", "uniqueItems": true,
@@ -196,6 +197,23 @@
         "integrity": {
           "type": "object", "additionalProperties": false,
           "properties": {"sha256Value": {"$ref": "#/$defs/name"}, "sizeValue": {"$ref": "#/$defs/name"}}
+        },
+        "accepted": {
+          "type": "object",
+          "description": "Accepted, check later: the API may answer 202 and do the work later. Only on the last step, run once. The status reference comes from referencePointer in the 202 answer (then statusPath, with {status.reference}, is the status call) or, without referencePointer, from the Location header (the status call goes there).",
+          "required": ["statePointer", "done", "failed"],
+          "additionalProperties": false,
+          "properties": {
+            "referencePointer": {"$ref": "#/$defs/pointer"},
+            "statusMethod": {"enum": ["GET", "POST"]},
+            "statusPath": {"$ref": "#/$defs/path"},
+            "statePointer": {"$ref": "#/$defs/pointer"},
+            "done": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1, "maxLength": 200}},
+            "failed": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1, "maxLength": 200}},
+            "working": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 200}},
+            "defaultWaitSeconds": {"type": "integer", "minimum": 1, "maximum": 86400},
+            "read": {"type": "object", "additionalProperties": {"$ref": "#/$defs/pointer"}}
+          }
         }
       }
     }

@@ -1,23 +1,30 @@
 package com.documentplatform.integration.engine;
 
 import com.documentplatform.integration.IntegrationCode;
+import com.documentplatform.integration.callback.CallbackSignature;
 import com.documentplatform.integration.config.CallStep;
 import com.documentplatform.integration.config.Classification;
 import com.documentplatform.integration.config.ConfigCheck;
 import com.documentplatform.integration.config.HealthCheck;
 import com.documentplatform.integration.config.IntegrationConfig;
 import com.documentplatform.integration.config.Kind;
+import com.documentplatform.integration.config.SignIn;
 import com.documentplatform.integration.config.Template;
+import com.documentplatform.integration.credential.CertificateSource;
+import com.documentplatform.integration.credential.ClientCertificate;
+import com.documentplatform.integration.credential.CredentialState;
 import com.documentplatform.integration.http.Outbound;
 import com.documentplatform.integration.http.RetryAfter;
 import com.documentplatform.integration.json.Json;
 import com.documentplatform.integration.result.AttemptResult;
 import com.documentplatform.integration.result.HealthResult;
 import com.documentplatform.integration.result.Outcome;
+import com.documentplatform.integration.result.PendingStatus;
 import com.documentplatform.integration.result.StepResult;
 import com.documentplatform.integration.signin.ClientCredentialsTokens;
 import com.documentplatform.integration.signin.SignInHeaders;
 import com.documentplatform.integration.store.StoredIntegration;
+import com.documentplatform.notifications.secret.Secret;
 import com.documentplatform.notifications.secret.SecretResolver;
 
 import java.io.IOException;
@@ -27,6 +34,7 @@ import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -50,15 +58,29 @@ import java.util.regex.Pattern;
  * is read up to the integration's limit, the destination's code taken from {@code errorCodePointer}, and the
  * classification rules (data) decide the result class. Logs carry the integration ID, version, step, status and
  * codes only.
+ *
+ * <p><b>Mutual TLS</b> (sign-in {@code MUTUAL_TLS}): every call of the attempt, the health check and (when configured)
+ * the token request present the integration's CURRENT client certificate from the {@link CertificateSource}; a Test of
+ * the NEXT one presents that instead. Without a usable certificate nothing is sent ({@code INT_CREDENTIAL_*}).
+ *
+ * <p><b>Accepted, check later</b> ({@link CallStep.Accepted} on the last step): a 202 answer ends the attempt with
+ * {@link Outcome#ACCEPTED} and a {@link PendingStatus}; {@link #checkStatus} later makes one status call each time.
+ *
+ * <p><b>Callbacks</b> (kind {@code CALLBACK}): {@link #sendCallback} makes one signed POST; the outbox
+ * ({@code callback.Callbacks}) keeps the schedule.
  */
 public final class CallEngine implements AutoCloseable {
 
     private static final System.Logger LOG = System.getLogger(CallEngine.class.getName());
     private static final Pattern SAFE_CODE = Pattern.compile("[A-Za-z0-9_.:-]{1,40}");
     private static final int MAX_VALUE = 256;
+    /** The step name of a callback's one call, in results. */
+    public static final String CALLBACK_STEP = "callback";
 
     private final Outbound outbound;
     private final SignInHeaders signIn;
+    private final SecretResolver secrets;
+    private final CertificateSource certificates;
     private final Clock clock;
 
     public CallEngine(Outbound outbound, SecretResolver secrets, Clock clock) {
@@ -66,38 +88,66 @@ public final class CallEngine implements AutoCloseable {
     }
 
     public CallEngine(Outbound outbound, SecretResolver secrets, ClientCredentialsTokens tokens, Clock clock) {
+        this(outbound, secrets, tokens, CertificateSource.NONE, clock);
+    }
+
+    /** @param certificates the integrations' client certificates (mutual TLS) */
+    public CallEngine(Outbound outbound, SecretResolver secrets, CertificateSource certificates, Clock clock) {
+        this(outbound, secrets, new ClientCredentialsTokens(outbound, clock), certificates, clock);
+    }
+
+    public CallEngine(Outbound outbound, SecretResolver secrets, ClientCredentialsTokens tokens,
+                      CertificateSource certificates, Clock clock) {
         this.outbound = Objects.requireNonNull(outbound, "outbound");
+        this.secrets = Objects.requireNonNull(secrets, "secrets");
         this.signIn = new SignInHeaders(outbound.installation(), secrets, tokens);
+        this.certificates = Objects.requireNonNull(certificates, "certificates");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     /** One attempt of the whole step sequence (or the rest of it, after {@code delivery.resume()}). */
     public AttemptResult attempt(StoredIntegration integration, Delivery delivery) {
-        return run(integration, delivery, false);
+        return run(integration, delivery, false, CredentialState.CURRENT);
     }
 
     AttemptResult run(StoredIntegration integration, Delivery delivery, boolean test) {
-        Run r = new Run(integration.config(), integration.version(), delivery, test);
+        return run(integration, delivery, test, CredentialState.CURRENT);
+    }
+
+    AttemptResult run(StoredIntegration integration, Delivery delivery, boolean test, CredentialState certificate) {
+        Run r = new Run(integration.config(), integration.version(), delivery, test, certificate);
         AttemptResult result = r.go();
+        log(result, test ? " (test" + (certificate == CredentialState.NEXT ? ", next certificate)" : ")") : "");
+        return result;
+    }
+
+    private static void log(AttemptResult result, String what) {
         LOG.log(System.Logger.Level.INFO, "Integration {0} v{1}{2}: {3} {4}{5}, status {6}{7}",
-                result.integrationId(), result.configVersion(), test ? " (test)" : "", result.outcome(),
+                result.integrationId(), result.configVersion(), what, result.outcome(),
                 result.code(), result.destinationCode() == null ? "" : " (" + result.destinationCode() + ")",
                 result.httpStatus(), result.stepReached() == null ? "" : ", step " + result.stepReached());
-        return result;
     }
 
     /** The configured health check, classified by its own rules. */
     public HealthResult health(StoredIntegration integration) {
+        return health(integration, CredentialState.CURRENT);
+    }
+
+    HealthResult health(StoredIntegration integration, CredentialState which) {
         IntegrationConfig c = integration.config();
         HealthCheck h = c.health();
         if (h == null || c.endpoint() == null) {
             return health(c, integration.version(), Outcome.NOT_CONFIGURED, IntegrationCode.INT_CONFIG_INVALID, null,
                     0, null);
         }
+        Cert cert = certificate(c, which);
+        if (cert.failure() != null) {
+            return health(c, integration.version(), certificateOutcome(cert.failure()), cert.failure(), null, 0, null);
+        }
         List<Map.Entry<String, String>> headers = new ArrayList<>();
         if (h.signIn()) {
             SignInHeaders.Prepared p = signIn.prepare(c.signIn(), c.limits(), c.endpoint().useProxy(),
-                    c.requiredTokenClaims());
+                    c.requiredTokenClaims(), cert.certificate());
             if (!p.ok()) return health(c, integration.version(), p.failure(), p.code(), null, 0, null);
             headers.addAll(p.headers());
         }
@@ -116,7 +166,7 @@ public final class CallEngine implements AutoCloseable {
         try {
             a = outbound.send(new Outbound.Call(h.method().name(), address(c, path), headers, null,
                     c.limits().readTimeout()), c.limits().connectTimeout(), c.limits().maxResponseBytes(),
-                    c.endpoint().useProxy());
+                    c.endpoint().useProxy(), cert.certificate());
         } catch (Outbound.Failure f) {
             return health(c, integration.version(), failureOutcome(f.code()), f.code(), null, 0, null);
         }
@@ -135,13 +185,48 @@ public final class CallEngine implements AutoCloseable {
 
     /** Only the sign-in: secrets found, a token fetched. For the Test action's check-only mode. */
     SignInHeaders.Prepared checkSignIn(IntegrationConfig c) {
+        return checkSignIn(c, CredentialState.CURRENT);
+    }
+
+    SignInHeaders.Prepared checkSignIn(IntegrationConfig c, CredentialState which) {
+        Cert cert = certificate(c, which);
+        if (cert.failure() != null) {
+            return new SignInHeaders.Prepared(List.of(), certificateOutcome(cert.failure()), cert.failure());
+        }
         return signIn.prepare(c.signIn(), c.limits(), c.endpoint() == null || c.endpoint().useProxy(),
-                c.requiredTokenClaims());
+                c.requiredTokenClaims(), cert.certificate());
     }
 
     private HealthResult health(IntegrationConfig c, int version, Outcome o, IntegrationCode code, String destCode,
                                 int status, Duration retryAfter) {
         return new HealthResult(c.id(), version, o, code, destCode, status, retryAfter, clock.instant());
+    }
+
+    // ---- The client certificate (mutual TLS) ----
+
+    /** The certificate of a mutual TLS integration (or none needed), or why it cannot be used. */
+    private record Cert(ClientCertificate certificate, IntegrationCode failure) {
+        static final Cert NONE = new Cert(null, null);
+    }
+
+    private Cert certificate(IntegrationConfig c, CredentialState which) {
+        if (!(c.signIn() instanceof SignIn.MutualTls)) return Cert.NONE;
+        CertificateSource.Loaded l;
+        try {
+            l = certificates.load(c, which, clock.instant());
+        } catch (RuntimeException e) {
+            return new Cert(null, IntegrationCode.INT_CREDENTIAL_KEY_SERVICE_FAILED);
+        }
+        return l.ok() ? new Cert(l.certificate(), null) : new Cert(null, l.failure());
+    }
+
+    /** The result class when the client certificate cannot be used. */
+    static Outcome certificateOutcome(IntegrationCode code) {
+        return switch (code) {
+            case INT_CREDENTIAL_EXPIRED, INT_CREDENTIAL_NOT_YET_VALID, INT_CREDENTIAL_REFUSED -> Outcome.SIGN_IN_FAILED;
+            case INT_CREDENTIAL_KEY_SERVICE_FAILED, INT_SECRET_UNAVAILABLE -> Outcome.CANT_CONNECT;
+            default -> Outcome.NOT_CONFIGURED;
+        };
     }
 
     // ---- One attempt ----
@@ -151,6 +236,7 @@ public final class CallEngine implements AutoCloseable {
         final int version;
         final Delivery d;
         final boolean test;
+        final CredentialState which;
         final String correlationId;
         final Map<String, String> values = new LinkedHashMap<>();
         final Map<String, Map<String, String>> documentValues = new LinkedHashMap<>();
@@ -158,14 +244,16 @@ public final class CallEngine implements AutoCloseable {
         final Set<String> documentsDone = new HashSet<>();
         final List<StepResult> calls = new ArrayList<>();
         List<Map.Entry<String, String>> signInHeaders;
+        ClientCertificate certificate;
         int lastStatus;
         boolean anyNew;
 
-        Run(IntegrationConfig c, int version, Delivery d, boolean test) {
+        Run(IntegrationConfig c, int version, Delivery d, boolean test, CredentialState which) {
             this.c = c;
             this.version = version;
             this.d = d;
             this.test = test;
+            this.which = which;
             this.correlationId = d.correlationId() != null ? d.correlationId() : UUID.randomUUID().toString();
             values.putAll(d.resume().values());
             stepsDone.addAll(d.resume().stepsDone());
@@ -197,8 +285,13 @@ public final class CallEngine implements AutoCloseable {
             }
             AttemptResult sensitive = sensitiveFields();
             if (sensitive != null) return sensitive;
+            Cert cert = certificate(c, which);
+            if (cert.failure() != null) {
+                return stop(certificateOutcome(cert.failure()), cert.failure(), null, 0, null, null, null);
+            }
+            certificate = cert.certificate();
             SignInHeaders.Prepared p = signIn.prepare(c.signIn(), c.limits(), c.endpoint().useProxy(),
-                    c.requiredTokenClaims());
+                    c.requiredTokenClaims(), certificate);
             if (!p.ok()) return stop(p.failure(), p.code(), null, 0, null, null, null);
             signInHeaders = p.headers();
 
@@ -374,7 +467,7 @@ public final class CallEngine implements AutoCloseable {
             try {
                 a = outbound.send(new Outbound.Call(s.method().name(), address(c, path), headers, body,
                                 c.limits().readTimeout()), c.limits().connectTimeout(), c.limits().maxResponseBytes(),
-                        c.endpoint().useProxy());
+                        c.endpoint().useProxy(), certificate);
             } catch (Outbound.Failure f) {
                 calls.add(new StepResult(s.name(), docId, failureOutcome(f.code()), f.code(), 0, null));
                 return stop(failureOutcome(f.code()), f.code(), null, 0, null, s.name(), docId);
@@ -393,6 +486,9 @@ public final class CallEngine implements AutoCloseable {
             }
             Classification.Decision dec = Classification.of(s.rules(), c.rules()).decide(a.status(), destCode, json,
                     a.header("Retry-After").isPresent());
+            if (dec.outcome() == Outcome.SENT && a.status() == 202 && s.accepted() != null && doc == null) {
+                return accepted(s, a, json, retryAfter);
+            }
             calls.add(new StepResult(s.name(), docId, dec.outcome(), dec.code(), a.status(), destCode));
             if (dec.outcome() == Outcome.SIGN_IN_FAILED) signIn.refused(c.signIn());
             if (dec.outcome() != Outcome.SENT && dec.outcome() != Outcome.ALREADY_RECEIVED) {
@@ -424,6 +520,30 @@ public final class CallEngine implements AutoCloseable {
                 }
             }
             return null;
+        }
+
+        /** A 202 on a step that declares "accepted, check later": the attempt ends ACCEPTED with what to ask later. */
+        AttemptResult accepted(CallStep s, Outbound.Answer a, Object json, Duration retryAfter) {
+            CallStep.Accepted acc = s.accepted();
+            for (Map.Entry<String, String> r : s.read().entrySet()) {
+                Optional<String> v = json == null ? Optional.empty() : scalar(Json.at(json, r.getValue()));
+                v.ifPresent(x -> values.put(s.name() + "." + r.getKey(), x));
+            }
+            Optional<String> reference = reference(c, acc, a, json);
+            if (reference.isEmpty()) {
+                calls.add(new StepResult(s.name(), null, Outcome.UNCLEAR, IntegrationCode.INT_STATUS_REFERENCE_MISSING,
+                        a.status(), null));
+                return finish(Outcome.UNCLEAR, IntegrationCode.INT_STATUS_REFERENCE_MISSING, null, a.status(), null,
+                        true, s.name(), null);
+            }
+            calls.add(new StepResult(s.name(), null, Outcome.ACCEPTED, IntegrationCode.INT_ACCEPTED, a.status(), null));
+            anyNew = true;
+            stepsDone.add(s.name());
+            Instant next = clock.instant().plus(nextWait(retryAfter, acc));
+            PendingStatus pending = new PendingStatus(c.id(), version, s.name(), reference.get(), next,
+                    c.sendCorrelationId() ? correlationId : null, values);
+            return finish(Outcome.ACCEPTED, IntegrationCode.INT_ACCEPTED, null, a.status(), retryAfter, false,
+                    s.name(), null, pending);
         }
 
         /**
@@ -498,14 +618,263 @@ public final class CallEngine implements AutoCloseable {
 
         AttemptResult finish(Outcome o, IntegrationCode code, String destCode, int status, Duration retryAfter,
                              boolean attemptUsed, String step, String docId) {
+            return finish(o, code, destCode, status, retryAfter, attemptUsed, step, docId, null);
+        }
+
+        AttemptResult finish(Outcome o, IntegrationCode code, String destCode, int status, Duration retryAfter,
+                             boolean attemptUsed, String step, String docId, PendingStatus pending) {
             Map<String, Map<String, String>> dv = new LinkedHashMap<>();
             documentValues.forEach((k, v) -> {
                 if (!v.isEmpty()) dv.put(k, Map.copyOf(v));
             });
             return new AttemptResult(c.id(), version, o, code, destCode, status, retryAfter, attemptUsed,
                     c.sendCorrelationId() ? correlationId : null, step, docId, values, dv, stepsDone, documentsDone,
-                    calls, test);
+                    calls, test, pending);
         }
+    }
+
+    // ---- Accepted, check later ----
+
+    /**
+     * One status call for work the destination accepted earlier ({@link Outcome#ACCEPTED}): SENT when its status is
+     * done (the values the configuration reads from it added), REFUSED ({@code INT_STATUS_FAILED}) when it failed,
+     * ACCEPTED again (with the next check time: the destination's Retry-After, or the configured wait) while it is
+     * still working, or the usual failures of the status call itself (refused, sign-in, busy, outage, can't connect,
+     * unclear). Never waits and never retries; the app calls it again at or after {@code nextCheckAt}.
+     *
+     * @param integration the integration's current version (the step is found by name)
+     */
+    public AttemptResult checkStatus(StoredIntegration integration, PendingStatus pending) {
+        IntegrationConfig c = integration.config();
+        Status st = new Status(c, integration.version(), pending);
+        AttemptResult r = st.go();
+        log(r, " (status)");
+        return r;
+    }
+
+    private final class Status {
+        final IntegrationConfig c;
+        final int version;
+        final PendingStatus pending;
+        final Map<String, String> values;
+
+        Status(IntegrationConfig c, int version, PendingStatus pending) {
+            this.c = c;
+            this.version = version;
+            this.pending = pending;
+            this.values = new LinkedHashMap<>(pending.values());
+        }
+
+        AttemptResult go() {
+            if (!c.id().equals(pending.integrationId())) throw new IllegalArgumentException("Another integration");
+            if (!c.enabled()) return result(Outcome.NOT_CONFIGURED, IntegrationCode.INT_DISABLED, null, 0, null, null);
+            CallStep s = c.steps().stream().filter(x -> x.name().equals(pending.step())).findFirst().orElse(null);
+            if (c.kind() != Kind.API_PUSH || s == null || s.accepted() == null
+                    || !ConfigCheck.check(c, outbound.installation()).ok()) {
+                return result(Outcome.NOT_CONFIGURED, IntegrationCode.INT_CONFIG_INVALID, null, 0, null, null);
+            }
+            CallStep.Accepted acc = s.accepted();
+            Cert cert = certificate(c, CredentialState.CURRENT);
+            if (cert.failure() != null) {
+                return result(certificateOutcome(cert.failure()), cert.failure(), null, 0, null, null);
+            }
+            SignInHeaders.Prepared p = signIn.prepare(c.signIn(), c.limits(), c.endpoint().useProxy(),
+                    c.requiredTokenClaims(), cert.certificate());
+            if (!p.ok()) return result(p.failure(), p.code(), null, 0, null, null);
+            URI uri;
+            if (acc.referencePointer() == null) {
+                uri = sameHost(c, pending.reference()).orElse(null);
+                if (uri == null) {
+                    return result(Outcome.UNCLEAR, IntegrationCode.INT_STATUS_REFERENCE_MISSING, null, 0, null, null);
+                }
+            } else {
+                try {
+                    uri = address(c, Template.parse(acc.statusPath(), Template.Place.PATH).render(this::lookup));
+                } catch (Template.Problem e) {
+                    return result(Outcome.NOT_CONFIGURED, e.code(), null, 0, null, null);
+                }
+            }
+            List<Map.Entry<String, String>> headers = new ArrayList<>(p.headers());
+            if (pending.correlationId() != null) headers.add(entry("X-Correlation-Id", pending.correlationId()));
+            headers.add(entry("Accept", "application/json"));
+            Outbound.Answer a;
+            try {
+                a = outbound.send(new Outbound.Call(acc.statusMethod().name(), uri, headers, null,
+                                c.limits().readTimeout()), c.limits().connectTimeout(), c.limits().maxResponseBytes(),
+                        c.endpoint().useProxy(), cert.certificate());
+            } catch (Outbound.Failure f) {
+                return result(failureOutcome(f.code()), f.code(), null, 0, null, null);
+            }
+            Duration retryAfter = RetryAfter.parse(a.header("Retry-After").orElse(null), clock.instant());
+            if (a.tooLarge()) {
+                return result(Outcome.UNCLEAR, IntegrationCode.INT_RESPONSE_TOO_LARGE, null, a.status(), null, null);
+            }
+            Object json = json(a.body());
+            String destCode = destinationCode(c, json);
+            Classification.Decision dec = Classification.of(s.rules(), c.rules()).decide(a.status(), destCode, json,
+                    a.header("Retry-After").isPresent());
+            if (dec.outcome() == Outcome.SIGN_IN_FAILED) signIn.refused(c.signIn());
+            if (dec.outcome() != Outcome.SENT && dec.outcome() != Outcome.ALREADY_RECEIVED) {
+                return new AttemptResult(c.id(), version, dec.outcome(), dec.code(), destCode, a.status(), retryAfter,
+                        dec.attemptUsed(), pending.correlationId(), s.name(), null, values, Map.of(),
+                        Set.of(s.name()), Set.of(), List.of(new StepResult(s.name(), null, dec.outcome(), dec.code(),
+                        a.status(), destCode)), false);
+            }
+            String state = json == null ? null : scalar(Json.at(json, acc.statePointer())).orElse(null);
+            if (a.status() == 202 || (state != null && acc.workingValues().contains(state))) {
+                PendingStatus again = pending.nextCheckAt(clock.instant().plus(nextWait(retryAfter, acc)));
+                return new AttemptResult(c.id(), version, Outcome.ACCEPTED, IntegrationCode.INT_ACCEPTED, null,
+                        a.status(), retryAfter, false, pending.correlationId(), s.name(), null, values, Map.of(),
+                        Set.of(s.name()), Set.of(), List.of(new StepResult(s.name(), null, Outcome.ACCEPTED,
+                        IntegrationCode.INT_ACCEPTED, a.status(), null)), false, again);
+            }
+            if (state != null && acc.doneValues().contains(state)) {
+                for (Map.Entry<String, String> r : acc.read().entrySet()) {
+                    scalar(Json.at(json, r.getValue())).ifPresent(v -> values.put(s.name() + "." + r.getKey(), v));
+                }
+                return result(Outcome.SENT, IntegrationCode.INT_SENT, null, a.status(), null, null);
+            }
+            if (state != null && acc.failedValues().contains(state)) {
+                return result(Outcome.REFUSED, IntegrationCode.INT_STATUS_FAILED, destCode, a.status(), null, null);
+            }
+            return result(Outcome.UNCLEAR, IntegrationCode.INT_STATUS_UNKNOWN, destCode, a.status(), null, null);
+        }
+
+        Optional<String> lookup(String name) {
+            if (name.equals(CallStep.Accepted.REFERENCE)) return Optional.of(pending.reference());
+            if (name.equals("correlationId")) return Optional.ofNullable(pending.correlationId());
+            if (name.startsWith("step.")) return Optional.ofNullable(values.get(name.substring(5)));
+            return Optional.empty();
+        }
+
+        AttemptResult result(Outcome o, IntegrationCode code, String destCode, int status, Duration retryAfter,
+                             PendingStatus again) {
+            List<StepResult> calls = status == 0 && o != Outcome.SENT ? List.of()
+                    : List.of(new StepResult(pending.step(), null, o, code, status, destCode));
+            return new AttemptResult(c.id(), version, o, code, destCode, status, retryAfter,
+                    o.usesAttemptByDefault(), pending.correlationId(), pending.step(), null, values, Map.of(),
+                    Set.of(pending.step()), Set.of(), calls, false, again);
+        }
+    }
+
+    /** The status reference of a 202 answer: from the pointer, or the Location header (on the same host). */
+    private static Optional<String> reference(IntegrationConfig c, CallStep.Accepted acc, Outbound.Answer a,
+                                              Object json) {
+        if (acc.referencePointer() != null) {
+            Optional<String> v = json == null ? Optional.empty() : scalar(Json.at(json, acc.referencePointer()));
+            return v.filter(x -> x.length() <= MAX_VALUE);
+        }
+        Optional<String> location = a.header("Location");
+        if (location.isEmpty() || sameHost(c, location.get()).isEmpty()) return Optional.empty();
+        return location;
+    }
+
+    /** A Location (absolute, or a path) resolved against the base address, only when it stays on the same host. */
+    private static Optional<URI> sameHost(IntegrationConfig c, String location) {
+        try {
+            if (location.length() > 2000 || location.chars().anyMatch(ch -> ch <= 0x20 || ch == 0x7f)) {
+                return Optional.empty();
+            }
+            URI base = c.endpoint().baseAddress();
+            URI target = base.resolve(location);
+            if (!base.getScheme().equalsIgnoreCase(target.getScheme())
+                    || !base.getHost().equalsIgnoreCase(target.getHost()) || base.getPort() != target.getPort()
+                    || target.getRawUserInfo() != null || target.getRawFragment() != null) {
+                return Optional.empty();
+            }
+            return Optional.of(target);
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
+        }
+    }
+
+    private static Duration nextWait(Duration retryAfter, CallStep.Accepted acc) {
+        Duration d = retryAfter != null && !retryAfter.isNegative() ? retryAfter : acc.defaultWait();
+        if (d.compareTo(Duration.ofSeconds(1)) < 0) d = Duration.ofSeconds(1);
+        return d.compareTo(CallStep.Accepted.MAX_WAIT) > 0 ? CallStep.Accepted.MAX_WAIT : d;
+    }
+
+    // ---- Callbacks ----
+
+    /**
+     * One signed callback to the integration's receiver (kind {@code CALLBACK}): a POST of {@code body} (JSON the app
+     * gives; never document content) with {@code Platform-Signature} and {@code Platform-Callback-Id}, classified like
+     * an API push call. Never retries: the outbox ({@code callback.Callbacks}) does.
+     *
+     * @param callbackId the callback's unique ID, the same for every attempt of it (receivers ignore repeats by it)
+     */
+    public AttemptResult sendCallback(StoredIntegration integration, UUID callbackId, String body) {
+        IntegrationConfig c = integration.config();
+        AttemptResult r = callback(c, integration.version(), callbackId, body);
+        log(r, " (callback " + callbackId + ")");
+        return r;
+    }
+
+    private AttemptResult callback(IntegrationConfig c, int version, UUID callbackId, String body) {
+        if (!c.enabled()) return callbackResult(c, version, Outcome.NOT_CONFIGURED, IntegrationCode.INT_DISABLED, 0,
+                null, null);
+        if (c.kind() != Kind.CALLBACK) {
+            return callbackResult(c, version, Outcome.NOT_CONFIGURED, IntegrationCode.INT_KIND_NOT_SUPPORTED, 0, null,
+                    null);
+        }
+        if (!ConfigCheck.check(c, outbound.installation()).ok()) {
+            return callbackResult(c, version, Outcome.NOT_CONFIGURED, IntegrationCode.INT_CONFIG_INVALID, 0, null,
+                    null);
+        }
+        Optional<Secret> secret;
+        try {
+            secret = secrets.resolve(c.callback().signingSecret());
+        } catch (RuntimeException storeDown) {
+            return callbackResult(c, version, Outcome.CANT_CONNECT, IntegrationCode.INT_SECRET_UNAVAILABLE, 0, null,
+                    null);
+        }
+        if (secret.isEmpty()) {
+            return callbackResult(c, version, Outcome.NOT_CONFIGURED, IntegrationCode.INT_SECRET_NOT_FOUND, 0, null,
+                    null);
+        }
+        Cert cert = certificate(c, CredentialState.CURRENT);
+        if (cert.failure() != null) {
+            return callbackResult(c, version, certificateOutcome(cert.failure()), cert.failure(), 0, null, null);
+        }
+        List<Map.Entry<String, String>> headers = new ArrayList<>();
+        if (!(c.signIn() instanceof SignIn.None)) { // the signature proves the sender; NONE adds nothing
+            SignInHeaders.Prepared p = signIn.prepare(c.signIn(), c.limits(), c.endpoint().useProxy(),
+                    c.requiredTokenClaims(), cert.certificate());
+            if (!p.ok()) return callbackResult(c, version, p.failure(), p.code(), 0, null, null);
+            headers.addAll(p.headers());
+        }
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        long t = clock.instant().getEpochSecond();
+        headers.add(entry("Content-Type", "application/json"));
+        headers.add(entry("Accept", "application/json"));
+        headers.add(entry(CallbackSignature.SIGNATURE_HEADER, CallbackSignature.header(secret.get().reveal(), t, bytes)));
+        headers.add(entry(CallbackSignature.ID_HEADER, callbackId.toString()));
+        Outbound.Answer a;
+        try {
+            a = outbound.send(new Outbound.Call("POST", c.endpoint().baseAddress(), headers,
+                            HttpRequest.BodyPublishers.ofByteArray(bytes), c.limits().readTimeout()),
+                    c.limits().connectTimeout(), c.limits().maxResponseBytes(), c.endpoint().useProxy(),
+                    cert.certificate());
+        } catch (Outbound.Failure f) {
+            return callbackResult(c, version, failureOutcome(f.code()), f.code(), 0, null, null);
+        }
+        Object json = a.tooLarge() ? null : json(a.body());
+        String destCode = destinationCode(c, json);
+        Classification.Decision dec = Classification.of(c.rules()).decide(a.status(), destCode, json,
+                a.header("Retry-After").isPresent());
+        if (dec.outcome() == Outcome.SIGN_IN_FAILED) signIn.refused(c.signIn());
+        Duration retryAfter = RetryAfter.parse(a.header("Retry-After").orElse(null), clock.instant());
+        return new AttemptResult(c.id(), version, dec.outcome(), dec.code(), destCode, a.status(), retryAfter,
+                dec.attemptUsed(), null, CALLBACK_STEP, null, Map.of(), Map.of(),
+                dec.outcome() == Outcome.SENT || dec.outcome() == Outcome.ALREADY_RECEIVED ? Set.of(CALLBACK_STEP)
+                        : Set.of(), Set.of(), List.of(new StepResult(CALLBACK_STEP, null, dec.outcome(), dec.code(),
+                a.status(), destCode)), false);
+    }
+
+    private static AttemptResult callbackResult(IntegrationConfig c, int version, Outcome o, IntegrationCode code,
+                                                int status, String destCode, Duration retryAfter) {
+        return new AttemptResult(c.id(), version, o, code, destCode, status, retryAfter, o.usesAttemptByDefault(),
+                null, CALLBACK_STEP, null, Map.of(), Map.of(), Set.of(), Set.of(), List.of(), false);
     }
 
     // ---- Helpers ----
@@ -524,6 +893,7 @@ public final class CallEngine implements AutoCloseable {
         return switch (code) {
             case INT_ADDRESS_NOT_SECURE, INT_VALUE_NOT_ALLOWED, INT_SECRET_NOT_FOUND, INT_PROXY_SIGN_IN_DISABLED_BY_JVM
                     -> Outcome.NOT_CONFIGURED;
+            case INT_CREDENTIAL_REFUSED -> Outcome.SIGN_IN_FAILED;
             default -> Outcome.CANT_CONNECT;
         };
     }

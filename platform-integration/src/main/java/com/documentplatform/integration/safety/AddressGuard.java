@@ -6,6 +6,7 @@ import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
@@ -20,7 +21,7 @@ import java.util.Set;
  *       172.16/12, 192.168/16, fc00::/7), shared 100.64/10 and benchmark 198.18/15.</li>
  * </ul>
  * Every address the name resolves to must pass, so a name that also points inside is refused. The check runs for each
- * attempt, right before the call; the JDK's address cache then normally gives the HTTP client the same answer. Behind
+ * attempt, right before the call, and the connection goes to the addresses checked (never a fresh lookup). Behind
  * a proxy, a name the local resolver does not know is left to the proxy (name checks still apply).
  */
 public final class AddressGuard {
@@ -54,29 +55,64 @@ public final class AddressGuard {
      * @return empty when the call may go ahead; else {@code INT_ADDRESS_BLOCKED} or {@code INT_HOST_UNKNOWN}
      */
     public Optional<IntegrationCode> check(String host, boolean viaProxy) {
-        if (host == null || host.isEmpty()) return Optional.of(IntegrationCode.INT_HOST_UNKNOWN);
-        String h = host.toLowerCase(Locale.ROOT);
-        if (h.startsWith("[") && h.endsWith("]")) h = h.substring(1, h.length() - 1);
-        while (h.endsWith(".")) h = h.substring(0, h.length() - 1);
-        if (METADATA_NAMES.contains(h)) return Optional.of(IntegrationCode.INT_ADDRESS_BLOCKED);
+        return checked(host, viaProxy).refused();
+    }
+
+    /**
+     * The result of one check: refused with a code, or allowed with the addresses that were checked (empty behind a
+     * proxy when the local resolver does not know the name). The connection is made to exactly these addresses
+     * (connection pinning, {@code http.Outbound}): never to a fresh lookup.
+     */
+    public record Checked(IntegrationCode code, List<InetAddress> addresses) {
+        public Checked {
+            addresses = addresses == null ? List.of() : List.copyOf(addresses);
+        }
+
+        public Optional<IntegrationCode> refused() {
+            return Optional.ofNullable(code);
+        }
+
+        @Override
+        public String toString() {
+            return code == null ? "Checked[allowed]" : "Checked[" + code + "]"; // never the addresses
+        }
+    }
+
+    /** {@link #check}, keeping the addresses the name resolved to. */
+    public Checked checked(String host, boolean viaProxy) {
+        if (host == null || host.isEmpty()) return refuse(IntegrationCode.INT_HOST_UNKNOWN);
+        String h = normalise(host);
+        if (METADATA_NAMES.contains(h)) return refuse(IntegrationCode.INT_ADDRESS_BLOCKED);
         if (!allowInternal && (h.equals("localhost") || h.endsWith(".localhost"))) {
-            return Optional.of(IntegrationCode.INT_ADDRESS_BLOCKED);
+            return refuse(IntegrationCode.INT_ADDRESS_BLOCKED);
         }
         InetAddress[] all;
         try {
             all = resolver.resolve(h);
         } catch (UnknownHostException | SecurityException e) {
-            return viaProxy ? Optional.empty() : Optional.of(IntegrationCode.INT_HOST_UNKNOWN);
+            return viaProxy ? new Checked(null, List.of()) : refuse(IntegrationCode.INT_HOST_UNKNOWN);
         }
         if (all == null || all.length == 0) {
-            return viaProxy ? Optional.empty() : Optional.of(IntegrationCode.INT_HOST_UNKNOWN);
+            return viaProxy ? new Checked(null, List.of()) : refuse(IntegrationCode.INT_HOST_UNKNOWN);
         }
         for (InetAddress a : all) {
             if (alwaysBlocked(a) || (!allowInternal && internal(a))) {
-                return Optional.of(IntegrationCode.INT_ADDRESS_BLOCKED);
+                return refuse(IntegrationCode.INT_ADDRESS_BLOCKED);
             }
         }
-        return Optional.empty();
+        return new Checked(null, List.of(all));
+    }
+
+    /** Lower case, without IPv6 brackets or trailing dots: the form the checked addresses are kept under. */
+    public static String normalise(String host) {
+        String h = host.toLowerCase(Locale.ROOT);
+        if (h.startsWith("[") && h.endsWith("]")) h = h.substring(1, h.length() - 1);
+        while (h.endsWith(".")) h = h.substring(0, h.length() - 1);
+        return h;
+    }
+
+    private static Checked refuse(IntegrationCode code) {
+        return new Checked(code, List.of());
     }
 
     /** Cloud metadata, link-local, any, multicast, broadcast. */

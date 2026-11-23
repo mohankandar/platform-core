@@ -14,6 +14,13 @@ public interface IntegrationAudit {
     /** A Test action ran (with fake data). */
     void tested(AttemptResult result, String by);
 
+    /**
+     * A client certificate change (uploaded, keystore set, switch scheduled, switched, discarded): IDs, the
+     * fingerprint, who and when. Apps built before P026 record nothing here until they implement it.
+     */
+    default void credentialChanged(com.documentplatform.integration.credential.CredentialChange change) {
+    }
+
     /** An audit that records nothing (for tools and tests that do not need one). */
     IntegrationAudit NONE = new IntegrationAudit() {
         @Override

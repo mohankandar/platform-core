@@ -151,6 +151,7 @@ public final class MockDestination implements AutoCloseable {
     private static final Base64.Encoder B64URL = Base64.getUrlEncoder().withoutPadding();
 
     private final SSLContext ssl;
+    private final boolean clientAuth;
     private final ExecutorService pool = Executors.newCachedThreadPool(r -> {
         Thread t = new Thread(r, "mock-destination");
         t.setDaemon(true);
@@ -198,13 +199,27 @@ public final class MockDestination implements AutoCloseable {
     private volatile List<String> requiredClaims = List.of();
     private volatile String missingClaimsCode;
 
+    // accepted, check later
+    private volatile Pattern acceptPath;
+    private volatile String acceptMethod;
+    private volatile int acceptWorkingPolls;
+    private volatile String acceptFinalState;
+    private volatile Duration acceptRetryAfter;
+    private final Map<String, AtomicInteger> statusPolls = new ConcurrentHashMap<>();
+
     // records
     private final List<Received> received = new CopyOnWriteArrayList<>();
+    private final List<PeerCertificate> clientCertificates = new CopyOnWriteArrayList<>();
     private final List<TokenRequest> tokenRequests = new CopyOnWriteArrayList<>();
     private final AtomicInteger counter = new AtomicInteger();
 
     private MockDestination(SSLContext ssl) throws IOException {
+        this(ssl, false);
+    }
+
+    private MockDestination(SSLContext ssl, boolean clientAuth) throws IOException {
         this.ssl = ssl;
+        this.clientAuth = clientAuth;
         this.server = create(0);
         this.port = server.getAddress().getPort();
         this.admin = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
@@ -231,12 +246,32 @@ public final class MockDestination implements AutoCloseable {
         }
     }
 
+    /**
+     * A mock on https that <b>requires a client certificate</b> (mutual TLS) and accepts only those its server context
+     * trusts ({@link TestCertificates#serverTrusting}). A missing or untrusted certificate fails the TLS handshake
+     * (nothing reaches the handlers); each accepted request's certificate is in {@link #clientCertificates()}.
+     */
+    public static MockDestination startMutualTls(SSLContext serverContext) {
+        try {
+            return new MockDestination(serverContext, true);
+        } catch (IOException e) {
+            throw new IllegalStateException("mock destination could not start", e);
+        }
+    }
+
     private HttpServer create(int onPort) throws IOException {
         InetSocketAddress at = new InetSocketAddress(InetAddress.getLoopbackAddress(), onPort);
         HttpServer s;
         if (ssl != null) {
             HttpsServer h = HttpsServer.create(at, 0);
-            h.setHttpsConfigurator(new HttpsConfigurator(ssl));
+            h.setHttpsConfigurator(clientAuth ? new HttpsConfigurator(ssl) {
+                @Override
+                public void configure(com.sun.net.httpserver.HttpsParameters params) {
+                    javax.net.ssl.SSLParameters p = getSSLContext().getDefaultSSLParameters();
+                    p.setNeedClientAuth(true);
+                    params.setSSLParameters(p);
+                }
+            } : new HttpsConfigurator(ssl));
             s = h;
         } else {
             s = HttpServer.create(at, 0);
@@ -552,7 +587,82 @@ public final class MockDestination implements AutoCloseable {
         received.clear();
         tokenRequests.clear();
         specProblems.clear();
+        clientCertificates.clear();
+        statusPolls.clear();
         return this;
+    }
+
+    /** A client certificate the mock saw (mutual TLS): its subject and SHA-256 fingerprint; never a key. */
+    public record PeerCertificate(String subject, String sha256) {
+    }
+
+    /** The client certificate of each request that reached the handlers (mutual TLS), in order. */
+    public List<PeerCertificate> clientCertificates() {
+        return List.copyOf(clientCertificates);
+    }
+
+    // ---- Accepted, check later ----
+
+    /** Where the mock's status answers are: {@code GET /api/status/<id>}. */
+    public static final String STATUS_PATH = "/api/status/";
+
+    /**
+     * {@code method pathRegex} answers <b>202 Accepted</b> with {@code {"statusId":"st-<n>"}}, a {@code Location}
+     * header {@code /api/status/st-<n>} and, when given, Retry-After. {@code GET /api/status/<id>} then answers
+     * {@code {"state":"WORKING"}} (200) {@code workingPolls} times, then {@code {"state":"<finalState>",
+     * "resultId":"res-<n>"}}, or {@code {"state":"FAILED","code":"MOCK-STATUS-FAILED"}} when finalState is FAILED.
+     * Other switches (refuse, outage, busy, sign-in) apply to the status calls as to any call.
+     */
+    public MockDestination acceptLater(String method, String pathRegex, int workingPolls, String finalState,
+                                       Duration retryAfter) {
+        acceptMethod = method;
+        acceptPath = Pattern.compile(pathRegex);
+        acceptWorkingPolls = workingPolls;
+        acceptFinalState = finalState;
+        acceptRetryAfter = retryAfter;
+        return this;
+    }
+
+    /** Stops answering 202. */
+    public MockDestination acceptNow() {
+        acceptPath = null;
+        return this;
+    }
+
+    /** How many status calls the mock answered for {@code statusId}. */
+    public int statusPolls(String statusId) {
+        AtomicInteger n = statusPolls.get(statusId);
+        return n == null ? 0 : n.get();
+    }
+
+    private boolean acceptLater(HttpExchange ex, String path, byte[] body) throws IOException {
+        Pattern p = acceptPath;
+        if (p == null) return false;
+        if (ex.getRequestMethod().equalsIgnoreCase("GET") && path.startsWith(STATUS_PATH)) {
+            String id = path.substring(STATUS_PATH.length());
+            AtomicInteger n = statusPolls.get(id);
+            if (n == null) {
+                send(ex, 404, error("MOCK-STATUS-UNKNOWN", null), null);
+                return true;
+            }
+            int poll = n.incrementAndGet();
+            if (poll <= acceptWorkingPolls) {
+                send(ex, 200, "{\"state\":\"WORKING\"}", acceptRetryAfter);
+            } else if ("FAILED".equals(acceptFinalState)) {
+                send(ex, 200, "{\"state\":\"FAILED\",\"code\":\"MOCK-STATUS-FAILED\"}", null);
+            } else {
+                send(ex, 200, "{\"state\":\"" + acceptFinalState + "\",\"resultId\":\"res-" + id + "\"}", null);
+            }
+            return true;
+        }
+        if (ex.getRequestMethod().equalsIgnoreCase(acceptMethod) && p.matcher(path).matches()) {
+            String id = "st-" + counter.incrementAndGet();
+            statusPolls.put(id, new AtomicInteger());
+            ex.getResponseHeaders().add("Location", STATUS_PATH + id);
+            send(ex, 202, "{\"statusId\":\"" + id + "\"}", acceptRetryAfter);
+            return true;
+        }
+        return false;
     }
 
     /** All switches back to working, sign-in and records cleared (spec mode and health path kept). */
@@ -569,6 +679,7 @@ public final class MockDestination implements AutoCloseable {
         requiredClaims = List.of();
         recordValues = false;
         replayBody = "{\"alreadyReceived\":true}";
+        acceptPath = null;
         return clearRecords();
     }
 
@@ -590,6 +701,17 @@ public final class MockDestination implements AutoCloseable {
             OpenApiSpec.Operation op = spec == null ? null : spec.find(ex.getRequestMethod(), path).orElse(null);
             String signIn = signIn(ex);
             received.add(record(ex, path, body, signIn, op));
+            if (ex instanceof com.sun.net.httpserver.HttpsExchange hx) {
+                try {
+                    if (hx.getSSLSession().getPeerCertificates()[0] instanceof X509Certificate peer) {
+                        clientCertificates.add(new PeerCertificate(peer.getSubjectX500Principal().getName(),
+                                HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                                        .digest(peer.getEncoded()))));
+                    }
+                } catch (javax.net.ssl.SSLPeerUnverifiedException | java.security.GeneralSecurityException none) {
+                    // no client certificate on this connection
+                }
+            }
             if (path.equals(healthPath)) {
                 health(ex);
                 return;
@@ -614,6 +736,7 @@ public final class MockDestination implements AutoCloseable {
                 }
                 case SIGN_IN_REFUSED -> send(ex, 401, error(code, reference), null);
                 case WORKING, SLOW -> {
+                    if (acceptLater(ex, path, body)) return;
                     for (Route r : routes) {
                         if (r.method().equalsIgnoreCase(ex.getRequestMethod()) && r.path().matcher(path).matches()) {
                             if (r.status() / 100 == 3) {

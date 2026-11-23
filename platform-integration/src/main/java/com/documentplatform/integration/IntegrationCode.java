@@ -56,12 +56,52 @@ public enum IntegrationCode {
     INT_PROXY_SIGN_IN_REFUSED("The outbound proxy refused the sign-in (407). Check the proxy user and the password in "
             + "the secret store (platform.integration.proxy.user, platform.integration.proxy.password-secret)."),
     /**
-     * The proxy needs Basic sign-in, but this JVM does not send Basic on CONNECT tunnels (the JDK's default). Nothing
-     * was sent. The library never changes JVM settings: the app must be started with the option below.
+     * No longer given since P026. It said the JVM does not send Basic proxy sign-in on CONNECT; the HTTP client used
+     * since P026 sends the proxy sign-in itself, whatever the JVM's {@code jdk.http.auth.tunneling.disabledSchemes}.
+     * Kept so stored results and audits that name it can still be read.
      */
     INT_PROXY_SIGN_IN_DISABLED_BY_JVM("The outbound proxy needs Basic sign-in, which this Java runtime does not send "
             + "for https (CONNECT) by default. Start the app with the option "
             + "-Djdk.http.auth.tunneling.disabledSchemes= (see the integration install guide)."),
+
+    // ---- Client certificates (mutual TLS) ----
+    /** The uploaded file is not a PKCS#12 or PEM file with one certificate and its private key (or it is too large). */
+    INT_CREDENTIAL_FILE_INVALID("The certificate file is not a PKCS#12 (.p12, .pfx) or PEM file holding the client "
+            + "certificate and its private key. Export the certificate together with its private key and upload it "
+            + "again."),
+    /** The PKCS#12 file's (or the keystore's) password is wrong, or the PEM key is encrypted. */
+    INT_CREDENTIAL_PASSWORD_WRONG("The password of the certificate file or keystore is wrong (a PEM private key must "
+            + "not be encrypted). Check the password, or export the key without a password as PEM."),
+    /** The private key does not belong to the certificate. */
+    INT_CREDENTIAL_KEY_MISMATCH("The private key does not belong to the certificate. Upload the certificate with its "
+            + "own private key."),
+    /** The certificate has expired. */
+    INT_CREDENTIAL_EXPIRED("The client certificate has expired. Upload the renewed certificate as the next one and "
+            + "switch to it."),
+    /** The certificate is not valid yet. */
+    INT_CREDENTIAL_NOT_YET_VALID("The client certificate is not valid yet (its start date is in the future). Keep it "
+            + "as the next certificate and switch when it is valid."),
+    /** Mutual TLS is configured, but there is no certificate (no current one; or no next one for a Test of next). */
+    INT_CREDENTIAL_MISSING("The integration signs in with a client certificate, but none is set. Upload one, or point "
+            + "to one in a keystore."),
+    /** The key service could not seal or open the stored certificate. */
+    INT_CREDENTIAL_KEY_SERVICE_FAILED("The key service could not encrypt or decrypt the stored client certificate. "
+            + "Check the key service (its health), then try again."),
+    /** The destination refused the client certificate (a TLS alert: bad, unknown, expired or revoked certificate). */
+    INT_CREDENTIAL_REFUSED("The destination refused the client certificate. Check with its owner that they trust "
+            + "this certificate (subject, issuer and fingerprint as shown) and that it is not revoked."),
+    /** The keystore file cannot be read (missing, no permission) or is not a keystore. */
+    INT_CREDENTIAL_KEYSTORE_UNREADABLE("The keystore file cannot be read. Check the path and that the app's service "
+            + "account may read it."),
+    /** The keystore has no entry with a private key under that alias. */
+    INT_CREDENTIAL_ALIAS_NOT_FOUND("The keystore has no private key entry under this alias. Check the alias "
+            + "(keytool -list shows them)."),
+    /** There is already a next certificate: switch to it or discard it first. */
+    INT_CREDENTIAL_NEXT_EXISTS,
+    /** There is no next certificate to switch to or to discard. */
+    INT_CREDENTIAL_NO_NEXT,
+    /** Someone else changed the certificates first: reload and try again. */
+    INT_CREDENTIAL_CONFLICT,
 
     // ---- Folder export ----
     /** The target folder does not exist (or is not a folder). */
@@ -127,6 +167,28 @@ public enum IntegrationCode {
     /** The address is not https and plain http is not allowed for this installation. */
     INT_ADDRESS_NOT_SECURE,
 
+    // ---- Accepted, check later (202) ----
+    /** The destination accepted the request for later processing (202): check its status later. */
+    INT_ACCEPTED,
+    /** The destination's status says the work failed. Its own code, if any, is in the result. */
+    INT_STATUS_FAILED,
+    /** A 202 answer without the status reference the configuration says where to find. */
+    INT_STATUS_REFERENCE_MISSING,
+    /** A status answer whose state is none of the configured done, failed or still-working values. */
+    INT_STATUS_UNKNOWN,
+
+    // ---- Callbacks ----
+    /** Callback in: the signature header is missing, malformed, or matches none of the secrets. */
+    INT_CALLBACK_SIGNATURE,
+    /** Callback in: its time is outside the allowed window (old, or too far ahead). */
+    INT_CALLBACK_EXPIRED,
+    /** Callback in: this callback ID was already accepted. */
+    INT_CALLBACK_REPLAYED,
+    /** Callback out: the body is not one JSON object, or it is larger than the limit. */
+    INT_CALLBACK_BODY_INVALID,
+    /** Callback out: no callback with this ID (to resend). */
+    INT_CALLBACK_NOT_FOUND,
+
     // ---- Health and Test ----
     INT_HEALTHY,
     /** Test action in check-only mode: health and sign-in worked; no step was sent. */
@@ -174,6 +236,18 @@ public enum IntegrationCode {
     INT_CONFIG_FOLDER_INVALID,
     /** Folder export on the hosted service: never allowed (a folder is the customer's own system). */
     INT_CONFIG_FOLDER_HOSTED,
+    /**
+     * Mutual TLS: the address is not https, or the sign-in alongside the certificate is not allowed (NONE, or mutual
+     * TLS twice), or the certificate is to be used for a token request without OAuth 2.0.
+     */
+    INT_CONFIG_MUTUAL_TLS_INVALID,
+    /** Callback: no signing secret, a callback setting on another kind, or steps on a callback. */
+    INT_CONFIG_CALLBACK_INVALID,
+    /**
+     * "Accepted, check later": not on the last step run once, a pointer that is not valid, no status path (or one
+     * with a Location reference), no done or failed values, or the same value in two lists.
+     */
+    INT_CONFIG_ACCEPTED_INVALID,
     INT_CONFIG_RULE_INVALID,
     INT_CONFIG_STEPS_INVALID,
     INT_CONFIG_VERSION_CONFLICT,

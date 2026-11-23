@@ -5,6 +5,7 @@ import com.documentplatform.integration.config.CallStep;
 import com.documentplatform.integration.config.IntegrationConfig;
 import com.documentplatform.integration.config.Kind;
 import com.documentplatform.integration.config.Template;
+import com.documentplatform.integration.credential.CredentialState;
 import com.documentplatform.integration.folder.FolderExport;
 import com.documentplatform.integration.result.AttemptResult;
 import com.documentplatform.integration.result.HealthResult;
@@ -68,6 +69,18 @@ public final class TestAction {
      * @param by who asked for it (for the audit)
      */
     public AttemptResult run(StoredIntegration integration, String by) {
+        return run(integration, by, CredentialState.CURRENT);
+    }
+
+    /**
+     * The Test action with the integration's NEXT client certificate (mutual TLS), before switching to it: the same
+     * fake data and checks, the TLS handshake with NEXT ({@code INT_CREDENTIAL_MISSING} when there is none).
+     */
+    public AttemptResult runWithNext(StoredIntegration integration, String by) {
+        return run(integration, by, CredentialState.NEXT);
+    }
+
+    private AttemptResult run(StoredIntegration integration, String by, CredentialState certificate) {
         IntegrationConfig c = integration.config();
         AttemptResult result;
         if (c.kind() == Kind.FOLDER_EXPORT) {
@@ -75,14 +88,22 @@ public final class TestAction {
                     ? result(c, integration.version(), Outcome.NOT_CONFIGURED, IntegrationCode.INT_KIND_NOT_SUPPORTED,
                     null, 0, null)
                     : folders.test(integration, fakeDelivery(c));
+        } else if (c.kind() == Kind.CALLBACK) {
+            AttemptResult r = engine.sendCallback(integration, UUID.randomUUID(), TEST_CALLBACK);
+            result = new AttemptResult(r.integrationId(), r.configVersion(), r.outcome(), r.code(),
+                    r.destinationCode(), r.httpStatus(), r.retryAfter(), r.attemptUsed(), null, r.stepReached(), null,
+                    Map.of(), Map.of(), r.stepsDone(), Set.of(), r.steps(), true);
         } else {
             result = c.testMode() == IntegrationConfig.TestMode.CHECK_ONLY
-                    ? checkOnly(integration)
-                    : engine.run(integration, fakeDelivery(c), true);
+                    ? checkOnly(integration, certificate)
+                    : engine.run(integration, fakeDelivery(c), true, certificate);
         }
         audit.tested(result, by);
         return result;
     }
+
+    /** The body of a callback's Test action: says it is a test, carries no case. */
+    public static final String TEST_CALLBACK = "{\"test\":true,\"note\":\"Integration test callback - no real data\"}";
 
     /** The fake delivery: one fake PDF, a fake value for every value placeholder the templates use. */
     public static Delivery fakeDelivery(IntegrationConfig c) {
@@ -111,16 +132,16 @@ public final class TestAction {
         }
     }
 
-    private AttemptResult checkOnly(StoredIntegration integration) {
+    private AttemptResult checkOnly(StoredIntegration integration, CredentialState certificate) {
         IntegrationConfig c = integration.config();
         if (c.health() != null) {
-            HealthResult h = engine.health(integration);
+            HealthResult h = engine.health(integration, certificate);
             if (!h.healthy()) {
                 return result(c, integration.version(), h.outcome(), h.code(), h.destinationCode(), h.httpStatus(),
                         "health");
             }
         }
-        SignInHeaders.Prepared p = engine.checkSignIn(c);
+        SignInHeaders.Prepared p = engine.checkSignIn(c, certificate);
         if (!p.ok()) return result(c, integration.version(), p.failure(), p.code(), null, 0, "sign-in");
         return result(c, integration.version(), Outcome.SENT, IntegrationCode.INT_TEST_CHECKED, null, 0, null);
     }

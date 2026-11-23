@@ -1,6 +1,7 @@
 package com.documentplatform.integration.http;
 
 import com.documentplatform.integration.IntegrationCode;
+import com.documentplatform.integration.credential.ClientCertificate;
 import com.documentplatform.integration.safety.AddressGuard;
 import com.documentplatform.integration.safety.Installation;
 import com.documentplatform.integration.safety.JvmProxySignIn;
@@ -8,46 +9,89 @@ import com.documentplatform.integration.safety.ProxySettings;
 import com.documentplatform.integration.safety.TrustBundle;
 import com.documentplatform.notifications.secret.Secret;
 import com.documentplatform.notifications.secret.SecretResolver;
+import org.apache.hc.client5.http.ConnectTimeoutException;
+import org.apache.hc.client5.http.DnsResolver;
+import org.apache.hc.client5.http.SystemDefaultDnsResolver;
+import org.apache.hc.client5.http.auth.AuthCache;
+import org.apache.hc.client5.http.auth.UsernamePasswordCredentials;
+import org.apache.hc.client5.http.config.ConnectionConfig;
+import org.apache.hc.client5.http.config.RequestConfig;
+import org.apache.hc.client5.http.impl.TunnelRefusedException;
+import org.apache.hc.client5.http.impl.auth.BasicAuthCache;
+import org.apache.hc.client5.http.impl.auth.BasicCredentialsProvider;
+import org.apache.hc.client5.http.impl.auth.BasicScheme;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
+import org.apache.hc.client5.http.protocol.HttpClientContext;
+import org.apache.hc.client5.http.ssl.DefaultHostnameVerifier;
+import org.apache.hc.client5.http.ssl.SSLConnectionSocketFactoryBuilder;
+import org.apache.hc.core5.http.ClassicHttpResponse;
+import org.apache.hc.core5.http.Header;
+import org.apache.hc.core5.http.HttpEntity;
+import org.apache.hc.core5.http.HttpHost;
+import org.apache.hc.core5.http.io.entity.AbstractHttpEntity;
+import org.apache.hc.core5.http.io.support.ClassicRequestBuilder;
+import org.apache.hc.core5.io.CloseMode;
+import org.apache.hc.core5.util.Timeout;
 
+import javax.net.ssl.KeyManager;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLException;
+import javax.net.ssl.TrustManager;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
+import java.io.OutputStream;
 import java.net.ConnectException;
-import java.net.InetSocketAddress;
-import java.net.Proxy;
-import java.net.ProxySelector;
-import java.net.SocketAddress;
+import java.net.InetAddress;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.UnknownHostException;
-import java.net.http.HttpClient;
-import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.net.http.HttpTimeoutException;
-import java.nio.charset.StandardCharsets;
+import java.nio.ByteBuffer;
+import java.security.GeneralSecurityException;
 import java.time.Duration;
-import java.util.Base64;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Flow;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Pattern;
 
 /**
- * Every outbound HTTP call of the integrations (destination calls and token requests) goes through here, under the
- * installation's rules: https only (plain http only where internal addresses are allowed), the address guard before
- * each call, the outbound proxy (with its Basic sign-in when set), the private certificate authority added to the
- * system's, redirects never followed, timeouts, and the answer read only up to a limit. Failures are codes; no
- * address, header or body ever reaches an exception text.
+ * Every outbound HTTP call of the integrations (destination calls, token requests, health, the issuer fetch and
+ * callbacks) goes through here, under the installation's rules: https only (plain http only where internal addresses
+ * are allowed), the address guard before each call, the outbound proxy (with its Basic sign-in when set), the private
+ * certificate authority added to the system's, redirects never followed, timeouts, and the answer read only up to a
+ * limit. Failures are codes; no address, header or body ever reaches an exception text.
  *
- * <p>Proxy sign-in: the proxy's user and password (read from the secret store at every call, by reference) go as
- * {@code Proxy-Authorization: Basic …} on the CONNECT of an https call and on plain-http requests through the proxy;
- * they never reach the destination. The library never sets JVM properties: when the JVM disables Basic for tunnels
- * (its default), an https call through a proxy with sign-in fails before connecting with
- * {@link IntegrationCode#INT_PROXY_SIGN_IN_DISABLED_BY_JVM}. A proxy answering 407 gives
- * {@link IntegrationCode#INT_PROXY_SIGN_IN_REFUSED}.
+ * <p><b>Connection pinning:</b> the connection goes to the addresses the address guard checked for this call, never
+ * to a fresh lookup (the HTTP client, Apache HttpClient 5, resolves names only through a resolver that hands it the
+ * checked addresses). Host name verification and SNI stay on the original name. So a name that answers a public
+ * address to the check and an internal or metadata address a moment later (DNS rebinding) is not followed. Through the
+ * proxy, the connection goes to the proxy; the target is checked before the CONNECT, as before.
+ *
+ * <p><b>Client certificate (mutual TLS):</b> a call may carry a {@link ClientCertificate}; the TLS handshake then
+ * offers it. Each certificate has its own client (its own connections), so a connection made with one certificate is
+ * never reused with another. A destination refusing it (a TLS alert) gives {@link IntegrationCode#INT_CREDENTIAL_REFUSED}.
+ *
+ * <p><b>Proxy sign-in:</b> the proxy's user and password (read from the secret store at every call, by reference)
+ * are sent preemptively as {@code Proxy-Authorization: Basic …} on the CONNECT of an https call and on plain-http
+ * requests through the proxy; they never reach the destination. A proxy answering 407 gives
+ * {@link IntegrationCode#INT_PROXY_SIGN_IN_REFUSED}. The JVM's {@code jdk.http.auth.*.disabledSchemes} settings do
+ * not apply to this client; the library never sets JVM properties.
  */
 public final class Outbound implements AutoCloseable {
 
@@ -93,15 +137,30 @@ public final class Outbound implements AutoCloseable {
         }
     }
 
-    private record ClientKey(boolean proxied, Duration connectTimeout) {
+    /** Headers the HTTP layer sets itself; a caller giving one is refused ({@code INT_VALUE_NOT_ALLOWED}). */
+    private static final Set<String> RESTRICTED = Set.of("host", "content-length", "connection", "expect", "upgrade",
+            "transfer-encoding", "te", "trailer", "keep-alive", "proxy-authorization", "proxy-connection");
+    private static final Pattern TOKEN = Pattern.compile("[A-Za-z0-9!#$%&'*+.^_`|~-]{1,256}");
+    private static final Set<String> CERTIFICATE_ALERTS = Set.of("bad_certificate", "certificate_required",
+            "unknown_ca", "certificate_unknown", "certificate_expired", "certificate_revoked", "access_denied",
+            "unsupported_certificate");
+    private static final int MAX_CLIENTS = 64;
+
+    /** The addresses checked for the call running on this thread: host (normalised) → addresses. */
+    private static final ThreadLocal<Map<String, InetAddress[]>> PINNED = ThreadLocal.withInitial(HashMap::new);
+
+    private record ClientKey(boolean proxied, Duration connectTimeout, String certificate) {
+    }
+
+    private record Client(CloseableHttpClient http, PoolingHttpClientConnectionManager connections) {
     }
 
     private final Installation installation;
     private final AddressGuard guard;
     private final SecretResolver secrets;
-    private final JvmProxySignIn jvm;
+    private final List<java.security.cert.X509Certificate> privateCas;
     private final SSLContext ssl;
-    private final Map<ClientKey, HttpClient> clients = new ConcurrentHashMap<>();
+    private final Map<ClientKey, Client> clients = new ConcurrentHashMap<>();
 
     /** For an installation whose proxy (if any) needs no sign-in. */
     public Outbound(Installation installation) {
@@ -118,19 +177,22 @@ public final class Outbound implements AutoCloseable {
     }
 
     public Outbound(Installation installation, AddressGuard guard, SecretResolver secrets) {
-        this(installation, guard, secrets, JvmProxySignIn.current());
-    }
-
-    /** @param jvm what this JVM allows for proxy sign-in (tests give a fixed answer) */
-    public Outbound(Installation installation, AddressGuard guard, SecretResolver secrets, JvmProxySignIn jvm) {
         this.installation = Objects.requireNonNull(installation, "installation");
         this.guard = Objects.requireNonNull(guard, "guard");
-        this.jvm = Objects.requireNonNull(jvm, "jvm");
         if (installation.proxy() != null && installation.proxy().signIn() && secrets == null) {
             throw new IllegalArgumentException("The proxy has sign-in: a SecretResolver is needed to read its password");
         }
         this.secrets = secrets;
-        this.ssl = TrustBundle.context(installation.privateCaCertificates());
+        this.privateCas = List.copyOf(installation.privateCaCertificates());
+        this.ssl = TrustBundle.context(privateCas);
+    }
+
+    /**
+     * As {@link #Outbound(Installation, AddressGuard, SecretResolver)}. Since P026 the JVM's proxy sign-in settings do
+     * not apply (the HTTP client sends the proxy sign-in itself), so {@code jvm} is not used.
+     */
+    public Outbound(Installation installation, AddressGuard guard, SecretResolver secrets, JvmProxySignIn jvm) {
+        this(installation, guard, secrets);
     }
 
     public Installation installation() {
@@ -143,8 +205,17 @@ public final class Outbound implements AutoCloseable {
      * @param useProxy whether this integration uses the installation's proxy (when one is set)
      */
     public Answer send(Call call, Duration connectTimeout, int maxResponseBytes, boolean useProxy) throws Failure {
+        return send(call, connectTimeout, maxResponseBytes, useProxy, null);
+    }
+
+    /**
+     * As {@link #send(Call, Duration, int, boolean)}, offering {@code certificate} in the TLS handshake (mutual TLS)
+     * when it is not null.
+     */
+    public Answer send(Call call, Duration connectTimeout, int maxResponseBytes, boolean useProxy,
+                       ClientCertificate certificate) throws Failure {
         URI uri = call.uri();
-        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
         if (!scheme.equals("https") && !(scheme.equals("http") && installation.allowPlainHttp())) {
             throw new Failure(scheme.equals("http") ? IntegrationCode.INT_ADDRESS_NOT_SECURE
                     : IntegrationCode.INT_CANT_CONNECT);
@@ -154,66 +225,95 @@ public final class Outbound implements AutoCloseable {
         }
         ProxySettings proxy = installation.proxy();
         boolean proxied = useProxy && proxy != null && !proxy.bypasses(uri.getHost());
-        Optional<IntegrationCode> blocked = guard.check(uri.getHost(), proxied);
-        if (blocked.isPresent()) {
-            throw new Failure(blocked.get());
+        AddressGuard.Checked checked = guard.checked(uri.getHost(), proxied);
+        if (checked.refused().isPresent()) {
+            throw new Failure(checked.refused().get());
         }
-        String proxyAuthorization = proxied && proxy.signIn() ? proxyAuthorization(proxy, scheme) : null;
+        String proxyPassword = proxied && proxy.signIn() ? proxyPassword(proxy) : null;
 
-        HttpRequest request;
-        try {
-            HttpRequest.Builder b = HttpRequest.newBuilder(uri).timeout(call.readTimeout())
-                    .method(call.method(), call.body() == null ? HttpRequest.BodyPublishers.noBody() : call.body());
-            for (Map.Entry<String, String> h : call.headers()) {
-                b.header(h.getKey(), h.getValue());
-            }
-            // To the proxy only: on CONNECT for https, on the request itself for plain http (the JDK keeps it off
-            // the tunnelled request).
-            if (proxyAuthorization != null) b.header("Proxy-Authorization", proxyAuthorization);
-            request = b.build();
-        } catch (IllegalArgumentException restrictedOrBad) {
-            throw new Failure(IntegrationCode.INT_VALUE_NOT_ALLOWED);
+        ClassicRequestBuilder b = ClassicRequestBuilder.create(call.method()).setUri(uri);
+        for (Map.Entry<String, String> h : call.headers()) {
+            if (!allowed(h.getKey(), h.getValue())) throw new Failure(IntegrationCode.INT_VALUE_NOT_ALLOWED);
+            b.addHeader(h.getKey(), h.getValue());
         }
+        if (call.body() != null) b.setEntity(new PublisherEntity(call.body()));
 
-        HttpClient http = clients.computeIfAbsent(new ClientKey(proxied, connectTimeout), this::client);
-        HttpResponse<InputStream> response;
-        try {
-            response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
-        } catch (HttpConnectTimeoutException e) {
-            throw new Failure(IntegrationCode.INT_CONNECT_TIMEOUT);
-        } catch (HttpTimeoutException e) {
-            throw new Failure(IntegrationCode.INT_TIMEOUT);
-        } catch (IOException e) {
-            throw new Failure(classify(e, proxied));
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new Failure(IntegrationCode.INT_TIMEOUT);
-        } catch (IllegalArgumentException | SecurityException e) {
-            throw new Failure(IntegrationCode.INT_CANT_CONNECT);
+        HttpClientContext context = HttpClientContext.create();
+        context.setRequestConfig(RequestConfig.custom()
+                .setResponseTimeout(Timeout.of(call.readTimeout()))
+                .setConnectionRequestTimeout(Timeout.of(connectTimeout))
+                .setRedirectsEnabled(false)
+                .setExpectContinueEnabled(false)
+                .setAuthenticationEnabled(proxyPassword != null)
+                .build());
+        if (proxyPassword != null) {
+            // Preemptive: the proxy's Basic sign-in goes on the first CONNECT (or plain-http request), and only there.
+            BasicScheme basic = new BasicScheme();
+            basic.initPreemptive(new UsernamePasswordCredentials(proxy.user(), proxyPassword.toCharArray()));
+            AuthCache cache = new BasicAuthCache();
+            cache.put(new HttpHost("http", proxy.host(), proxy.port()), basic);
+            context.setAuthCache(cache);
+            context.setCredentialsProvider(new BasicCredentialsProvider());
         }
 
-        try (InputStream in = response.body()) {
-            if (proxied && response.statusCode() == 407) {
-                // The proxy itself asks for (other) sign-in: on a plain-http request, or on the CONNECT of an https
-                // one (the JDK client hands the proxy's 407 back as the answer when it has no authenticator).
+        Client client = client(new ClientKey(proxied, connectTimeout,
+                certificate == null ? null : certificate.fingerprint()), certificate);
+        Map<String, InetAddress[]> pinned = PINNED.get();
+        pinned.clear();
+        if (!checked.addresses().isEmpty()) {
+            // The first address checked, as the JDK client did: one connection attempt, its own failure reported.
+            pinned.put(AddressGuard.normalise(uri.getHost()), new InetAddress[]{checked.addresses().get(0)});
+        }
+        try (ClassicHttpResponse response = client.http().executeOpen(null, b.build(), context)) {
+            int status = response.getCode();
+            if (proxied && status == 407) {
+                // The proxy itself refused the sign-in (on a plain-http request through it).
                 throw new Failure(IntegrationCode.INT_PROXY_SIGN_IN_REFUSED);
             }
-            byte[] body = in.readNBytes(maxResponseBytes + 1);
+            HttpEntity entity = response.getEntity();
+            byte[] body = new byte[0];
+            if (entity != null) {
+                try (InputStream in = entity.getContent()) {
+                    body = in.readNBytes(maxResponseBytes + 1);
+                } catch (SocketTimeoutException e) {
+                    throw new Failure(IntegrationCode.INT_TIMEOUT);
+                } catch (IOException e) {
+                    throw new Failure(IntegrationCode.INT_CONNECTION_LOST);
+                }
+            }
             boolean tooLarge = body.length > maxResponseBytes;
-            return new Answer(response.statusCode(), response.headers(), tooLarge ? new byte[0] : body, tooLarge);
-        } catch (HttpTimeoutException e) {
-            throw new Failure(IntegrationCode.INT_TIMEOUT);
+            return new Answer(status, headers(response), tooLarge ? new byte[0] : body, tooLarge);
+        } catch (Failure f) {
+            throw f;
         } catch (IOException e) {
-            throw new Failure(IntegrationCode.INT_CONNECTION_LOST);
+            throw new Failure(classify(e, proxied, certificate != null));
+        } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
+            throw new Failure(IntegrationCode.INT_CANT_CONNECT);
+        } finally {
+            pinned.clear();
         }
     }
 
-    /** {@code Basic base64(user:password)}, the password read now; or a failure code. */
-    private String proxyAuthorization(ProxySettings proxy, String scheme) throws Failure {
-        boolean tunnel = scheme.equals("https");
-        if (tunnel ? jvm.basicDisabledForTunnels() : jvm.basicDisabledForProxying()) {
-            throw new Failure(IntegrationCode.INT_PROXY_SIGN_IN_DISABLED_BY_JVM);
+    private static boolean allowed(String name, String value) {
+        if (name == null || value == null || !TOKEN.matcher(name).matches()) return false;
+        if (RESTRICTED.contains(name.toLowerCase(Locale.ROOT))) return false;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if ((c < 0x20 && c != '\t') || c == 0x7f) return false;
         }
+        return true;
+    }
+
+    private static HttpHeaders headers(ClassicHttpResponse response) {
+        Map<String, List<String>> m = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (Header h : response.getHeaders()) {
+            m.computeIfAbsent(h.getName(), k -> new ArrayList<>()).add(h.getValue());
+        }
+        return HttpHeaders.of(m, (k, v) -> true);
+    }
+
+    /** The proxy password, read now; or a failure code. */
+    private String proxyPassword(ProxySettings proxy) throws Failure {
         Optional<Secret> password;
         try {
             password = secrets.resolve(proxy.password());
@@ -221,57 +321,211 @@ public final class Outbound implements AutoCloseable {
             throw new Failure(IntegrationCode.INT_SECRET_UNAVAILABLE);
         }
         if (password.isEmpty()) throw new Failure(IntegrationCode.INT_SECRET_NOT_FOUND);
-        return "Basic " + Base64.getEncoder().encodeToString((proxy.user() + ":" + password.get().reveal())
-                .getBytes(StandardCharsets.UTF_8));
+        return password.get().reveal();
     }
 
-    private static IntegrationCode classify(IOException e, boolean proxied) {
+    private static IntegrationCode classify(IOException e, boolean proxied, boolean withCertificate) {
         for (Throwable t = e; t != null; t = t.getCause()) {
-            if (t instanceof SSLException) return IntegrationCode.INT_TLS_FAILED;
-            if (t instanceof UnknownHostException) return IntegrationCode.INT_HOST_UNKNOWN;
-            if (t instanceof HttpConnectTimeoutException) return IntegrationCode.INT_CONNECT_TIMEOUT;
-            if (t instanceof HttpTimeoutException) return IntegrationCode.INT_TIMEOUT;
+            if (t instanceof TunnelRefusedException refused) {
+                String m = refused.getMessage();
+                return m != null && m.contains(" 407") ? IntegrationCode.INT_PROXY_SIGN_IN_REFUSED
+                        : IntegrationCode.INT_PROXY_REFUSED;
+            }
         }
-        // The JDK client reports a proxy's refusal of CONNECT as an IOException "Unable to tunnel through proxy.
-        // Proxy returns "HTTP/1.1 407 …"" (sign-in asked for or refused) or with another status.
-        String m = e.getMessage();
-        if (proxied && m != null && m.toLowerCase().contains("tunnel")) {
-            return m.contains(" 407") ? IntegrationCode.INT_PROXY_SIGN_IN_REFUSED : IntegrationCode.INT_PROXY_REFUSED;
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof SSLException) {
+                return withCertificate && certificateAlert(t) ? IntegrationCode.INT_CREDENTIAL_REFUSED
+                        : IntegrationCode.INT_TLS_FAILED;
+            }
+            if (t instanceof ConnectTimeoutException) return IntegrationCode.INT_CONNECT_TIMEOUT;
+            if (t instanceof SocketTimeoutException) return IntegrationCode.INT_TIMEOUT;
+            if (t instanceof UnknownHostException) return IntegrationCode.INT_HOST_UNKNOWN;
         }
         for (Throwable t = e; t != null; t = t.getCause()) {
             if (t instanceof ConnectException) return IntegrationCode.INT_CANT_CONNECT;
+            if (t instanceof InterruptedIOException) {
+                Thread.currentThread().interrupt();
+                return IntegrationCode.INT_TIMEOUT;
+            }
         }
         return IntegrationCode.INT_CONNECTION_LOST;
     }
 
-    private HttpClient client(ClientKey key) {
-        HttpClient.Builder b = HttpClient.newBuilder()
-                .connectTimeout(key.connectTimeout())
-                .followRedirects(HttpClient.Redirect.NEVER)
-                .version(HttpClient.Version.HTTP_1_1)
-                .sslContext(ssl);
-        if (key.proxied()) {
-            ProxySettings p = installation.proxy();
-            InetSocketAddress at = InetSocketAddress.createUnresolved(p.host(), p.port());
-            b.proxy(new ProxySelector() {
-                @Override
-                public List<Proxy> select(URI uri) {
-                    return p.bypasses(uri.getHost()) ? List.of(Proxy.NO_PROXY) : List.of(new Proxy(Proxy.Type.HTTP, at));
+    /** A TLS alert about the client's certificate ("Received fatal alert: bad_certificate" and the like). */
+    private static boolean certificateAlert(Throwable t) {
+        for (; t != null; t = t.getCause()) {
+            String m = t.getMessage();
+            if (m == null) continue;
+            String lower = m.toLowerCase(Locale.ROOT);
+            if (lower.contains("alert")) {
+                for (String a : CERTIFICATE_ALERTS) {
+                    if (lower.contains(a)) return true;
                 }
-
-                @Override
-                public void connectFailed(URI uri, SocketAddress sa, IOException ioe) {
-                }
-            });
-        } else {
-            b.proxy(HttpClient.Builder.NO_PROXY);
+            }
         }
-        return b.build();
+        return false;
+    }
+
+    private Client client(ClientKey key, ClientCertificate certificate) {
+        Client c = clients.get(key);
+        if (c != null) return c;
+        synchronized (clients) {
+            c = clients.get(key);
+            if (c != null) return c;
+            if (clients.size() >= MAX_CLIENTS) closeAll(); // old certificates' clients do not pile up
+            c = build(key, certificate);
+            clients.put(key, c);
+            return c;
+        }
+    }
+
+    private Client build(ClientKey key, ClientCertificate certificate) {
+        SSLContext context = ssl;
+        if (certificate != null) {
+            try {
+                context = SSLContext.getInstance("TLS");
+                context.init(new KeyManager[]{certificate.keyManager()},
+                        new TrustManager[]{TrustBundle.trustManager(privateCas)}, null);
+            } catch (GeneralSecurityException e) {
+                throw new IllegalStateException("TLS with the client certificate could not be set up");
+            }
+        }
+        ProxySettings proxy = installation.proxy();
+        String proxyHost = key.proxied() ? AddressGuard.normalise(proxy.host()) : null;
+        DnsResolver pinnedOnly = new DnsResolver() {
+            @Override
+            public InetAddress[] resolve(String host) throws UnknownHostException {
+                String h = AddressGuard.normalise(host);
+                InetAddress[] a = PINNED.get().get(h);
+                if (a != null) return a.clone();
+                // The installation's own proxy is the only name looked up here.
+                if (h.equals(proxyHost)) return SystemDefaultDnsResolver.INSTANCE.resolve(host);
+                throw new UnknownHostException("not checked");
+            }
+
+            @Override
+            public String resolveCanonicalHostname(String host) {
+                return host;
+            }
+        };
+        PoolingHttpClientConnectionManager connections = PoolingHttpClientConnectionManagerBuilder.create()
+                .setSSLSocketFactory(SSLConnectionSocketFactoryBuilder.create()
+                        .setSslContext(context)
+                        .setHostnameVerifier(new DefaultHostnameVerifier())
+                        .build())
+                .setDnsResolver(pinnedOnly)
+                .setDefaultConnectionConfig(ConnectionConfig.custom()
+                        .setConnectTimeout(Timeout.of(key.connectTimeout()))
+                        .build())
+                .setMaxConnTotal(50)
+                .setMaxConnPerRoute(10)
+                .build();
+        var builder = HttpClients.custom()
+                .setConnectionManager(connections)
+                .disableRedirectHandling()
+                .disableAutomaticRetries()
+                .disableCookieManagement()
+                .disableContentCompression()
+                .setUserAgent("platform-integration");
+        if (key.proxied()) builder.setProxy(new HttpHost("http", proxy.host(), proxy.port()));
+        return new Client(builder.build(), connections);
+    }
+
+    private void closeAll() {
+        for (Client c : clients.values()) {
+            c.http().close(CloseMode.GRACEFUL);
+            c.connections().close(CloseMode.GRACEFUL);
+        }
+        clients.clear();
     }
 
     @Override
     public void close() {
-        clients.values().forEach(HttpClient::close);
-        clients.clear();
+        synchronized (clients) {
+            closeAll();
+        }
+    }
+
+    /** A JDK body publisher as an Apache entity: written by pulling the publisher's buffers one at a time. */
+    private static final class PublisherEntity extends AbstractHttpEntity {
+        private static final Object DONE = new Object();
+        private final HttpRequest.BodyPublisher publisher;
+
+        PublisherEntity(HttpRequest.BodyPublisher publisher) {
+            super((String) null, null, publisher.contentLength() < 0);
+            this.publisher = publisher;
+        }
+
+        @Override
+        public long getContentLength() {
+            return publisher.contentLength();
+        }
+
+        @Override
+        public boolean isRepeatable() {
+            return false;
+        }
+
+        @Override
+        public boolean isStreaming() {
+            return true;
+        }
+
+        @Override
+        public InputStream getContent() {
+            throw new UnsupportedOperationException("written only");
+        }
+
+        @Override
+        public void writeTo(OutputStream out) throws IOException {
+            BlockingQueue<Object> queue = new LinkedBlockingQueue<>();
+            AtomicReference<Flow.Subscription> subscription = new AtomicReference<>();
+            publisher.subscribe(new Flow.Subscriber<>() {
+                @Override
+                public void onSubscribe(Flow.Subscription s) {
+                    subscription.set(s);
+                    s.request(1);
+                }
+
+                @Override
+                public void onNext(ByteBuffer item) {
+                    queue.add(item);
+                }
+
+                @Override
+                public void onError(Throwable t) {
+                    queue.add(t);
+                }
+
+                @Override
+                public void onComplete() {
+                    queue.add(DONE);
+                }
+            });
+            try {
+                while (true) {
+                    Object o = queue.take();
+                    if (o == DONE) break;
+                    if (o instanceof Throwable) {
+                        throw new IOException("the request body could not be read"); // never the cause's text
+                    }
+                    ByteBuffer buf = (ByteBuffer) o;
+                    byte[] bytes = new byte[buf.remaining()];
+                    buf.get(bytes);
+                    out.write(bytes);
+                    subscription.get().request(1);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                Flow.Subscription s = subscription.get();
+                if (s != null) s.cancel();
+                throw new InterruptedIOException("interrupted");
+            }
+            out.flush();
+        }
+
+        @Override
+        public void close() {
+        }
     }
 }

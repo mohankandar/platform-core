@@ -162,4 +162,45 @@ public sealed interface SignIn {
             return "OAUTH2_CLIENT_CREDENTIALS";
         }
     }
+
+    /**
+     * Mutual TLS: the integration's client certificate in every TLS handshake (calls, health, and the token request
+     * when {@code certificateForToken}), alone or together with another sign-in type (for example mutual TLS plus
+     * OAuth 2.0). The certificate itself is not part of the configuration: it is the integration's credential
+     * ({@code credential.IntegrationCredentials}: uploaded or in a keystore, CURRENT and NEXT for rotation).
+     *
+     * @param with                the sign-in type used together with the certificate, or null for the certificate
+     *                            alone; never NONE or mutual TLS again
+     * @param certificateForToken whether the OAuth 2.0 token request ({@code with} is OAuth 2.0) also presents the
+     *                            certificate (token addresses that bind tokens to the certificate)
+     */
+    record MutualTls(SignIn with, boolean certificateForToken) implements SignIn {
+        public MutualTls {
+            if (with instanceof None || with instanceof MutualTls) {
+                throw new IllegalArgumentException("Mutual TLS goes alone or with Basic, API key, bearer or OAuth 2.0");
+            }
+            if (certificateForToken && !(with instanceof OAuth2ClientCredentials)) {
+                throw new IllegalArgumentException("Only an OAuth 2.0 token request can present the certificate");
+            }
+        }
+
+        /** The certificate alone. */
+        public static MutualTls alone() {
+            return new MutualTls(null, false);
+        }
+
+        /** The certificate plus another sign-in type. */
+        public static MutualTls with(SignIn other) {
+            return new MutualTls(other, false);
+        }
+
+        public String type() {
+            return "MUTUAL_TLS";
+        }
+    }
+
+    /** The sign-in that goes in headers: this one, or for mutual TLS the type used together with it (or null). */
+    static SignIn headerSignIn(SignIn s) {
+        return s instanceof MutualTls m ? m.with() : s;
+    }
 }

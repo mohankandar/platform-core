@@ -31,12 +31,14 @@ import java.util.UUID;
  * @param documentsDone    documents whose per-document steps all succeeded (to resume)
  * @param steps            every call made, in order
  * @param test             true for a Test action with fake data
+ * @param pending          for {@link Outcome#ACCEPTED}: what to keep to ask for the status later; else null
  */
 public record AttemptResult(UUID integrationId, int configVersion, Outcome outcome, IntegrationCode code,
                             String destinationCode, int httpStatus, Duration retryAfter, boolean attemptUsed,
                             String correlationId, String stepReached, String documentReached,
                             Map<String, String> values, Map<String, Map<String, String>> documentValues,
-                            Set<String> stepsDone, Set<String> documentsDone, List<StepResult> steps, boolean test) {
+                            Set<String> stepsDone, Set<String> documentsDone, List<StepResult> steps, boolean test,
+                            PendingStatus pending) {
 
     public AttemptResult {
         Objects.requireNonNull(outcome, "outcome");
@@ -46,6 +48,20 @@ public record AttemptResult(UUID integrationId, int configVersion, Outcome outco
         stepsDone = Set.copyOf(stepsDone);
         documentsDone = Set.copyOf(documentsDone);
         steps = List.copyOf(steps);
+        if ((outcome == Outcome.ACCEPTED) != (pending != null)) {
+            throw new IllegalArgumentException("An ACCEPTED result, and only it, has a pending status");
+        }
+    }
+
+    /** Without a pending status (every outcome but ACCEPTED). */
+    public AttemptResult(UUID integrationId, int configVersion, Outcome outcome, IntegrationCode code,
+                         String destinationCode, int httpStatus, Duration retryAfter, boolean attemptUsed,
+                         String correlationId, String stepReached, String documentReached,
+                         Map<String, String> values, Map<String, Map<String, String>> documentValues,
+                         Set<String> stepsDone, Set<String> documentsDone, List<StepResult> steps, boolean test) {
+        this(integrationId, configVersion, outcome, code, destinationCode, httpStatus, retryAfter, attemptUsed,
+                correlationId, stepReached, documentReached, values, documentValues, stepsDone, documentsDone, steps,
+                test, null);
     }
 
     /** SENT or ALREADY_RECEIVED. */
