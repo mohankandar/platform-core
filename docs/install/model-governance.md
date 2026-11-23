@@ -36,14 +36,16 @@ The tables are created only by the app's schema step, never at app startup.
   the schema owner and never removes readings younger than 30 days of the database's time; the runtime user cannot
   delete them itself (it needs no DELETE on `mg_measure`; a DELETE granted before 0.6.0 may be revoked).
 - **At startup** the app checks the tables (version, completeness, rights) and stops with a code naming what is
-  wrong (`MG_TABLES_MISSING`, `MG_VERSION_OLDER`, `MG_VERSION_NEWER`, `MG_TABLES_INCOMPLETE`,
-  `MG_PRIVILEGES_MISSING`). The fix is in `docs/errors/platform-error-codes.md`.
+  wrong (`MG_TABLES_MISSING`, `MG_VERSION_UNKNOWN`, `MG_VERSION_OLDER`, `MG_VERSION_NEWER`,
+  `MG_TABLES_INCOMPLETE`, `MG_PRIVILEGES_MISSING`, or `MG_CHECK_FAILED` when the database refused the check itself).
+  The fix is in `docs/errors/platform-error-codes.md`.
 
 ## 2. Settings
 
 ```yaml
 platform:
   model-governance:
+    enabled: true                                           # false switches model governance off (no beans)
     approver-roles: [MODEL_APPROVER, COMPLIANCE_OFFICER]   # who may approve (required)
     forbidden-roles: [BUSINESS_ADMIN]                       # roles an approver may never also hold (required: start-up
                                                             # refuses an empty list)
@@ -57,8 +59,11 @@ platform:
       every: 1h
 ```
 
-The role names are those of your sign-in system's role mapping; the app's documentation lists them. Every wrong
-setting is listed at startup at once.
+The role names are those of your sign-in system's role mapping; the app's documentation lists them. A role may not
+be both an approver role and a forbidden role. `review-every.*` are whole days from `1d` to `3650d`;
+`measure-retention` is at least `30d`; `worker.every` is at least one minute. Every wrong setting is listed at
+startup at once, with its property name, under `MOD_SETTINGS_INVALID` (`docs/errors/platform-error-codes.md`). The
+app also stops with that code when it has neither a database (DataSource) nor its own model-governance store.
 
 ## 3. The change gate
 
