@@ -20,6 +20,7 @@ import com.documentplatform.monitoring.CheckResult;
 import com.documentplatform.monitoring.CheckState;
 import com.documentplatform.monitoring.DependencyCheck;
 import com.documentplatform.monitoring.DependencyStatus;
+import com.documentplatform.monitoring.Verdict;
 import com.documentplatform.monitoring.MonitoringCode;
 import com.documentplatform.monitoring.MonitoringEvent;
 import com.documentplatform.monitoring.StartupChecks;
@@ -48,6 +49,7 @@ import java.io.ByteArrayOutputStream;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
@@ -66,6 +68,112 @@ class MonitoringWiringTest {
     static Throwable root(Throwable t) {
         while (t != null && !(t instanceof StartupChecks.Refused) && t.getCause() != null) t = t.getCause();
         return t;
+    }
+
+    /**
+     * monitoring-30 (P039): the key service check comes from the app's KeyService bean, and is required at start-up
+     * only with customer-keys-required=true.
+     */
+    @Test
+    void theKeyServiceCheckComesFromTheBeanAndIsRequiredOnlyWhenTheProductSaysSo() {
+        com.documentplatform.crypto.testkit.InMemoryKeyService down =
+                new com.documentplatform.crypto.testkit.InMemoryKeyService().down(true);
+        runner("platform.monitoring.customer-keys-required=true")
+                .withBean(com.documentplatform.crypto.KeyService.class, () -> down)
+                .run(ctx -> {
+                    StartupChecks.Refused r = assertInstanceOf(StartupChecks.Refused.class,
+                            root(ctx.getStartupFailure()));
+                    assertTrue(r.getMessage().contains("CRYPTO_KEY_SERVICE_UNREACHABLE"), r.getMessage());
+                });
+        runner("platform.monitoring.customer-keys-required=false")
+                .withBean(com.documentplatform.crypto.KeyService.class, () -> down)
+                .run(ctx -> {
+                    assertNull(ctx.getStartupFailure(), "not required: the app starts with the key service down");
+                    CheckResult keys = ctx.getBean(DependencyStatus.class).runAll().stream()
+                            .filter(x -> x.code().code().startsWith("CRYPTO_")).findFirst().orElseThrow();
+                    assertEquals(CheckState.DOWN, keys.state());
+                    assertFalse(keys.requiredAtStartup());
+                });
+        runner().run(ctx -> assertTrue(ctx.getBean(DependencyStatus.class).runAll().stream()
+                .noneMatch(x -> x.code().code().startsWith("CRYPTO_")), "no KeyService bean: no check"));
+    }
+
+    /** The mail check of an app whose notifications settings are these (the sender's own checked settings). */
+    private static CheckResult mailCheck(Map<String, String> mail) {
+        Map<String, String> props = new java.util.LinkedHashMap<>();
+        mail.forEach((k, v) -> props.put("platform.notifications.mail." + k, v));
+        var p = new org.springframework.boot.context.properties.bind.Binder(
+                new org.springframework.boot.context.properties.source.MapConfigurationPropertySource(props))
+                .bindOrCreate("platform.notifications",
+                        com.documentplatform.notifications.spring.NotificationsProperties.class);
+        var config = com.documentplatform.notifications.spring.NotificationsConfig.from(p);
+        CheckResult[] out = new CheckResult[1];
+        runner(props.entrySet().stream().map(e -> e.getKey() + "=" + e.getValue()).toArray(String[]::new))
+                .withBean(com.documentplatform.notifications.spring.NotificationsConfig.class, () -> config)
+                .run(ctx -> out[0] = ctx.getBean(DependencyStatus.class).runAll().stream()
+                        .filter(r -> r.name().equals("channel-mail")).findFirst().orElseThrow());
+        return out[0];
+    }
+
+    /**
+     * monitoring-34 (P039): the mail check uses the sender's own settings: the port from the security when none is
+     * set, and under Microsoft 365 the sender mailbox as the from-address (no false DOWN).
+     */
+    @Test
+    void theMailCheckUsesTheSendersOwnSettings() throws Exception {
+        try (java.net.ServerSocket smtp = new java.net.ServerSocket(0, 5, java.net.InetAddress.getLoopbackAddress())) {
+            CheckResult m365 = mailCheck(Map.of("host", "127.0.0.1", "port", String.valueOf(smtp.getLocalPort()),
+                    "auth", "OAUTH2_MICROSOFT", "oauth.directory-id", "11111111-2222-3333-4444-555555555555",
+                    "oauth.client-id", "66666666-7777-8888-9999-000000000000", "oauth.credential-type", "SECRET",
+                    "oauth.credential-secret", "app/m365-secret", "oauth.sender-mailbox", "notifications@corp.example"));
+            assertEquals(CheckState.WORKING, m365.state(), m365.cause());
+        }
+        CheckResult tls = mailCheck(Map.of("host", "mail.invalid", "security", "TLS",
+                "from-address", "notifications@corp.example"));
+        assertEquals(MonitoringCode.MON_CHANNEL_UNREACHABLE, tls.code());
+        assertTrue(tls.cause().contains("mail.invalid:465"), "TLS without a port is 465, as the sender: " + tls.cause());
+    }
+
+    /** monitoring-28 (P039): platform.monitoring.every is how often a check runs that does not say so itself. */
+    @Test
+    void theEverySettingIsTheIntervalOfChecksThatDoNotChooseTheirOwn() {
+        java.util.concurrent.atomic.AtomicInteger plain = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger own = new java.util.concurrent.atomic.AtomicInteger();
+        java.time.Instant[] now = {java.time.Instant.parse("2026-11-23T10:00:00Z")};
+        java.time.Clock clock = new java.time.Clock() {
+            @Override public java.time.ZoneId getZone() { return java.time.ZoneOffset.UTC; }
+            @Override public java.time.Clock withZone(java.time.ZoneId z) { return this; }
+            @Override public java.time.Instant instant() { return now[0]; }
+        };
+        DependencyCheck plainCheck = new DependencyCheck() {
+            @Override public String name() { return "plain"; }
+            @Override public Verdict check() { plain.incrementAndGet(); return Verdict.working(); }
+        };
+        DependencyCheck ownCheck = new DependencyCheck() {
+            @Override public String name() { return "own"; }
+            @Override public java.time.Duration every() { return java.time.Duration.ofSeconds(30); }
+            @Override public Verdict check() { own.incrementAndGet(); return Verdict.working(); }
+        };
+        runner("platform.monitoring.every=10m", "platform.monitoring.startup-checks=false",
+                "platform.monitoring.tick=1h")
+                .withBean(java.time.Clock.class, () -> clock)
+                .withBean("plainCheck", DependencyCheck.class, () -> plainCheck)
+                .withBean("ownCheck", DependencyCheck.class, () -> ownCheck)
+                .run(ctx -> {
+                    assertNull(ctx.getStartupFailure());
+                    DependencyStatus status = ctx.getBean(DependencyStatus.class);
+                    // The scheduler's first round runs at once; with tick=1h the test drives the next ones.
+                    long deadline = System.nanoTime() + java.time.Duration.ofSeconds(20).toNanos();
+                    while ((plain.get() == 0 || own.get() == 0) && System.nanoTime() < deadline) Thread.onSpinWait();
+                    assertEquals(1, plain.get());
+                    now[0] = now[0].plus(java.time.Duration.ofMinutes(2));
+                    status.runDue();
+                    assertEquals(1, plain.get(), "every=10m: not due again after 2 minutes");
+                    assertEquals(2, own.get(), "a check's own interval (30 s) wins");
+                    now[0] = now[0].plus(java.time.Duration.ofMinutes(9));
+                    status.runDue();
+                    assertEquals(2, plain.get(), "due again after 10 minutes");
+                });
     }
 
     /** xc-catalogue-12 (P037): bad settings stop the start with MON_SETTINGS_INVALID, every problem listed. */

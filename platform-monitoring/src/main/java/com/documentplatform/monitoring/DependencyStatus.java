@@ -35,14 +35,36 @@ public final class DependencyStatus implements AutoCloseable {
     private final Map<String, Instant> due = new ConcurrentHashMap<>();
     private final List<Consumer<MonitoringEvent>> listeners = new CopyOnWriteArrayList<>();
     private final List<Consumer<CheckResult>> resultListeners = new CopyOnWriteArrayList<>();
+    private final Duration every;
     private ScheduledExecutorService scheduler;
 
     public DependencyStatus(List<? extends DependencyCheck> checks, List<Supplier<List<DependencyCheck>>> sources,
                             CheckRunner runner, Clock clock) {
+        this(checks, sources, runner, clock, null);
+    }
+
+    /**
+     * @param every how often a check runs when it does not say itself (it keeps {@link DependencyCheck#every()}
+     *              unchanged): the app's {@code platform.monitoring.every}; null = each check's own (60 s by default)
+     */
+    public DependencyStatus(List<? extends DependencyCheck> checks, List<Supplier<List<DependencyCheck>>> sources,
+                            CheckRunner runner, Clock clock, Duration every) {
         this.fixed = List.copyOf(checks);
         this.sources = List.copyOf(sources);
         this.runner = Objects.requireNonNull(runner, "runner");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.every = every;
+    }
+
+    /** How often the check runs: its own interval if it says one, else the app's, else the default (P039). */
+    Duration everyFor(DependencyCheck c) {
+        if (every == null) return c.every();
+        try {
+            boolean own = c.getClass().getMethod("every").getDeclaringClass() != DependencyCheck.class;
+            return own ? c.every() : every;
+        } catch (NoSuchMethodException impossible) {
+            return c.every();
+        }
     }
 
     public DependencyStatus(List<? extends DependencyCheck> checks) {
@@ -86,7 +108,7 @@ public final class DependencyStatus implements AutoCloseable {
         for (DependencyCheck c : checks()) {
             Instant next = due.get(c.name());
             if (next != null && now.isBefore(next)) continue;
-            due.put(c.name(), now.plus(c.every()));
+            due.put(c.name(), now.plus(everyFor(c)));
             record(c, runner.run(c));
         }
     }

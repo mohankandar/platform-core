@@ -73,6 +73,13 @@
                 </exclusion>
             </exclusions>
         </dependency>
+        <!-- The mail check reads the checked mail settings of notifications-spring (P039, monitoring-34). -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-notifications-spring</artifactId>
+            <version>${project.version}</version>
+            <optional>true</optional>
+        </dependency>
         <dependency>
             <groupId>com.documentplatform.platform</groupId>
             <artifactId>platform-identity-core</artifactId>
