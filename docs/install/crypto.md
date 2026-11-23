@@ -18,6 +18,13 @@ policies:
   `platform-crypto-offboard`; no other login ever gets the offboard policy.
 
   ```hcl
+  # platform-crypto-app
+  path "transit/datakey/plaintext/customer-*" { capabilities = ["update"] }
+  path "transit/decrypt/customer-*" { capabilities = ["update"] }
+  path "transit/rewrap/customer-*" { capabilities = ["update"] }
+  path "transit/hmac/customer-*" { capabilities = ["update"] }
+  path "transit/keys/customer-*" { capabilities = ["read"] }
+  path "secret/data/platform/*" { capabilities = ["read"] }
   # platform-crypto-setup
   path "transit/keys/customer-*" { capabilities = ["create", "update", "read"] }
   # platform-crypto-offboard
