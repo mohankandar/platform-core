@@ -124,11 +124,12 @@ Package `com.documentplatform.modelgov`, plain Java, depends only on platform-er
   `recordAction(use, drift, note, by)` (`mg_drift_action`, insert only; `MOD_ACTION_ALREADY_RECORDED`).
   `purge()` removes readings older than the retention (default 400 days, at least 30); the database allows a delete
   of `mg_measure` only inside the purge (`mg.purge_before` set for the transaction). Drifts and actions are kept.
-- **Re-validation (`ModelReviews`):** next review = last validation + the use's own interval (`reviewEveryDays`) or
-  its materiality's; `due(now)` lists uses due within 30 days, within 7, and on or after the date, and raises
+- **Re-validation (`ModelReviews`):** next review **per use and entity** (since P036) = that entity's live validation
+  (else its latest passed one) + the use's own interval (`reviewEveryDays`) or its materiality's; the use's
+  `nextReviewDue` and its notices are its earliest entity's; `due(now)` lists uses due within 30 days, within 7, and on or after the date, and raises
   `REVIEW_DUE` (`MOD_REVIEW_DUE`, or `MOD_REVIEW_OVERDUE` for the last stage) once per use, due date and stage
   (`mg_review_notice`). Changing a model's version, digest or where it runs, or a use's model or configuration,
-  sets the use's next review to today.
+  sets the use's next review to today: for every entity whose validation came before the change.
 - **Documentation pack (`ModelPack.export(product, entity, from, to)`):** JSON `platform-model-pack/1` (schema
   `schema/platform-model-pack-1.schema.json`), canonical (keys sorted, no whitespace, lists in a fixed order, no export
   time), fingerprint `sha256:` of its UTF-8 bytes, and a PDF (Apache PDFBox) that prints the fingerprint, with the
@@ -156,3 +157,13 @@ Package `com.documentplatform.modelgov`, plain Java, depends only on platform-er
    Helvetica font, so no font files are shipped. The JSON is the record; the PDF is its readable copy.
 6. **The pack's period** applies to validations, readings, drifts (raised, acted on, or still open) and changes; the
    register entries are as they are at export.
+
+### Fix (P036)
+
+- **Review dates per use and entity** (gap model-governance-39). A pass for one entity used to move the review date
+  of the whole use, so for a use covering every entity another entity could run past its own review unnoticed. The
+  gate (`MOD_REVIEW_OVERDUE`) and `ModelReviews` now date each entity from its own live validation (else its latest
+  passed one), due at once after a change since that validation; the register's `nextReviewDue` is the earliest over
+  the use's entities. A new validation counts once it is live. `ModelGate` and `ModelReviews` take the app's
+  `ModelGovSettings` for the intervals (the constructors without it are deprecated and use the defaults);
+  `ModelGovStore.validationEntities(useId)` lists the entities a use has validations for.

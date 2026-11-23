@@ -86,8 +86,8 @@ public class ModelGovAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    ModelGate modelGate(ModelGovStore store, ObjectProvider<Clock> clock) {
-        return new ModelGate(store, clock.getIfAvailable(Clock::systemUTC));
+    ModelGate modelGate(ModelGovStore store, ModelGovConfig config, ObjectProvider<Clock> clock) {
+        return new ModelGate(store, config.settings(), clock.getIfAvailable(Clock::systemUTC));
     }
 
     @Bean
@@ -100,9 +100,9 @@ public class ModelGovAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    ModelReviews modelReviews(ModelGovStore store, ObjectProvider<ModelEvents> events,
+    ModelReviews modelReviews(ModelGovStore store, ObjectProvider<ModelEvents> events, ModelGovConfig config,
                               ObjectProvider<Clock> clock) {
-        return new ModelReviews(store, events(events), clock.getIfAvailable(Clock::systemUTC));
+        return new ModelReviews(store, events(events), config.settings(), clock.getIfAvailable(Clock::systemUTC));
     }
 
     @Bean
