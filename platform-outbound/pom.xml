@@ -38,6 +38,17 @@
             <artifactId>httpclient5</artifactId>
             <version>${httpclient5.version}</version>
         </dependency>
+        <!-- httpclient5 brings these; named here so their fixed version is the floor for apps too. -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.core5</groupId>
+            <artifactId>httpcore5</artifactId>
+            <version>${httpcore5.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.httpcomponents.core5</groupId>
+            <artifactId>httpcore5-h2</artifactId>
+            <version>${httpcore5.version}</version>
+        </dependency>
 
         <dependency>
             <groupId>com.documentplatform.platform</groupId>

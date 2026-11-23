@@ -28,6 +28,12 @@
             <artifactId>spring-security-oauth2-resource-server</artifactId>
             <version>${spring.security.version}</version>
         </dependency>
+        <!-- Spring Security brings Nimbus; named here so its fixed version (GHSA-xwmg-2g98-w7v9) is the floor. -->
+        <dependency>
+            <groupId>com.nimbusds</groupId>
+            <artifactId>nimbus-jose-jwt</artifactId>
+            <version>${nimbus.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-autoconfigure</artifactId>

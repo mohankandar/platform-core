@@ -1,0 +1,34 @@
+# Dependency upkeep (P043, SEC-41): weekly update pull requests for Maven and GitHub Actions, minor and patch updates
+# grouped in one pull request per ecosystem. Every update goes through a pull request with green CI like any change.
+# Major updates (for example a new Spring Boot line) come one by one, to be decided before they are merged.
+version: 2
+updates:
+  - package-ecosystem: maven
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    # The Spring line (Boot, Framework, Security) moves only by a decision of its own (SEC-14): no minor or major
+    # update of it is proposed here; patches are.
+    ignore:
+      - dependency-name: "org.springframework.boot:*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "org.springframework.security:*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "org.springframework:*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+    groups:
+      maven-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions-minor-and-patch:
+        update-types:
+          - minor
+          - patch
