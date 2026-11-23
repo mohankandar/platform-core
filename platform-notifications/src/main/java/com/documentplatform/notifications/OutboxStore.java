@@ -10,6 +10,8 @@ import java.util.Optional;
  *
  * <p>Claims make sure one worker sends a message at a time, also when several app instances share the store. A claim
  * is a lease: if the worker stops before it records the outcome, the lease runs out and the message is claimed again.
+ *
+ * <p>SPI: implemented by stores; apps call {@link Notifier}.
  */
 public interface OutboxStore {
 

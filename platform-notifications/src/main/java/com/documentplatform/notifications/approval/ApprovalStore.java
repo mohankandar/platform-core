@@ -16,6 +16,8 @@ import java.util.UUID;
  * <p><b>First decision wins.</b> {@link #decide} stores a decision only if the request has none and has not expired;
  * of two decisions at the same moment, also from two app instances, exactly one is stored and the other is told the
  * stored one.
+ *
+ * <p>SPI: implemented by stores; apps call {@link Approvals}.
  */
 public interface ApprovalStore {
 

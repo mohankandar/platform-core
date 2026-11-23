@@ -6,6 +6,8 @@ import java.util.Optional;
  * Where settings are kept. Stores hold what they are given; {@link NotificationSettings} checks the rules before it
  * saves and again when it reads. Postgres implementation: {@code jdbc.PostgresSettingsStore}; an in-memory one for
  * tests is in the testkit module.
+ *
+ * <p>SPI: implemented by stores; apps call {@link NotificationSettings}.
  */
 public interface SettingsStore {
 
