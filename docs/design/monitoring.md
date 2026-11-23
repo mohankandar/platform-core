@@ -84,3 +84,7 @@ manifest says `MON_BUNDLE_TOO_LARGE`.
    on its start date; it never enforces anything.
 6. **Integration health moved into `dependencies`** only when platform-monitoring-spring is on the classpath; without
    it, integration-spring's own contributor stays.
+
+## Decisions on the P032 report (shared-capabilities thread, 2026-11-23)
+
+P032 accepted (v0.4.0). 1. The diagnostic-bundle download button (IT Admin only) is app side. 2. The Spring start-up settings messages (`*_SETTINGS_INVALID`) become `PlatformCode` enums per Spring module: a gap for the strength check's step 2. 3. Teams and Slack destination checks stay app-added (`ChannelCheck.webhook`) unless an IT team asks; mail is checked automatically.
