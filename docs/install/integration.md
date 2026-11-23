@@ -175,6 +175,11 @@ health (liveness and readiness probes), keep `integrations` out of those groups.
 probes are on. If you list health contributors yourself, do not add it to
 `management.endpoint.health.group.liveness.include`.
 
+**With platform-monitoring-spring** in the app, there is no `integrations` entry. Each switched-on integration is
+then the check `integration-<id>` in `/actuator/health/dependencies` (working, having problems when busy, or down),
+which never counts for readiness, and the Support screen lists it (`docs/install/monitoring.md`). Callbacks have no
+check there, and neither has the virus scanner.
+
 ## 8. Client certificates (mutual TLS)
 
 Some systems accept a call only when the app shows a **client certificate**: sign-in type `MUTUAL_TLS`, alone or
@@ -343,7 +348,8 @@ watched folder: each file is scanned **before** the app processes it. Without on
 - **Size.** clamd refuses streams over its `StreamMaxLength` (25 MB by default). Set it at least as high as the
   integration's largest file, or the file is held with `INT_SCAN_FAILED`.
 - The connection is plain TCP inside your network. The scanner gets the file's content and nothing else.
-- `/actuator/health/integrations` has a `scanner` entry when a scanner is set (clamd `PING`, ICAP `OPTIONS`).
+- `/actuator/health/integrations` has a `scanner` entry when a scanner is set (clamd `PING`, ICAP `OPTIONS`); not
+  when the app has platform-monitoring-spring (section 7).
 
 To test the set-up, put the standard EICAR test file (from eicar.org) into a test drop: it must end up in
 `_quarantine` with `INT_SCAN_INFECTED`.
@@ -460,7 +466,6 @@ value.
 | `INT_WATCH_MOVE_FAILED` | A drop could not be moved inside the watched folder | Check the rename and delete rights, and that no program holds the files open |
 | `INT_WATCH_REFUSED` | The app refused the drop; `problem.json` has the app's own code | Look up the app's code; fix the drop and move it back |
 | `INT_WATCH_HANDLER_FAILED` | The app could not store the drop (its own problem); the drop was put back | Check the app's log; the next round tries again |
-| `INT_WATCH_CLAIM_LOST` | Another app instance took the drop first | Nothing |
 
 **Virus scanner** (section 13)
 
