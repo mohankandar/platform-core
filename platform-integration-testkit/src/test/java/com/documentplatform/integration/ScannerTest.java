@@ -94,13 +94,14 @@ class ScannerTest {
         for (MockScanner m : List.of(mock(MockScanner.clamd()), mock(MockScanner.icap()))) {
             FileScanner s = scanner(m, Duration.ofSeconds(5));
             assertEquals(ScanResult.clean(), scan(s, "%PDF-1.4 a clean document".getBytes()), m.toString());
-            ScanResult eicar = scan(s, Eicar.bytes());
+            ScanResult eicar = scan(s, Eicar.testFile());
             assertEquals(ScanResult.Verdict.INFECTED, eicar.verdict(), m.toString());
             assertEquals(MockScanner.EICAR_NAME, eicar.threat());
             assertEquals(IntegrationCode.INT_SCAN_INFECTED, eicar.code());
             // A large file goes in chunks; the test file inside it is found.
             byte[] big = new byte[300_000];
-            System.arraycopy(Eicar.bytes(), 0, big, 200_000, 68);
+            byte[] t = Eicar.testFile();
+            System.arraycopy(t, 0, big, 200_000, t.length);
             assertEquals(ScanResult.Verdict.INFECTED, scan(s, big).verdict());
             assertEquals(ScanResult.clean(), scan(s, new byte[0]), "an empty file");
             m.infected(true);
@@ -116,7 +117,7 @@ class ScannerTest {
         // integration-module-157: the scanner changed the response (it blocked the file) without naming the threat.
         MockScanner m = mock(MockScanner.icap()).withoutThreatHeader(true);
         FileScanner s = scanner(m, Duration.ofSeconds(5));
-        ScanResult blocked = scan(s, Eicar.bytes());
+        ScanResult blocked = scan(s, Eicar.testFile());
         assertEquals(ScanResult.Verdict.INFECTED, blocked.verdict(), blocked.toString());
         assertEquals("unknown", blocked.threat());
         assertEquals(IntegrationCode.INT_SCAN_INFECTED, blocked.code());
@@ -179,9 +180,10 @@ class ScannerTest {
 
     @Test
     void eicarFromASourceNeverReachesTheHandlerAndIsNotAcknowledged() {
-        assumeTrue(Eicar.staysOnDisk(work), "a virus scanner on this machine removes the test file; CI runs this");
+        assumeTrue(Eicar.staysOnDisk(work),
+                "RUN_EICAR_TESTS=true, but a virus scanner on this machine blocks the EICAR file; CI runs this");
         StoredIntegration st = pollSourceWithNone();
-        source.add("clean-1", "%PDF-1.4 fine".getBytes()).add("bad-1", Eicar.bytes()).add("clean-2", "%PDF ok".getBytes());
+        source.add("clean-1", "%PDF-1.4 fine".getBytes()).add("bad-1", Eicar.testFile()).add("clean-2", "%PDF ok".getBytes());
         List<ScanEvents.Infected> events = new ArrayList<>();
         for (MockScanner m : List.of(mock(MockScanner.clamd()), mock(MockScanner.icap()))) {
             source.clearRecords();

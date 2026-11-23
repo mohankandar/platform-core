@@ -17,7 +17,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * A mock virus scanner on 127.0.0.1 that speaks clamd ({@code zINSTREAM}, {@code zPING}) or ICAP ({@code RESPMOD},
- * {@code OPTIONS}). By default it finds the EICAR test file ({@link Eicar}) and nothing else. Switches:
+ * {@code OPTIONS}). By default it finds the test file ({@link Eicar}: the real EICAR file or the harmless placeholder)
+ * and nothing else. Switches:
  * {@link #infected} (everything is infected), {@link #slow}, {@link #down} (nothing listens), {@link #garbled} (an
  * answer that is not a scan result), {@link #withoutThreatHeader} (ICAP: a blocked file answered 200 without naming
  * the threat). It counts scans and bytes; it never keeps what it scanned. For tests only.
@@ -26,7 +27,7 @@ public final class MockScanner implements AutoCloseable {
 
     public enum Protocol { CLAMD, ICAP }
 
-    /** The threat name it gives the EICAR file. */
+    /** The threat name it gives the test file (EICAR or the placeholder). */
     public static final String EICAR_NAME = "Eicar-Test-Signature";
     public static final String ICAP_SERVICE = "avscan";
     private static final int MAX_SCAN = 64 * 1024 * 1024;
@@ -73,7 +74,7 @@ public final class MockScanner implements AutoCloseable {
         return protocol;
     }
 
-    /** Back to working: EICAR found, everything else clean. */
+    /** Back to working: the test file found, everything else clean. */
     public MockScanner working() {
         infectedAlways = false;
         garbled = false;
@@ -182,7 +183,7 @@ public final class MockScanner implements AutoCloseable {
     }
 
     private boolean verdict(byte[] content) {
-        boolean bad = infectedAlways || contains(content, Eicar.bytes());
+        boolean bad = infectedAlways || contains(content, Eicar.bytes()) || contains(content, Eicar.placeholder());
         scans.incrementAndGet();
         if (bad) found.incrementAndGet();
         return bad;
