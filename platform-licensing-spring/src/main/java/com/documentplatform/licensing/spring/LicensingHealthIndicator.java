@@ -23,7 +23,7 @@ import java.util.Map;
  * so a licence matter never gets the app restarted or taken out of a load balancer. {@code DOWN} only when the stored
  * licence is refused while running (edited row), with its code.
  */
-public final class LicensingHealthIndicator implements HealthIndicator {
+final class LicensingHealthIndicator implements HealthIndicator {
 
     public static final Status WARNING = new Status("LICENCE_WARNING", "The licence needs attention");
     public static final Status INTAKE_STOPPED = new Status("INTAKE_STOPPED", "Intake is stopped by the licence");

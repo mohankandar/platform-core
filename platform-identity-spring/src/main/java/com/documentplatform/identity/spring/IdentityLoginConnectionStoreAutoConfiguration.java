@@ -6,7 +6,7 @@ import com.documentplatform.identity.jdbc.PostgresLoginConnectionStore;
 import com.documentplatform.identity.signin.DevelopmentLicence;
 import com.documentplatform.identity.store.LoginConnectionStore;
 import com.documentplatform.licensing.LicenceService;
-import com.documentplatform.licensing.spring.LicensingConfig;
+import com.documentplatform.licensing.spring.internal.LicensingConfig;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -37,7 +37,7 @@ public class IdentityLoginConnectionStoreAutoConfiguration {
 
     /** From the licence in force, when platform-licensing-spring is wired. */
     @Configuration(proxyBeanMethods = false)
-    @ConditionalOnClass(name = "com.documentplatform.licensing.spring.LicensingConfig")
+    @ConditionalOnClass(name = "com.documentplatform.licensing.spring.internal.LicensingConfig")
     static class FromLicensing {
 
         @Bean

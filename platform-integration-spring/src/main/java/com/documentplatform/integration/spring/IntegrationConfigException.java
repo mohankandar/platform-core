@@ -3,7 +3,7 @@ package com.documentplatform.integration.spring;
 import java.util.List;
 
 /** The integration settings, or the app beans the module needs, are not usable; every problem is listed. */
-public final class IntegrationConfigException extends RuntimeException implements com.documentplatform.errors.HasPlatformCode {
+final class IntegrationConfigException extends RuntimeException implements com.documentplatform.errors.HasPlatformCode {
 
     private final List<String> problems;
 

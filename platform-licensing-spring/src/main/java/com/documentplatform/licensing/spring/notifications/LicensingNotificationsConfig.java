@@ -1,6 +1,6 @@
 package com.documentplatform.licensing.spring.notifications;
 
-import com.documentplatform.licensing.spring.LicensingConfigException;
+import com.documentplatform.licensing.spring.internal.LicensingConfigException;
 import com.documentplatform.licensing.spring.LicensingProperties;
 import com.documentplatform.notifications.AppLink;
 import com.documentplatform.notifications.NotificationException;

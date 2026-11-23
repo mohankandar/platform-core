@@ -2,6 +2,7 @@ package com.documentplatform.licensing.spring;
 
 import com.documentplatform.licensing.LicenceException;
 import com.documentplatform.licensing.jdbc.LicensingSchemaException;
+import com.documentplatform.licensing.spring.internal.LicensingConfigException;
 import org.springframework.boot.diagnostics.FailureAnalysis;
 import org.springframework.boot.diagnostics.FailureAnalyzer;
 
@@ -9,7 +10,7 @@ import org.springframework.boot.diagnostics.FailureAnalyzer;
  * Turns a refused startup into Spring Boot's "APPLICATION FAILED TO START" report with the stable code, the exact cause
  * and what to do: a wrong install config, licensing tables not ready, or a stored licence that is refused.
  */
-public final class LicensingFailureAnalyzer implements FailureAnalyzer {
+final class LicensingFailureAnalyzer implements FailureAnalyzer {
 
     @Override
     public FailureAnalysis analyze(Throwable failure) {
