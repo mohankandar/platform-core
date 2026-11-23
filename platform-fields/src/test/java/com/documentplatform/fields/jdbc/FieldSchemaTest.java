@@ -78,6 +78,17 @@ class FieldSchemaTest {
         assertEquals(FLD_PRIVILEGES_MISSING, problem(app));
     }
 
+    /** case-fields-113: the erase deletes the record row, so the runtime user needs DELETE on fld_record. */
+    @Test
+    void aUserWithEveryRightButDeleteOnTheRecordTableIsRefused() {
+        Pg db = Pg.migrated();
+        DataSource app = db.appUser(DML);
+        db.exec("revoke delete on fld_record from " + db.schema + "_app");
+        FieldSchemaException e = assertThrows(FieldSchemaException.class, () -> FieldSchema.verify(app));
+        assertEquals(FLD_PRIVILEGES_MISSING, e.problem());
+        assertTrue(e.getMessage().startsWith("The app's database user lacks DELETE on fld_record"), e.getMessage());
+    }
+
     @Test
     void theDatabaseRefusesDeletesAndKeyChanges() {
         Pg db = Pg.migrated();
