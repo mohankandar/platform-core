@@ -201,7 +201,6 @@ class MutualTlsTest {
 
     @Test
     void aCertificateTheDestinationDoesNotTrustIsRefused() throws Exception {
-        System.setProperty("p026.debug", "true"); // TEMPORARY
         upload(other);
         assumeFalse(intercepted, "TLS to 127.0.0.1 is intercepted on this machine");
         AttemptResult r = engine.attempt(integration, Fx.delivery(1));
@@ -414,7 +413,8 @@ class MutualTlsTest {
         // Without the certificate first: once a token is held, no token request is made at all.
         AttemptResult without = engine.attempt(notPresenting, Fx.delivery(1));
         assertEquals(Outcome.CANT_CONNECT, without.outcome(), without.toString());
-        assertEquals(IntegrationCode.INT_TLS_FAILED, without.code());
+        assertEquals(0, mock.tokensIssued(), "the token address took no request without the certificate");
+        assertTrue(mock.calls().isEmpty());
         AttemptResult with = engine.attempt(presenting, Fx.delivery(1));
         assertEquals(Outcome.SENT, with.outcome(), with.toString());
     }

@@ -287,11 +287,10 @@ public final class Outbound implements AutoCloseable {
             throw f;
         } catch (IOException e) {
             IntegrationCode code = classify(e, proxied, certificate != null);
-            if (Boolean.getBoolean("p026.debug")) debug("call", e); // TEMPORARY (P026 CI diagnosis)
             if ((code == IntegrationCode.INT_CONNECTION_LOST || code == IntegrationCode.INT_TLS_FAILED)
                     && certificate != null && !proxied
                     && scheme.equals("https") && !checked.addresses().isEmpty()
-                    && certificateRefused(client.ssl(), uri, checked.addresses().get(0), connectTimeout)) {
+                    && certificateRefused(certificate, uri, checked.addresses().get(0), connectTimeout)) {
                 code = IntegrationCode.INT_CREDENTIAL_REFUSED;
             }
             throw new Failure(code);
@@ -359,42 +358,82 @@ public final class Outbound implements AutoCloseable {
         return IntegrationCode.INT_CONNECTION_LOST;
     }
 
-
     /**
-     * With TLS 1.3 a server checks the client certificate after the handshake has finished, so a refusal often shows
-     * only as a lost connection. After such a failure of a call that presented a certificate, one TLS 1.2 handshake
-     * to the same checked address (where the check is part of the handshake) tells whether the server refuses the
-     * certificate. Nothing is sent over it.
+     * With TLS 1.3 a server checks the client certificate after the handshake has finished, and a server that refuses
+     * it often just closes the connection: the client sees a lost connection, not the alert. After such a failure of
+     * a call that presented a certificate, one TLS 1.2 handshake to the same checked address tells what happened.
+     * There the server sends its own certificate first (checked against our trust before anything else), then asks
+     * for the client's. When it asked for ours and the handshake then failed, it refused our certificate (by an alert
+     * or by closing). Nothing is sent over this connection.
      */
-    private static boolean certificateRefused(SSLContext ssl, URI uri, InetAddress address, Duration timeout) {
+    private boolean certificateRefused(ClientCertificate certificate, URI uri, InetAddress address,
+                                       Duration timeout) {
         int port = uri.getPort() > 0 ? uri.getPort() : 443;
+        java.util.concurrent.atomic.AtomicBoolean asked = new java.util.concurrent.atomic.AtomicBoolean();
+        javax.net.ssl.X509KeyManager offered = certificate.keyManager();
+        javax.net.ssl.X509ExtendedKeyManager recording = new javax.net.ssl.X509ExtendedKeyManager() {
+            @Override
+            public String[] getClientAliases(String keyType, java.security.Principal[] issuers) {
+                return offered.getClientAliases(keyType, issuers);
+            }
+
+            @Override
+            public String chooseClientAlias(String[] keyType, java.security.Principal[] issuers,
+                                            java.net.Socket socket) {
+                asked.set(true);
+                return offered.chooseClientAlias(keyType, issuers, socket);
+            }
+
+            @Override
+            public String chooseEngineClientAlias(String[] keyType, java.security.Principal[] issuers,
+                                                  javax.net.ssl.SSLEngine engine) {
+                asked.set(true);
+                return offered.chooseClientAlias(keyType, issuers, null);
+            }
+
+            @Override
+            public String[] getServerAliases(String keyType, java.security.Principal[] issuers) {
+                return null;
+            }
+
+            @Override
+            public String chooseServerAlias(String keyType, java.security.Principal[] issuers,
+                                            java.net.Socket socket) {
+                return null;
+            }
+
+            @Override
+            public java.security.cert.X509Certificate[] getCertificateChain(String alias) {
+                return offered.getCertificateChain(alias);
+            }
+
+            @Override
+            public java.security.PrivateKey getPrivateKey(String alias) {
+                return offered.getPrivateKey(alias);
+            }
+        };
+        int millis = (int) Math.min(timeout.toMillis(), 30_000);
         try (java.net.Socket plain = new java.net.Socket()) {
-            plain.connect(new java.net.InetSocketAddress(address, port), (int) Math.min(timeout.toMillis(), 30_000));
-            plain.setSoTimeout((int) Math.min(timeout.toMillis(), 30_000));
-            try (javax.net.ssl.SSLSocket s = (javax.net.ssl.SSLSocket) ssl.getSocketFactory()
+            SSLContext probe = SSLContext.getInstance("TLS");
+            probe.init(new KeyManager[]{recording}, new TrustManager[]{TrustBundle.trustManager(privateCas)}, null);
+            plain.connect(new java.net.InetSocketAddress(address, port), millis);
+            plain.setSoTimeout(millis);
+            try (javax.net.ssl.SSLSocket s = (javax.net.ssl.SSLSocket) probe.getSocketFactory()
                     .createSocket(plain, uri.getHost(), port, false)) {
                 javax.net.ssl.SSLParameters p = s.getSSLParameters();
                 p.setProtocols(new String[]{"TLSv1.2"});
                 p.setEndpointIdentificationAlgorithm("HTTPS");
                 s.setSSLParameters(p);
                 s.startHandshake();
-                if (Boolean.getBoolean("p026.debug")) System.err.println("P026 probe: handshake ok");
-                return false;
+                return false; // it took the certificate: the failure was something else
             }
-        } catch (SSLException e) {
-            if (Boolean.getBoolean("p026.debug")) debug("probe", e);
-            return certificateAlert(e);
-        } catch (IOException | RuntimeException e) {
-            if (Boolean.getBoolean("p026.debug")) debug("probe", e);
+        } catch (IOException e) {
+            return asked.get() || certificateAlert(e);
+        } catch (GeneralSecurityException | RuntimeException e) {
             return false;
         }
     }
 
-    private static void debug(String where, Throwable e) { // TEMPORARY (P026 CI diagnosis): classes and JDK texts
-        for (Throwable t = e; t != null; t = t.getCause()) {
-            System.err.println("P026 " + where + ": " + t.getClass().getName() + ": " + t.getMessage());
-        }
-    }
     /** A TLS alert about the client's certificate ("Received fatal alert: bad_certificate" and the like). */
     private static boolean certificateAlert(Throwable t) {
         for (; t != null; t = t.getCause()) {
