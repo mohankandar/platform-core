@@ -9,7 +9,7 @@ import org.springframework.boot.diagnostics.FailureAnalyzer;
  * do, instead of a stack trace: a wrong install config, or notification tables that are missing, at another version or
  * not usable by the app's database user.
  */
-public final class NotificationsFailureAnalyzer implements FailureAnalyzer {
+final class NotificationsFailureAnalyzer implements FailureAnalyzer {
 
     @Override
     public FailureAnalysis analyze(Throwable failure) {

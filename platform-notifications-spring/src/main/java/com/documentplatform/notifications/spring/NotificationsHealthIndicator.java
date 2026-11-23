@@ -21,7 +21,7 @@ import java.util.Map;
  * webhook must not mark the whole app unhealthy (and get it restarted or taken out of a load balancer), so DEGRADED is
  * not counted in the overall status and maps to HTTP 200.
  */
-public final class NotificationsHealthIndicator implements HealthIndicator {
+final class NotificationsHealthIndicator implements HealthIndicator {
 
     /** Some destination is having problems or is down. */
     public static final Status DEGRADED = new Status("DEGRADED", "A notification destination is having problems or is down");

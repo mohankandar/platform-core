@@ -34,7 +34,7 @@ RECOVERED) for the app to route to its notifications.
 - `platform.monitoring.*` (`docs/install/monitoring.md`). The built-in checks come from the app's modules and
   beans: a DataSource (with the schemas whose module's main bean is there), `KeyService`, `SecretResolver` with
   `secrets`, `LicenceService`, `LoginConnectionStore` + `IssuerFetch` + `product-code`, the mail settings as
-  notifications-spring checked them (`NotificationsConfig`: the sender's own host, the port from the security when
+  notifications-spring checked them (`platform.notifications.mail.*`: the sender's own host, the port from the security when
   none is set, and under Microsoft 365 its default host and the sender mailbox; without notifications-spring there is
   no mail check; P039), `folders.*`, `services.*`, the integration store. Model-governance-spring adds its own
   `model-governance` check (`docs/design/model-governance.md` section 10). The app's own `DependencyCheck` beans join

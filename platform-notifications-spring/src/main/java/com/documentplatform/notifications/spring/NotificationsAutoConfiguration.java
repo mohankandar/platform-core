@@ -1,5 +1,6 @@
 package com.documentplatform.notifications.spring;
 
+import com.documentplatform.notifications.spring.internal.NotificationsConfig;
 import com.documentplatform.notifications.ActionLinks;
 import com.documentplatform.notifications.ConditionStore;
 import com.documentplatform.notifications.CustomerZones;
@@ -49,7 +50,7 @@ import java.util.List;
  * {@link SecretResolver} (reads the mail password and webhook addresses from the secret store) and the
  * {@link DataSource} holding the {@code notif_} tables. Nothing app-specific is here.
  *
- * <p>At startup: the config is checked ({@link NotificationsConfig}) and the tables are checked
+ * <p>At startup: the config is checked (every {@code platform.notifications.*} value) and the tables are checked
  * ({@link NotificationSchema#verify}); either stops the app with a specific message. Startup never creates tables or
  * inserts rows: that is the separate schema step the customer runs.
  *
