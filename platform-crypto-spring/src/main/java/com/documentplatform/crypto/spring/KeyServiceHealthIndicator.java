@@ -9,7 +9,7 @@ import org.springframework.boot.actuate.health.HealthIndicator;
  * DOWN the {@code CRYPTO_*} code and a short neutral reason. Never an address with credentials, a token, a secret ID
  * or a key.
  */
-public final class KeyServiceHealthIndicator implements HealthIndicator {
+final class KeyServiceHealthIndicator implements HealthIndicator {
 
     private final KeyService keys;
 

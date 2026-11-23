@@ -254,8 +254,9 @@ Spring Boot wiring, the same layout as the other `-spring` modules. Install guid
   `vault.address`, `vault.namespace`, `vault.login` (`APPROLE` default, `TOKEN_FILE`, `TOKEN`), `vault.role-id`,
   `vault.secret-id` / `vault.secret-id-file`, `vault.token-file`, `vault.token`, `vault.approle-mount`,
   `vault.transit-mount`, `vault.key-prefix`, `vault.timeout`.
-- `CryptoConfig.from` checks them at startup and stops the app with every problem listed (`CryptoConfigException`,
-  `CryptoFailureAnalyzer`); no message holds a token or secret ID.
+- They are checked at startup, and the app stops with every problem listed under `CRYPTO_SETTINGS_INVALID` (the
+  module's failure analyzer prints them); no message holds a token or secret ID. The checked settings, the startup
+  exception, the failure analyzer and the health indicator are package-private wiring (P041).
 - Beans: `VaultClient` (closed on shutdown, which revokes an AppRole token), `KeyService` (`VaultKeyService`),
   `ValueCipher`, `RecordCipher`, `StreamCipher`, `Fingerprinter`, and `CustomerId` when a tenant ID is configured.
 - **One customer per installation (P026 decision 12):** the `CustomerId` bean is the installation's only customer,
@@ -266,7 +267,7 @@ Spring Boot wiring, the same layout as the other `-spring` modules. Install guid
   Every bean backs off when the app defines its own; an app-defined `KeyService` (for example the in-memory one in
   tests) means no Vault beans at all.
 - Vault is not called at startup: an outage never stops the app.
-- `KeyServiceHealthIndicator` (`/actuator/health/keyService`, when Actuator is present): `UP` / `DOWN`, the key
+- Health `keyService` (`/actuator/health/keyService`, when Actuator is present): `UP` / `DOWN`, the key
   service kind, and on `DOWN` the `CRYPTO_*` code and a short reason. No secrets.
 
 ## 11. Customer key destruction (customer exit, P021)

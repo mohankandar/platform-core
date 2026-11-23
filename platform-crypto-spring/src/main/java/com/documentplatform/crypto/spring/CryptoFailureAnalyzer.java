@@ -4,7 +4,7 @@ import org.springframework.boot.diagnostics.FailureAnalysis;
 import org.springframework.boot.diagnostics.FailureAnalyzer;
 
 /** Turns a wrong crypto install config into Spring Boot's "APPLICATION FAILED TO START" report. */
-public final class CryptoFailureAnalyzer implements FailureAnalyzer {
+final class CryptoFailureAnalyzer implements FailureAnalyzer {
 
     @Override
     public FailureAnalysis analyze(Throwable failure) {

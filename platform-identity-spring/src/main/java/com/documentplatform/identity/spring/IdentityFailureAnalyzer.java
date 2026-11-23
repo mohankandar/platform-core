@@ -4,7 +4,7 @@ import org.springframework.boot.diagnostics.FailureAnalysis;
 import org.springframework.boot.diagnostics.FailureAnalyzer;
 
 /** Shows a {@link PushCallerConfigException} at start-up as what is wrong and what to do (P037). */
-public final class IdentityFailureAnalyzer implements FailureAnalyzer {
+final class IdentityFailureAnalyzer implements FailureAnalyzer {
 
     @Override
     public FailureAnalysis analyze(Throwable failure) {

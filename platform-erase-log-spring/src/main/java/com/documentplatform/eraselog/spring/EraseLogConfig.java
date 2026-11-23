@@ -13,7 +13,7 @@ import java.util.Objects;
  * The checked erase log settings. {@link #from} lists every problem at once and stops the app
  * ({@link EraseLogConfigException}).
  */
-public record EraseLogConfig(Path location, EraseRetention retention, Duration recheck, boolean exitAfterReplay) {
+record EraseLogConfig(Path location, EraseRetention retention, Duration recheck, boolean exitAfterReplay) {
 
     public EraseLogConfig {
         Objects.requireNonNull(location, "location");
