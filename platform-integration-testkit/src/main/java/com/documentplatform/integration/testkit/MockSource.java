@@ -38,7 +38,7 @@ import java.util.regex.Pattern;
  *
  * <p>Switches: page size, {@link #empty}, {@link #brokenPage}, {@link #slow}, {@link #busy}, {@link #down},
  * {@link #refuseDownload}, {@link #failAcknowledge}, {@link #duplicateOnNextPage}, {@link #removeOnAcknowledge}, {@link #withoutIds},
- * {@link #expectBearer}. It records the list calls (their query), the downloads and the acknowledges (item IDs only);
+ * {@link #expectBearer}, {@link #nextLinkTo}. It records the list calls (their query), the downloads and the acknowledges (item IDs only);
  * never a document's content. For tests only.
  */
 public final class MockSource implements AutoCloseable {
@@ -82,6 +82,7 @@ public final class MockSource implements AutoCloseable {
     private volatile Duration slow = Duration.ZERO;
     private volatile Duration busy;
     private volatile String bearer;
+    private volatile URI nextLinkBase;
 
     private MockSource(PollSource source) {
         this.source = Objects.requireNonNull(source, "source");
@@ -204,8 +205,18 @@ public final class MockSource implements AutoCloseable {
         return this;
     }
 
+    /**
+     * NEXT_LINK paging: the next-page address points at {@code base} instead of this mock (another server, for tests
+     * of the same-origin rule); null: this mock again.
+     */
+    public MockSource nextLinkTo(URI base) {
+        nextLinkBase = base;
+        return this;
+    }
+
     /** Everything back to working (items kept, records cleared). */
     public MockSource working() {
+        nextLinkBase = null;
         empty = false;
         down = false;
         allAcksFail = false;
@@ -358,7 +369,8 @@ public final class MockSource implements AutoCloseable {
                 }
                 case NEXT_LINK -> {
                     if (more) {
-                        String link = address() + x.getRequestURI().getRawPath() + "?" + OFFSET + "=" + next;
+                        URI base = nextLinkBase;
+                        String link = (base == null ? address() : base) + x.getRequestURI().getRawPath() + "?" + OFFSET + "=" + next;
                         if (g.pointer() != null) put(root, g.pointer(), link);
                         else x.getResponseHeaders().add("Link", "<" + link + ">; rel=\"next\"");
                     }
