@@ -18,6 +18,13 @@
             <artifactId>platform-erase-log</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- Optional: the erase log is keyed with the customer's key when the app has the key service (P044, SEC-3). -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-crypto</artifactId>
+            <version>${project.version}</version>
+            <optional>true</optional>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-autoconfigure</artifactId>
@@ -34,6 +41,12 @@
         <dependency>
             <groupId>com.documentplatform.platform</groupId>
             <artifactId>platform-erase-log-testkit</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-crypto-testkit</artifactId>
             <version>${project.version}</version>
             <scope>test</scope>
         </dependency>

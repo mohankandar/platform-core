@@ -2,6 +2,7 @@ package com.documentplatform.eraselog;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -45,4 +46,40 @@ public interface EraseLogStore {
 
     /** Where the log is, for messages and health (a path, never a secret). */
     String location();
+
+    /**
+     * Like {@link #append(EraseRequest, Instant)}, with the entry's MAC under {@code key} (P044, SEC-3), computed
+     * inside the store's lock so it covers the entry's final number and place. The default writes unkeyed entries
+     * only.
+     */
+    default EraseEntry append(EraseRequest request, Instant loggedAt, ChainKey key) {
+        if (key == null) return append(request, loggedAt);
+        throw new EraseLogException(EraseLogError.ERASE_LOG_SETTINGS_INVALID, "this erase log store cannot write "
+                + "keyed entries");
+    }
+
+    /** The log's seal (where its keyed part starts), if it has one. */
+    default Optional<Seal> seal() {
+        return Optional.empty();
+    }
+
+    /**
+     * Seals the log at its current head, holding the store's lock, and returns the seal; returns the existing seal
+     * when the log has one. Writes the seal only; no entry is rewritten.
+     */
+    default Seal sealAtHead(ChainKey key) {
+        throw new EraseLogException(EraseLogError.ERASE_LOG_SETTINGS_INVALID, "this erase log store cannot be sealed");
+    }
+
+    /**
+     * The highest entry any database has recorded as applied with this log (P044, SEC-4), kept with the log, outside
+     * the database: a database position below it means the database was restored. 0 when unknown.
+     */
+    default long appliedHighWater() {
+        return 0;
+    }
+
+    /** Raises {@link #appliedHighWater()} to {@code seq} (never lowers it). */
+    default void recordApplied(long seq) {
+    }
 }

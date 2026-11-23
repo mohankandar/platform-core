@@ -77,6 +77,13 @@ public final class CaseFieldsEraseHandler implements EraseHandler {
 
     @Override
     public Applied apply(EraseEntry entry, Context ctx) {
+        // SEC-5: only an erasure the erase log itself hands over (Eraser, EraseReplay) is applied; a direct call with
+        // a made-up entry would erase without any log entry, and a restored backup would bring the values back.
+        if (!Context.issuedFor(ctx, entry)) {
+            throw new EraseHandlerException(FieldValuesError.VALUES_ERASE_OUTSIDE_LOG, "case fields are erased only "
+                    + "through the erase log (Eraser, kind " + KIND + "); entry " + entry.seq() + " was not handed over "
+                    + "by it");
+        }
         RecordRef ref = ref(entry.request());
         try {
             values.erase(ref);

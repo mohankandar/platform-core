@@ -203,6 +203,11 @@ public final class FieldValues {
             Drafts drafts = draft(ref.scope(), set, checked.values(), false);
             List<StoredValue> kept = current.values().stream().filter(v -> !given.contains(v.key())).toList();
             Sealed sealed = sealOnto(set, current, kept, drafts.list);
+            if (sealed.rows.isEmpty()) {
+                throw new FieldValuesException(FieldValuesError.VALUES_ERASE_OUTSIDE_LOG, "Record " + ref + " was not "
+                        + "changed: clearing every value of a record is an erasure; erase it through the erase log "
+                        + "(Eraser, kind case-fields)");
+            }
             String identity = identityOf(set, sealed.rows);
             try {
                 return store.replace(current.with(identity, sealed.envelope, clock.instant(), sealed.rows)).version();

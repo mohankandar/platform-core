@@ -113,9 +113,16 @@ public final class EraseReplay {
                     return failed(problem.get().code(), null, problem.get().reason(), from[0], head[0], applied, 0,
                             List.of(), null, now);
                 }
-                for (EraseEntry e : log.after(p.appliedSeq())) {
+                List<EraseEntry> pending;
+                try {
+                    pending = log.pending(p.applied()); // checked again: chain, seal and MACs, before acting
+                } catch (EraseLogException x) {
+                    return failed(x.code(), null, x.reason() + "; restore the erase log from its own backup", from[0],
+                            head[0], applied, 0, List.of(), null, now);
+                }
+                for (EraseEntry e : pending) {
                     try {
-                        applied.merge(Applying.apply(handlers, locked, e, guard), 1, Integer::sum);
+                        applied.merge(Applying.apply(log, handlers, locked, e, guard), 1, Integer::sum);
                     } catch (EraseLogException x) {
                         return failed(x.code(), x.handlerCode().orElse(null), x.reason() + "; fix the cause and run "
                                 + "the replay again (it goes on from entry " + e.seq() + ")", from[0], head[0],

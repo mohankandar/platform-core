@@ -124,15 +124,36 @@ class CaseFieldsEraseHandlerTest {
     @Test
     void verifySeesTheOldRecordAsReadableAndANewOneUnderTheSameIdAsGone() {
         CaseFieldsEraseHandler handler = new CaseFieldsEraseHandler(values, valueStore);
-        EraseEntry entry = EraseEntry.link(UUID.randomUUID(), ChainPoint.START, ERASED_AT, request("c1"));
-        EraseHandler.Context none = Optional::<Connection>empty;
+        com.documentplatform.eraselog.testkit.InMemoryErasePosition position =
+                new com.documentplatform.eraselog.testkit.InMemoryErasePosition();
+        EraseLog log = new EraseLog(new com.documentplatform.eraselog.testkit.InMemoryEraseLogStore(), clock);
         claim("c1");
-        assertEquals(EraseHandler.Verified.READABLE, handler.verify(entry), "made before the erasure: still there");
-        assertEquals(EraseHandler.Applied.ERASED, handler.apply(entry, none));
+        assertEquals(EraseHandler.Verified.READABLE, handler.verify(EraseEntry.link(log.logId(), ChainPoint.START,
+                ERASED_AT, request("c1"))), "made before the erasure: still there");
+        var backup = position.snapshot();
+        Eraser.Erased erased = new Eraser(log, position, EraseHandlers.of(handler)).erase(request("c1"));
+        assertEquals(EraseHandler.Applied.ERASED, erased.applied());
+        EraseEntry entry = erased.entry();
         assertEquals(EraseHandler.Verified.GONE, handler.verify(entry));
-        assertEquals(EraseHandler.Applied.ALREADY_GONE, handler.apply(entry, none), "safe to run twice");
+        position.restore(backup); // the database restored: the replay applies the entry again
+        EraseReplay.Report again = new EraseReplay(log, position, EraseHandlers.of(handler), clock).run();
+        assertEquals(1, again.applied().get(EraseHandler.Applied.ALREADY_GONE), "safe to run twice");
         now.set(ERASED_AT.plusSeconds(3600));
         claim("c1");
         assertEquals(EraseHandler.Verified.GONE, handler.verify(entry), "a new record made after the erasure");
+    }
+
+    @Test
+    void theHandlerRefusesAnErasureTheLogDidNotHandOver() {
+        // P044, SEC-5: the bypass the review found. Calling the public handler directly with a made-up entry erased
+        // the record without any log entry, so a restored backup would bring the values back unseen.
+        CaseFieldsEraseHandler handler = new CaseFieldsEraseHandler(values, valueStore);
+        claim("c1");
+        EraseEntry forged = EraseEntry.link(UUID.randomUUID(), ChainPoint.START, ERASED_AT, request("c1"));
+        EraseHandler.Context made = Optional::<Connection>empty;
+        EraseHandlerException refused = assertThrows(EraseHandlerException.class, () -> handler.apply(forged, made));
+        assertEquals("VALUES_ERASE_OUTSIDE_LOG", refused.code());
+        assertThrows(EraseHandlerException.class, () -> handler.apply(forged, null));
+        assertEquals(EraseHandler.Verified.READABLE, handler.verify(forged), "nothing was erased");
     }
 }

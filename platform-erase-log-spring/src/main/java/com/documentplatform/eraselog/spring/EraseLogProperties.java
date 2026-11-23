@@ -29,6 +29,19 @@ public class EraseLogProperties {
     private Duration recheck = Duration.ofMinutes(1);
     /** With {@code --erase-replay}: exit after the replay (exit code 0 passed, 1 not). */
     private boolean exitAfterReplay = true;
+    /**
+     * Whether the log is keyed (P044, SEC-3). Unset: keyed whenever the app has the key service; {@code true}: refuse
+     * to start without it; {@code false}: unkeyed (not recommended).
+     */
+    private Boolean keyed;
+
+    public Boolean getKeyed() {
+        return keyed;
+    }
+
+    public void setKeyed(Boolean keyed) {
+        this.keyed = keyed;
+    }
 
     public boolean isEnabled() {
         return enabled;

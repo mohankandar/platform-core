@@ -1,5 +1,6 @@
 package com.documentplatform.eraselog.spring;
 
+import com.documentplatform.eraselog.ChainKey;
 import com.documentplatform.eraselog.EraseGuard;
 import com.documentplatform.eraselog.EraseHandler;
 import com.documentplatform.eraselog.EraseHandlers;
@@ -40,7 +41,8 @@ import java.lang.System.Logger.Level;
  *
  * <p>Every bean backs off when the app defines its own (for example the in-memory store and position in tests).
  */
-@AutoConfiguration(afterName = "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration")
+@AutoConfiguration(afterName = {"org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration",
+        "com.documentplatform.crypto.spring.CryptoAutoConfiguration"})
 @ConditionalOnProperty(prefix = EraseLogProperties.PREFIX, name = "enabled", havingValue = "true",
         matchIfMissing = true)
 @EnableConfigurationProperties(EraseLogProperties.class)
@@ -60,10 +62,48 @@ public class EraseLogAutoConfiguration {
         return new FileEraseLogStore(config.location());
     }
 
+    /**
+     * The log is keyed (P044, SEC-3) with the app's {@link ChainKey} bean, by default the customer's key in the key
+     * service ({@link Keyed}). {@code platform.erase-log.keyed}: unset keys the log whenever a key is there;
+     * {@code true} refuses to start without one; {@code false} keeps the log unkeyed (not recommended).
+     */
     @Bean
     @ConditionalOnMissingBean
-    EraseLog eraseLog(EraseLogStore store, ObjectProvider<Clock> clock) {
-        return new EraseLog(store, clock.getIfAvailable(Clock::systemUTC));
+    EraseLog eraseLog(EraseLogStore store, ObjectProvider<Clock> clock, ObjectProvider<ChainKey> key,
+                      EraseLogProperties properties) {
+        ChainKey k = Boolean.FALSE.equals(properties.getKeyed()) ? null : key.getIfUnique();
+        if (k == null && Boolean.TRUE.equals(properties.getKeyed())) {
+            throw new EraseLogConfigException(java.util.List.of(EraseLogProperties.PREFIX + ".keyed is true, but there "
+                    + "is no key: the app needs platform-crypto with its KeyService and CustomerId beans (or a ChainKey "
+                    + "bean)"));
+        }
+        if (k == null) {
+            LOG.log(Level.WARNING, "Erase log at {0} is not keyed: someone who can write its location could add "
+                    + "erasures. Configure the key service (platform-crypto) to key it.", store.location());
+        }
+        return new EraseLog(store, clock.getIfAvailable(Clock::systemUTC), k);
+    }
+
+    /** The erase log's key: the customer's fingerprint key in the platform's key service, when the app has it. */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(name = "com.documentplatform.crypto.KeyService")
+    static class Keyed {
+
+        @Bean
+        @ConditionalOnMissingBean(ChainKey.class)
+        @org.springframework.boot.autoconfigure.condition.ConditionalOnBean(type = {
+                "com.documentplatform.crypto.KeyService", "com.documentplatform.crypto.CustomerId"})
+        ChainKey eraseLogChainKey(com.documentplatform.crypto.KeyService keys,
+                                  com.documentplatform.crypto.CustomerId customer) {
+            return new com.documentplatform.eraselog.crypto.KeyServiceChainKey(keys, customer);
+        }
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    EraseLogSealRunner eraseLogSealRunner(EraseLog log, EraseGuard guard, ApplicationContext context,
+                                          EraseLogConfig config) {
+        return new EraseLogSealRunner(log, guard, context, config.exitAfterReplay());
     }
 
     @Bean

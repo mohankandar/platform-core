@@ -70,6 +70,11 @@ public final class InMemoryValueStore implements ValueStore {
 
     @Override
     public synchronized StoredRecord replace(StoredRecord next) {
+        if (next.values().isEmpty()) {
+            // Same rule as the Postgres store (P044, SEC-5): taking every value away is an erasure.
+            throw new FieldValuesException(FieldValuesError.VALUES_ERASE_OUTSIDE_LOG, "Record " + next.ref() + " was "
+                    + "not changed: removing every value of a record is an erasure, done only through the erase log");
+        }
         StoredRecord current = records.get(next.id());
         if (current == null) {
             throw new FieldValuesException(FieldValuesError.VALUES_RECORD_UNKNOWN, "No record " + next.ref());

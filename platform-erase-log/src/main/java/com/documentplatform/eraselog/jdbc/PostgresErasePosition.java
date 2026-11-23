@@ -80,7 +80,17 @@ public final class PostgresErasePosition implements ErasePosition {
                     c.rollback();
                     c.setAutoCommit(autoCommit);
                 } finally {
-                    lock(c, logId, false);
+                    try {
+                        lock(c, logId, false);
+                    } catch (SQLException unlockFailed) {
+                        // SEC-49: never give a pooled connection back still holding the lock: end it instead.
+                        try {
+                            c.abort(Runnable::run);
+                        } catch (SQLException | RuntimeException ignored) {
+                            // the connection is unusable either way; the server frees the lock when it closes
+                        }
+                        throw unlockFailed;
+                    }
                 }
             }
         } catch (SQLException e) {
