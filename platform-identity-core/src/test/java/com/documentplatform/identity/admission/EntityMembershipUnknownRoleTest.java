@@ -3,12 +3,21 @@ package com.documentplatform.identity.admission;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * A grant with a role the product does not know (a typo, or a role removed from the product) refuses only its own
@@ -34,6 +43,48 @@ class EntityMembershipUnknownRoleTest {
     void theBrokenEntityIsRefusedAndThePersonsOtherEntitiesAreAdmitted() {
         var admitted = resolver(A_BROKEN).authorizedEntities(ISSUER, Set.of("a-staff", "b-staff"));
         assertEquals(Map.of(B, Set.of("DOCUMENT_PROCESSOR")), admitted);
+    }
+
+    @Test
+    void theErrorLineNamesTheEntityButNoGroupRoleOrClaim() {
+        var grants = Map.of(
+                A, Map.of("PLANTED-GROUP-NAME", Set.of("PLANTED_UNKNOWN_ROLE")),
+                B, Map.of("b-staff", Set.of("DOCUMENT_PROCESSOR")));
+        List<String> lines = new ArrayList<>();
+        Logger logger = Logger.getLogger(EntityMembershipResolver.class.getName());
+        Level before = logger.getLevel();
+        Handler capture = new Handler() {
+            private final SimpleFormatter format = new SimpleFormatter();
+
+            @Override
+            public void publish(LogRecord r) {
+                lines.add(format.format(r));
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        capture.setLevel(Level.ALL);
+        logger.addHandler(capture);
+        logger.setLevel(Level.ALL);
+        try {
+            var admitted = resolver(grants).authorizedEntities(ISSUER, Set.of("PLANTED-GROUP-NAME", "b-staff"));
+            assertEquals(Map.of(B, Set.of("DOCUMENT_PROCESSOR")), admitted);
+        } finally {
+            logger.removeHandler(capture);
+            logger.setLevel(before);
+        }
+        String all = String.join("\n", lines);
+        assertEquals(1, lines.size(), all);
+        assertTrue(all.contains(A.toString()), all);
+        for (String never : List.of("PLANTED-GROUP-NAME", "PLANTED_UNKNOWN_ROLE", "b-staff")) {
+            assertFalse(all.contains(never), never + " in: " + all);
+        }
     }
 
     @Test
