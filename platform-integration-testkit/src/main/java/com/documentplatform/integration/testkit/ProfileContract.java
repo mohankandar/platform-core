@@ -10,7 +10,7 @@ import com.documentplatform.integration.config.Template;
 import com.documentplatform.integration.engine.CallEngine;
 import com.documentplatform.integration.engine.TestAction;
 import com.documentplatform.outbound.Outbound;
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 import com.documentplatform.integration.json.JsonSchema;
 import com.documentplatform.integration.profile.IntegrationProfile;
 import com.documentplatform.integration.result.AttemptResult;

@@ -9,7 +9,7 @@ import com.documentplatform.fields.ValidValue;
 import com.documentplatform.fields.ValidatedFields;
 import com.documentplatform.fields.delivery.DeliveryResult;
 import com.documentplatform.fields.delivery.FieldDelivery;
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 
 import java.util.ArrayList;
 import java.util.Collections;

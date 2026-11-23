@@ -1,9 +1,10 @@
 package com.documentplatform.integration.config;
 
 import com.documentplatform.integration.IntegrationCode;
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 import com.documentplatform.integration.result.Outcome;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
@@ -35,6 +36,22 @@ public record Rule(String status, String code, String pointer, String equals, Ou
 
     private static final Pattern STATUS = Pattern.compile("any|[1-5]xx|[1-5]\\d\\d|[1-5]\\d\\d-[1-5]\\d\\d");
     private static final Pattern CODE = Pattern.compile("-|[A-Za-z0-9_.:-]{1,40}\\*?|\\*");
+
+    /**
+     * The default rules, applied after the configured ones (a step's, then the integration's): 2xx sent; 3xx refused
+     * as a redirect (never followed); 401 and 403 sign-in; 404 without a destination code is a wrong address (a set-up
+     * fault, not a refusal); 408 and 429 busy; other 4xx refused; 5xx outage; anything else unclear.
+     */
+    public static final List<Rule> DEFAULTS = List.of(
+            Rule.of("2xx", null, Outcome.SENT),
+            Rule.of("3xx", null, Outcome.NOT_CONFIGURED).withPlatformCode(IntegrationCode.INT_REDIRECT_REFUSED),
+            Rule.of("401", null, Outcome.SIGN_IN_FAILED),
+            Rule.of("403", null, Outcome.SIGN_IN_FAILED),
+            Rule.of("404", "-", Outcome.NOT_CONFIGURED).withPlatformCode(IntegrationCode.INT_ADDRESS_NOT_FOUND),
+            Rule.of("408", null, Outcome.BUSY),
+            Rule.of("429", null, Outcome.BUSY),
+            Rule.of("4xx", null, Outcome.REFUSED),
+            Rule.of("5xx", null, Outcome.OUTAGE));
 
     public Rule {
         Objects.requireNonNull(status, "status");

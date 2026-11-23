@@ -17,7 +17,7 @@ import com.documentplatform.integration.config.PollSource;
 import com.documentplatform.integration.config.Rule;
 import com.documentplatform.integration.config.SignIn;
 import com.documentplatform.integration.config.Template;
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 import com.documentplatform.integration.json.JsonSchema;
 import com.documentplatform.outbound.Installation;
 import com.documentplatform.notifications.secret.SecretRef;

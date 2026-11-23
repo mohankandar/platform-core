@@ -11,7 +11,7 @@ import com.documentplatform.integration.config.Limits;
 import com.documentplatform.integration.config.Rule;
 import com.documentplatform.integration.config.SignIn;
 import com.documentplatform.integration.engine.Delivery;
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

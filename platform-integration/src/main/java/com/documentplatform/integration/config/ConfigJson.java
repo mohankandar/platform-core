@@ -1,7 +1,7 @@
 package com.documentplatform.integration.config;
 
 import com.documentplatform.integration.IntegrationCode;
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 import com.documentplatform.integration.result.Outcome;
 import com.documentplatform.notifications.secret.SecretRef;
 

@@ -1,6 +1,6 @@
 package com.documentplatform.integration;
 
-import com.documentplatform.integration.config.Classification;
+import com.documentplatform.integration.config.internal.Classification;
 import com.documentplatform.integration.config.ConfigJson;
 import com.documentplatform.integration.config.Rule;
 import com.documentplatform.integration.result.Outcome;

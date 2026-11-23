@@ -1,7 +1,7 @@
 package com.documentplatform.integration;
 
 import com.documentplatform.integration.config.CallStep;
-import com.documentplatform.integration.config.Classification;
+import com.documentplatform.integration.config.internal.Classification;
 import com.documentplatform.integration.config.ConfigJson;
 import com.documentplatform.integration.config.Endpoint;
 import com.documentplatform.integration.config.HealthCheck;
@@ -9,7 +9,7 @@ import com.documentplatform.integration.config.HttpMethod;
 import com.documentplatform.integration.config.IntegrationConfig;
 import com.documentplatform.integration.config.Rule;
 import com.documentplatform.integration.config.SignIn;
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 import com.documentplatform.integration.result.Outcome;
 import com.documentplatform.notifications.secret.SecretRef;
 import org.junit.jupiter.api.Test;

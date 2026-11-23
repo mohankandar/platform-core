@@ -1,7 +1,7 @@
 package com.documentplatform.integration;
 
 import com.documentplatform.integration.config.Template;
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;

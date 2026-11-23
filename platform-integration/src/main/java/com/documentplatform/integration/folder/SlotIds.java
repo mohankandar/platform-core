@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
  * UUID, SHA-256 of {@code "platform-entity|" + slotId} with the version and variant bits set). Kept here since P028 so
  * that platform-integration does not depend on platform-identity-core; a test checks both give the same UUIDs.
  */
-public final class SlotIds {
+final class SlotIds {
 
     private static final String NAME_PREFIX = "platform-entity|";
     private static final Pattern SLOT_ID = Pattern.compile("ENT-[A-Z0-9-]{1,60}");

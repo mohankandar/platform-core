@@ -15,10 +15,9 @@ import com.documentplatform.integration.engine.Delivery;
 import com.documentplatform.integration.engine.TestAction;
 import com.documentplatform.integration.folder.ExportFiles;
 import com.documentplatform.integration.folder.ExportInfo;
-import com.documentplatform.integration.folder.ExportManifest;
 import com.documentplatform.integration.folder.FolderExport;
 import com.documentplatform.outbound.Outbound;
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 import com.documentplatform.integration.json.JsonSchema;
 import com.documentplatform.integration.result.AttemptResult;
 import com.documentplatform.integration.result.HealthResult;
@@ -112,7 +111,8 @@ class FolderExportTest {
 
     /** The manifest against its JSON Schema (the file next to the profile schema). */
     static List<JsonSchema.Problem> schemaProblems(Object manifest) throws Exception {
-        try (InputStream in = FolderExport.class.getClassLoader().getResourceAsStream(ExportManifest.SCHEMA_RESOURCE)) {
+        try (InputStream in = FolderExport.class.getClassLoader()
+                .getResourceAsStream("schema/platform-export-manifest-1.schema.json")) {
             Map<String, Object> root = Json.object(new String(in.readAllBytes(), StandardCharsets.UTF_8));
             return new JsonSchema(root).check(manifest, root);
         }
@@ -148,7 +148,7 @@ class FolderExportTest {
         String text = folder.manifest("PKG-2026-0042");
         Map<String, Object> m = Json.object(text);
         assertEquals(List.of(), schemaProblems(m));
-        assertEquals(ExportManifest.FORMAT, m.get("format"));
+        assertEquals("platform-export-manifest/1", m.get("format"));
         assertEquals("PKG-2026-0042", m.get("packageId"));
         assertEquals("PRODUCT_A", m.get("product"));
         assertEquals(SLOT, m.get("entitySlotId"));

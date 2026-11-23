@@ -1,7 +1,7 @@
 package com.documentplatform.integration.config;
 
 import com.documentplatform.integration.IntegrationCode;
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;

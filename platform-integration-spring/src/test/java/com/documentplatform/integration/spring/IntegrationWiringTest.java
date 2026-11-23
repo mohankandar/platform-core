@@ -2,7 +2,6 @@ package com.documentplatform.integration.spring;
 
 import com.documentplatform.outbound.spring.OutboundAutoConfiguration;
 import com.documentplatform.outbound.spring.OutboundConfigException;
-import com.documentplatform.integration.folder.SlotIds;
 import com.documentplatform.integration.IntegrationCode;
 import com.documentplatform.integration.config.CallStep;
 import com.documentplatform.integration.config.Endpoint;
@@ -62,7 +61,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class IntegrationWiringTest {
 
     static final String SLOT = "ENT-0001";
-    static final UUID ENTITY = SlotIds.entityUuid(SLOT);
+    /** The entity UUID of {@link #SLOT} (identity's {@code EntityUuid} rule). */
+    static final UUID ENTITY = UUID.fromString("f37edbed-e772-5553-adf3-cef5c4d8d511");
 
     /** The app's audit: records what it gets. */
     static final class Audit implements IntegrationAudit {

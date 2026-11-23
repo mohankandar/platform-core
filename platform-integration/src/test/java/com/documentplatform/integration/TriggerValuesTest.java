@@ -1,6 +1,6 @@
 package com.documentplatform.integration;
 
-import com.documentplatform.integration.watch.TriggerValues;
+import com.documentplatform.integration.watch.internal.TriggerValues;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

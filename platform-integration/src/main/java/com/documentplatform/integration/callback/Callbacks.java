@@ -4,7 +4,7 @@ import com.documentplatform.integration.IntegrationCode;
 import com.documentplatform.integration.config.IntegrationConfig;
 import com.documentplatform.integration.config.Kind;
 import com.documentplatform.integration.engine.CallEngine;
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 import com.documentplatform.integration.result.AttemptResult;
 import com.documentplatform.integration.result.Outcome;
 import com.documentplatform.integration.store.IntegrationStore;

@@ -3,7 +3,7 @@ package com.documentplatform.integration;
 import com.documentplatform.integration.config.ConfigJson;
 import com.documentplatform.integration.config.Rule;
 import com.documentplatform.integration.config.SignIn;
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 import com.documentplatform.integration.result.AttemptResult;
 import com.documentplatform.integration.result.Outcome;
 import com.documentplatform.integration.store.StoredIntegration;

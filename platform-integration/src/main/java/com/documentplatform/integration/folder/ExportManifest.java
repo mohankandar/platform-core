@@ -1,6 +1,6 @@
 package com.documentplatform.integration.folder;
 
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -27,7 +27,7 @@ import java.util.UUID;
  *  "app":{ … }}
  * }</pre>
  */
-public final class ExportManifest {
+final class ExportManifest {
 
     public static final String FORMAT = "platform-export-manifest/1";
     public static final String SCHEMA_RESOURCE = "schema/platform-export-manifest-1.schema.json";

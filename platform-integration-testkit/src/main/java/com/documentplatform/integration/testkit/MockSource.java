@@ -2,7 +2,7 @@ package com.documentplatform.integration.testkit;
 
 import com.documentplatform.integration.config.CallStep;
 import com.documentplatform.integration.config.PollSource;
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 import com.documentplatform.integration.profile.IntegrationProfile;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;

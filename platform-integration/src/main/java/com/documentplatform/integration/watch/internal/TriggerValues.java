@@ -1,6 +1,6 @@
-package com.documentplatform.integration.watch;
+package com.documentplatform.integration.watch.internal;
 
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 import org.w3c.dom.Attr;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -44,6 +44,7 @@ import java.util.regex.Pattern;
  * <p><b>Hardened:</b> the file must be UTF-8 within the configured size; JSON is at most 32 levels deep; XML has no
  * DTD (a {@code DOCTYPE} is refused, so no entity can be declared: no "billion laughs"), no external entities or
  * schemas, no XInclude, and at most 64 levels. Anything else is {@link Unreadable}, without its text.
+ * Internal: used by the watched folder and the save-time check.
  */
 public final class TriggerValues {
 

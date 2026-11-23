@@ -1,5 +1,7 @@
 package com.documentplatform.integration.json;
 
+import com.documentplatform.integration.json.internal.Json;
+
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;

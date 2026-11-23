@@ -10,7 +10,7 @@ import com.documentplatform.integration.intake.IntakeAnswer;
 import com.documentplatform.integration.intake.IntakeFile;
 import com.documentplatform.integration.intake.IntakeHandler;
 import com.documentplatform.integration.intake.LogRef;
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 import com.documentplatform.integration.result.HealthResult;
 import com.documentplatform.integration.result.Outcome;
 import com.documentplatform.outbound.Installation;
@@ -18,6 +18,7 @@ import com.documentplatform.integration.scan.ScanEvents;
 import com.documentplatform.integration.scan.ScanResult;
 import com.documentplatform.integration.scan.Scanning;
 import com.documentplatform.integration.store.StoredIntegration;
+import com.documentplatform.integration.watch.internal.TriggerValues;
 
 import java.io.IOException;
 import java.io.InputStream;

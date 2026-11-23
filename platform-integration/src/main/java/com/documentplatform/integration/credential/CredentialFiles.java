@@ -32,7 +32,7 @@ import java.util.regex.Pattern;
  * key must belong to the first certificate. Failures are codes ({@code INT_CREDENTIAL_*}); no exception text ever
  * holds the file, the key or the password.
  */
-public final class CredentialFiles {
+final class CredentialFiles {
 
     /** The largest uploaded file. */
     public static final int MAX_BYTES = 32 * 1024;

@@ -8,7 +8,7 @@ import com.documentplatform.integration.config.HttpMethod;
 import com.documentplatform.integration.config.IntegrationConfig;
 import com.documentplatform.integration.config.SignIn;
 import com.documentplatform.integration.config.Template;
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 import com.documentplatform.outbound.Installation;
 import com.documentplatform.notifications.secret.SecretRef;
 import org.junit.jupiter.api.Test;

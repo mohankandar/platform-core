@@ -1,6 +1,6 @@
 package com.documentplatform.integration;
 
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 import com.documentplatform.integration.profile.IntegrationProfile;
 import com.documentplatform.integration.profile.ProfileLoader;
 import com.documentplatform.integration.testkit.openapi.OpenApiSpec;

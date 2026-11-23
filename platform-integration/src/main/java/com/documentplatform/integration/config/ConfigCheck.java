@@ -4,7 +4,7 @@ import com.documentplatform.fields.FieldKey;
 import com.documentplatform.fields.FieldSet;
 import com.documentplatform.fields.FieldSpec;
 import com.documentplatform.integration.IntegrationCode;
-import com.documentplatform.integration.json.Json;
+import com.documentplatform.integration.json.internal.Json;
 import com.documentplatform.outbound.AddressGuard;
 import com.documentplatform.outbound.Installation;
 
@@ -332,8 +332,8 @@ public final class ConfigCheck {
         if (w.mapping().size() > 100) watchBad(errors, "watch.mapping");
         for (Map.Entry<String, String> m : w.mapping().entrySet()) {
             boolean valid = CallStep.NAME.matcher(m.getKey()).matches() && (w.triggerType() == WatchSource.TriggerType.XML
-                    ? com.documentplatform.integration.watch.TriggerValues.validXmlPath(m.getValue())
-                    : com.documentplatform.integration.watch.TriggerValues.validJsonPath(m.getValue()));
+                    ? com.documentplatform.integration.watch.internal.TriggerValues.validXmlPath(m.getValue())
+                    : com.documentplatform.integration.watch.internal.TriggerValues.validJsonPath(m.getValue()));
             if (!valid) watchBad(errors, "watch.mapping." + m.getKey());
         }
         if (w.fileListValue() != null && !w.mapping().containsKey(w.fileListValue())) {
