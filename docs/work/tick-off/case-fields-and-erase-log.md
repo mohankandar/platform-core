@@ -488,9 +488,9 @@ of applied entries older than retention + 30).
 | install-erase-log-2 | Report entry number | Printed only inside the message | C | Print `stopped at entry N` as its own line in `describe()` | S |
 | install-erase-log-3 | Health details | Not listed | C | List the details (and the pending-entry fields once erase-log-22 is fixed) | S |
 | install-erase-log-4 | Moving a log | Missing | C | See erase-log-DG-2 | S |
-| xc-catalogue-1 | `FLD_PARTIAL_SEARCH_UNAVAILABLE` | Not a `PlatformCode` | B | Add it to a fields code enum with message, cause, fix; regenerate the catalogue | S |
-| xc-catalogue-2 | `ERASE_HANDLER_ERROR` | Not a `PlatformCode` | B | Add it to `EraseLogError` (or a handler code enum) with texts; regenerate the catalogue | S |
-| xc-catalogue-3 | `ERASE_LOG_SETTINGS_INVALID` as message prefix | Exception does not carry the code | B | Make `EraseLogConfigException` implement `HasPlatformCode` (with the P032 question 2 group) | S |
-| xc-catalogue-4 | Type change when the values check cannot answer | No platform code | C | Wrap in `FieldDefinitionException` with a new `FIELD_VALUES_CHECK_FAILED` code | S |
+| xc-catalogue-1 | `FLD_PARTIAL_SEARCH_UNAVAILABLE` | Not a `PlatformCode` | B · **FIXED in P037 (00560bc)** | Add it to a fields code enum with message, cause, fix; regenerate the catalogue | S |
+| xc-catalogue-2 | `ERASE_HANDLER_ERROR` | Not a `PlatformCode` | B · **FIXED in P037 (59178ca)** | Add it to `EraseLogError` (or a handler code enum) with texts; regenerate the catalogue | S |
+| xc-catalogue-3 | `ERASE_LOG_SETTINGS_INVALID` as message prefix | Exception does not carry the code | B · **FIXED in P037 (2a21e26)** | Make `EraseLogConfigException` implement `HasPlatformCode` (with the P032 question 2 group) | S |
+| xc-catalogue-4 | Type change when the values check cannot answer | No platform code | C · **FIXED in P037 (bf7d99c)** | Wrap in `FieldDefinitionException` with a new `FIELD_VALUES_CHECK_FAILED` code | S |
 
 No A gaps found in this slice.

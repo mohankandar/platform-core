@@ -31,25 +31,25 @@ Short paths used below:
 | error-codes-1 | Every failure says what failed, why, what to do: every code has a message, cause and fix | DONE | `E/Catalogue.java` `problems` | `CT` `everyCodeHasAMessageACauseAndAFixAndIsUniqueAcrossModules` | runs on every real code enum |
 | error-codes-2 | Never in a message, log, metric or bundle: passwords, keys, tokens, secret values, content, field values | DONE | `E/SafeText.java`, `E/PlatformError.java`, `M/DiagnosticBundle.java` | `ET` `anErrorFillsSafeDetailsAndNeverHoldsSecretsOrContent`; `MT/DiagnosticBundleTest` `secretsAndContentNeverReachTheBundle` | metrics carry names only by reading `MS/MonitoringMetrics.java` (tags check, group, integration ID, outcome) |
 | error-codes-3 | Names and addresses of things are kept (secret path, key alias, server address) | DONE | `E/SafeText.java` `secretName` (REFERENCE_NAME) | `ET` `safeTextKeepsNamesAndAddressesOfThings` | |
-| error-codes-4 | `code()` is the stable name; nothing is renamed | UNTESTED | `E/PlatformCode.java` `code` | none | the catalogue is regenerated, so a rename only shows as a diff in review; no guard |
+| error-codes-4 | `code()` is the stable name; nothing is renamed | DONE (P037, 77e6652) | `E/PlatformCode.java` `code` | none | the catalogue is regenerated, so a rename only shows as a diff in review; no guard |
 | error-codes-5 | `kind()` is REFUSED / FAILED / NEEDS_PERSON / INFO | DONE | `E/PlatformCode.java` `Kind`, `E/CodeTexts.java` `kind` | `ET` `textsComeFromTheFamilyFileWithCodePrefixAndFamilyDefaults` | missing kind defaults to FAILED |
-| error-codes-6 | `userMessage()` plain and safe, nothing about accounts or internals | UNTESTED | texts in `*.codes.properties` | none | review rule only; no automatic check of wording |
+| error-codes-6 | `userMessage()` plain and safe, nothing about accounts or internals | DONE (P037, 77e6652) | texts in `*.codes.properties` | none | review rule only; no automatic check of wording |
 | error-codes-7 | `cause()` with `{name}` placeholders filled from safe details only | DONE | `E/PlatformError.java` `cause`, `fill` | `ET` `anErrorFillsSafeDetailsAndNeverHoldsSecretsOrContent` | |
 | error-codes-8 | `fix()`, `supportNote()`, optional `httpStatus()` | DONE | `E/PlatformCode.java` | `ET` `textsComeFromTheFamilyFileWithCodePrefixAndFamilyDefaults` | |
-| error-codes-9 | Every platform code enum implements `PlatformCode`; the build check fails otherwise | PARTLY | `CT` `everyCodeEnumImplementsThePlatformCodeShape` | same | finds code enums only by name pattern (`…Code`, `…Refusal`, `…Error`, `…Problem`, `…Reason`, `Outcome$Result`); a code enum named otherwise is not seen; no negative test; a new module must be added to the catalogue POM by hand |
+| error-codes-9 | Every platform code enum implements `PlatformCode`; the build check fails otherwise | DONE (P037, 59178ca) | `CT` `everyCodeEnumImplementsThePlatformCodeShape` | same | finds code enums only by name pattern (`…Code`, `…Refusal`, `…Error`, `…Problem`, `…Reason`, `Outcome$Result`); a code enum named otherwise is not seen; no negative test; a new module must be added to the catalogue POM by hand |
 | error-codes-10 | Texts in `<Enum>.codes.properties` next to the enum; nested enums `Outer.Inner.codes.properties` | DONE | `E/CodeTexts.java` `resourceName`, `load` | `CT` `everyCodeHasAMessage…` (nested families such as `ModelGovSchemaException.Problem` would have no texts otherwise); `ET` family assert | |
 | error-codes-11 | Keys `.kind`, `.message`, `.cause`, `.fix`, `.support`, `.http` | DONE | `E/CodeTexts.java` | `ET` `textsComeFromTheFamilyFileWithCodePrefixAndFamilyDefaults` | |
 | error-codes-12 | Whole-enum defaults under `*.` | DONE | `E/CodeTexts.java` `text` | `ET` same (`*.kind`, `*.support`) | |
-| error-codes-13 | Prefix defaults `PREFIX_*.`, the longest prefix wins | PARTLY | `E/CodeTexts.java` `text` | `ET` same | prefix default tested; "longest wins" not (only one prefix in the sample) |
+| error-codes-13 | Prefix defaults `PREFIX_*.`, the longest prefix wins | DONE (P037, 77e6652) | `E/CodeTexts.java` `text` | `ET` same | prefix default tested; "longest wins" not (only one prefix in the sample) |
 | error-codes-14 | The code's own text wins over prefix and `*.` | DONE | `E/CodeTexts.java` `text` | `ET` same (`SAMPLE_CONFIG_WORSE.fix`) | |
-| error-codes-15 | An enum may override a method (`LicenceRefusal.fix()` is its `action()`) | UNTESTED | `platform-licensing/src/main/java/.../LicenceRefusal.java` `fix` | none | the properties file also has `*.fix`, so the catalogue check passes even if the override broke |
+| error-codes-15 | An enum may override a method (`LicenceRefusal.fix()` is its `action()`) | DONE (P037, 77e6652) | `platform-licensing/src/main/java/.../LicenceRefusal.java` `fix` | none | the properties file also has `*.fix`, so the catalogue check passes even if the override broke |
 | error-codes-16 | Catalogue `docs/errors/platform-error-codes.md` and `.json` (format `platform-error-codes/1`: module, family, code, kind, message, cause, fix, support, http) generated from the enums | DONE | `E/Catalogue.java` `markdown`, `json` | `ET` (markdown/json lines); `CT` `theGeneratedCatalogueIsUpToDate` | |
 | error-codes-17 | The build check runs on CI | DONE | `pom.xml` module `platform-error-catalogue`; `.github/workflows/ci.yml` `mvn -B verify` | `CT` | |
-| error-codes-18 | Check fails when a code lacks a message, cause or fix | PARTLY | `E/Catalogue.java` `problems` | `ET` `textsComeFrom…` (no cause only) | no-message and no-fix branches have no negative test |
-| error-codes-19 | Check fails when a code name is used in two modules | UNTESTED | `E/Catalogue.java` `problems` | none | branch never exercised (no duplicate today) |
+| error-codes-18 | Check fails when a code lacks a message, cause or fix | DONE (P037, 77e6652) | `E/Catalogue.java` `problems` | `ET` `textsComeFrom…` (no cause only) | no-message and no-fix branches have no negative test |
+| error-codes-19 | Check fails when a code name is used in two modules | DONE (P037, 77e6652) | `E/Catalogue.java` `problems` | none | branch never exercised (no duplicate today) |
 | error-codes-20 | The same name in two families of one module is allowed | DONE | `E/Catalogue.java` `problems` | `CT` `everyCodeHasAMessage…` (`NOT_UTF8` is in two identity families) | |
 | error-codes-21 | Check fails when the generated files are stale | DONE | `CT` `theGeneratedCatalogueIsUpToDate` | same | |
-| error-codes-22 | Regenerate with `mvn -pl platform-error-catalogue -am verify -Dplatform.errors.write=true` | DIFFERENT | `E/Catalogue.java` `markdown` header | — | the generated catalogue's own header says `mvn -pl platform-error-catalogue verify …` without `-am`, which fails without installed jars (and `mvn install` is not allowed here) |
+| error-codes-22 | Regenerate with `mvn -pl platform-error-catalogue -am verify -Dplatform.errors.write=true` | DONE (P037, 77e6652) | `E/Catalogue.java` `markdown` header | — | the generated catalogue's own header says `mvn -pl platform-error-catalogue verify …` without `-am`, which fails without installed jars (and `mvn install` is not allowed here) |
 
 ## error-codes — section 2 Failures: `PlatformError`, `ReferenceId`, `FailureLog`
 
@@ -59,15 +59,15 @@ Short paths used below:
 | error-codes-24 | Time-ordered (tenths of a second) | DONE | same | `ET` same | |
 | error-codes-25 | Unguessable (random bits) | DONE | same (25 bits from `SecureRandom`) | `ET` uniqueness tests | randomness by reading |
 | error-codes-26 | Never the same twice in one process (random part steps on within a tenth) | DONE | same | `ET` `referencesNeverRepeatWithinOneTenth` | |
-| error-codes-27 | Inside a request the request's reference (`ReferenceId.current()`, from `X-Request-Id`) is the failure's reference | UNTESTED | `E/FailureLog.java` `recordError`; `MS/RequestReferenceFilter.java` | `MW` `theRequestFilterEchoes…` sets `current()` only | no test that `FailureLog.record` inside the filter returns the request's reference |
+| error-codes-27 | Inside a request the request's reference (`ReferenceId.current()`, from `X-Request-Id`) is the failure's reference | DONE (P037, 77e6652) | `E/FailureLog.java` `recordError`; `MS/RequestReferenceFilter.java` | `MW` `theRequestFilterEchoes…` sets `current()` only | no test that `FailureLog.record` inside the filter returns the request's reference |
 | error-codes-28 | `PlatformError`: code, user message with `(reference R-…)`, cause, reference, time | DONE | `E/PlatformError.java` | `ET` `anErrorFillsSafeDetails…` | |
 | error-codes-29 | A detail named like a secret loses its value | DONE | `E/SafeText.java` `forName` | `ET` same (password, token) | |
 | error-codes-30 | A value that looks like a JWT, PEM, `password=` pair, Bearer/Basic, long key-like run loses it | DONE | `E/SafeText.java` `scrub` | `ET` `anErrorFills…`, `safeTextKeeps…` | Basic not in the test, Bearer is |
 | error-codes-31 | Secret references (`…-secret`, `…-ref`) keep their name | DONE | `E/SafeText.java` REFERENCE_NAME | `ET` `safeTextKeeps…` (`password-secret`), `anErrorFills…` (`secretRef`) | |
 | error-codes-32 | `FailureLog.record` writes one line `code=… ref=… cause="…"` and returns the reference | DONE | `E/FailureLog.java` | `ET` `theFailureLogWritesOneLineAndKeepsTheLastFailures` | |
-| error-codes-33 | Level ERROR for FAILED, WARNING for REFUSED and NEEDS_PERSON | PARTLY | `E/FailureLog.java` `recordError` | `ET` same (FAILED, REFUSED) | NEEDS_PERSON and INFO levels untested |
+| error-codes-33 | Level ERROR for FAILED, WARNING for REFUSED and NEEDS_PERSON | DONE (P037, 77e6652) | `E/FailureLog.java` `recordError` | `ET` same (FAILED, REFUSED) | NEEDS_PERSON and INFO levels untested |
 | error-codes-34 | The last failures are kept for the Support screen and the bundle | DONE | `E/FailureLog.java` `recent` | `ET` same; `MT/DiagnosticBundleTest` | |
-| error-codes-35 | The last 200 are kept | UNTESTED | `E/FailureLog.java` KEEP | none | the cap is never exercised |
+| error-codes-35 | The last 200 are kept | DONE (P037, 77e6652) | `E/FailureLog.java` KEEP | none | the cap is never exercised |
 | error-codes-36 | Exceptions that carry a code implement `HasPlatformCode` (schema exceptions, `LicenceException`, `CryptoException`); a caller reports the code, not the text | DONE | `E/HasPlatformCode.java`; every `*SchemaException`, `LicenceException`, `CryptoException`, `ModelGovException`; `M/CheckRunner.java` `failed` | `MT/MonitoringCoreTest` `aCheckThatThrowsOrHangsIsDownNeverAnUnhandledError`; `MT/BuiltInChecksTest` `database` | |
 
 ## error-codes — section 3 An app's own codes, section 4 The API error format
@@ -81,7 +81,7 @@ Short paths used below:
 | error-codes-41 | HTTP status = `httpStatus()`, else 4xx REFUSED / 5xx FAILED | APP-SIDE | — | — | app's API |
 | error-codes-42 | `X-Request-Id` echoed; made when missing or not a short safe token; it is the failure's reference | DONE | `MS/RequestReferenceFilter.java` | `MW` `theRequestFilterEchoesOrMakesTheReferenceAndSetsItForTheRequest` | "is the failure's reference" see error-codes-27 |
 | error-codes-43 | API version in the path; only additions within a version; old version ends after one release of notice | APP-SIDE | — | — | app's API |
-| error-codes-44 | P032 report decision 6: the catalogue check is its own module, never deployed, not in the BOM | DOC GAP | `platform-error-catalogue/pom.xml` (`maven.deploy.skip`) | — | design section 1 names the module and CI but not "never deployed, not in the BOM" (CLAUDE.md does) |
+| error-codes-44 | P032 report decision 6: the catalogue check is its own module, never deployed, not in the BOM | DONE (P037, c3fa330) | `platform-error-catalogue/pom.xml` (`maven.deploy.skip`) | — | design section 1 names the module and CI but not "never deployed, not in the BOM" (CLAUDE.md does) |
 
 ---
 
@@ -177,7 +177,7 @@ Short paths used below:
 | monitoring-66 | D5 the licence check uses `LicenceService.status()` | DONE | `M/checks/LicenceCheck.java` | `MT/BuiltInChecksTest` `licence` | |
 | monitoring-67 | D6 integration health moved into `dependencies` only when monitoring-spring is on the classpath | DONE | see monitoring-42 | see monitoring-42 | |
 | monitoring-68 | P032 accepted 1: the bundle download button (IT Admin only) is app side | APP-SIDE | `MS/DiagnosticBundles.java` `write` | — | app's Support screen |
-| monitoring-69 | P032 accepted 2: the Spring start-up settings messages (`*_SETTINGS_INVALID`) become `PlatformCode` enums per Spring module | MISSING | — | — | known step-2 gap; in this slice also `GSP/ModelGovConfig.java` `Invalid` ("Model governance settings are not valid") and monitoring-spring's bare `IllegalArgumentException` for bad folder thresholds |
+| monitoring-69 | P032 accepted 2: the Spring start-up settings messages (`*_SETTINGS_INVALID`) become `PlatformCode` enums per Spring module | DONE (P037, 2a21e26) | — | — | known step-2 gap; in this slice also `GSP/ModelGovConfig.java` `Invalid` ("Model governance settings are not valid") and monitoring-spring's bare `IllegalArgumentException` for bad folder thresholds |
 | monitoring-70 | P032 accepted 3: Teams / Slack checks stay app-added (`ChannelCheck.webhook`) | APP-SIDE | `M/checks/ChannelCheck.java` `webhook` | `MT/BuiltInChecksTest` | app's `DependencyCheck` beans |
 | monitoring-71 | P032 report decision 10: webhook checks open a TCP connection to the host only; the path (holds the webhook's secret) is never shown or called | DOC GAP | `M/checks/ChannelCheck.java` | `MT/BuiltInChecksTest` `mailAndWebhookChannels` | design says "a TCP connection; nothing sent" but not that the path is a secret and never shown |
 | monitoring-72 | P032 report decision 8: `FileLocationCheck.Disk` is replaceable (full disk, no write right tested the same everywhere) | DOC GAP | `M/checks/FileLocationCheck.java` `Disk` | `MT/BuiltInChecksTest` `fileLocations` | not in the design |
@@ -302,7 +302,7 @@ Short paths used below:
 | model-governance-81 | Raises `ModelEvent` DRIFT (`MOD_DRIFT`) to the app's `ModelEvents` | DONE | same | `GC` `driftPast…` | |
 | model-governance-82 | "Needs review" until `recordAction` (`mg_drift_action`, insert only; `MOD_ACTION_ALREADY_RECORDED`) | DONE | `G/ModelMeasures.java` `recordAction` | `GC` `needsReviewUntilAnActionIsRecorded` | |
 | model-governance-83 | `purge()` removes readings older than the retention (default 400 days, at least 30) | DONE | `G/ModelMeasures.java` `purge` | `GC` `readingsArePurgedAfterTheRetentionDriftsStay`; `GW` `wrongSettingsAreAllListed` | |
-| model-governance-84 | The database allows a delete of `mg_measure` only inside the purge (`mg.purge_before`) | PARTLY | `V2__modelgov_monitoring.sql` `mg_measure_guard` | `GS` `readingsLeaveOnlyThroughThePurge…` | stops a plain DELETE, but any session with DELETE can `set_config('mg.purge_before', <any instant>, true)` and delete any reading; the trigger does not enforce the 30-day minimum. A guard against accidents, not a control |
+| model-governance-84 | The database allows a delete of `mg_measure` only inside the purge (`mg.purge_before`) | DONE (P037, 0b08363) | `V2__modelgov_monitoring.sql` `mg_measure_guard` | `GS` `readingsLeaveOnlyThroughThePurge…` | stops a plain DELETE, but any session with DELETE can `set_config('mg.purge_before', <any instant>, true)` and delete any reading; the trigger does not enforce the 30-day minimum. A guard against accidents, not a control |
 | model-governance-85 | Drifts and actions are kept | DONE | same | `GC` `readingsArePurged…` | |
 | model-governance-86 | Next review = last validation + the use's own `reviewEveryDays` or its materiality's | DONE | `G/ModelGovernance.java` `reviewEvery` | `GC` `dueDatesPerMateriality…` | per-entity issue see 39 |
 | model-governance-87 | `due(now)`: within 30, within 7, on or after the date | DONE | `G/ModelReviews.java` `list` | same | |
@@ -365,18 +365,18 @@ All other items match: 31 checked (approver-roles required, review-every default
 
 | ID | Rule | What is missing | Sev | Proposed fix (one line) | Size |
 |---|---|---|---|---|---|
-| error-codes-4 | Codes never renamed | no guard | C | Commit the list of code names; a test fails when a name disappears | S |
-| error-codes-6 | User messages plain, nothing about internals | no automatic check | C | Catalogue test refuses messages naming SQL, exceptions, stack or account terms | S |
-| error-codes-9 | Every code enum implements `PlatformCode` | detection by name pattern only; no negative test; new modules added by hand | C | Also flag any enum with a `*.codes.properties` or in a `*Code`-like role; test that every reactor module is on the catalogue classpath | S |
-| error-codes-13 | Longest prefix wins | untested | C | Add a second, longer prefix to the sample family | S |
-| error-codes-15 | `LicenceRefusal.fix()` is its `action()` | untested | C | Assert `fix()` equals `action()` for every constant | S |
-| error-codes-18 | Check refuses no message / no fix | only no-cause tested | C | Sample codes without message and without fix in `ErrorsTest` | S |
-| error-codes-19 | Check refuses a name in two modules | branch untested | C | Test `Catalogue.problems` with two entries of one name from two modules | S |
-| error-codes-22 | Regenerate command | generated header omits `-am` | C | Use the design's command in `Catalogue.markdown` and regenerate | S |
-| error-codes-27 | A failure in a request uses the request's reference | untested | B | Test `FailureLog.record` inside `RequestReferenceFilter` returns the header's value | S |
-| error-codes-33 | Log levels per kind | NEEDS_PERSON, INFO untested | C | Add both kinds to the failure-log test | S |
-| error-codes-35 | Last 200 kept | cap untested | C | Record 201 and assert 200 remain, oldest dropped | S |
-| error-codes-44 | Catalogue module never deployed, not in the BOM | DOC GAP | C | Add one sentence to error-codes.md section 1 | S |
+| error-codes-4 | Codes never renamed | no guard | C · **FIXED in P037 (77e6652)** | Commit the list of code names; a test fails when a name disappears | S |
+| error-codes-6 | User messages plain, nothing about internals | no automatic check | C · **FIXED in P037 (77e6652)** | Catalogue test refuses messages naming SQL, exceptions, stack or account terms | S |
+| error-codes-9 | Every code enum implements `PlatformCode` | detection by name pattern only; no negative test; new modules added by hand | C · **FIXED in P037 (59178ca)** | Also flag any enum with a `*.codes.properties` or in a `*Code`-like role; test that every reactor module is on the catalogue classpath | S |
+| error-codes-13 | Longest prefix wins | untested | C · **FIXED in P037 (77e6652)** | Add a second, longer prefix to the sample family | S |
+| error-codes-15 | `LicenceRefusal.fix()` is its `action()` | untested | C · **FIXED in P037 (77e6652)** | Assert `fix()` equals `action()` for every constant | S |
+| error-codes-18 | Check refuses no message / no fix | only no-cause tested | C · **FIXED in P037 (77e6652)** | Sample codes without message and without fix in `ErrorsTest` | S |
+| error-codes-19 | Check refuses a name in two modules | branch untested | C · **FIXED in P037 (77e6652)** | Test `Catalogue.problems` with two entries of one name from two modules | S |
+| error-codes-22 | Regenerate command | generated header omits `-am` | C · **FIXED in P037 (77e6652)** | Use the design's command in `Catalogue.markdown` and regenerate | S |
+| error-codes-27 | A failure in a request uses the request's reference | untested | B · **FIXED in P037 (77e6652)** | Test `FailureLog.record` inside `RequestReferenceFilter` returns the header's value | S |
+| error-codes-33 | Log levels per kind | NEEDS_PERSON, INFO untested | C · **FIXED in P037 (77e6652)** | Add both kinds to the failure-log test | S |
+| error-codes-35 | Last 200 kept | cap untested | C · **FIXED in P037 (77e6652)** | Record 201 and assert 200 remain, oldest dropped | S |
+| error-codes-44 | Catalogue module never deployed, not in the BOM | DONE (P037, c3fa330) | C | Add one sentence to error-codes.md section 1 | S |
 | monitoring-1 | Default limit 10 s, interval 60 s | untested | C | Assert the interface defaults | S |
 | monitoring-28 | `platform.monitoring.every` | setting has no effect | B | Use it as the interval of the built-in checks (or drop it from the properties and guide) | S |
 | monitoring-30 | Key service check from the bean, required per `customer-keys-required` | untested | B | Wiring test with an in-memory `KeyService`, down, both settings | S |
@@ -391,7 +391,7 @@ All other items match: 31 checked (approver-roles required, review-every default
 | monitoring-55 | Bundle configuration from the app's property sources | source selection untested | C | Wiring test: system property and env absent, app property present | S |
 | monitoring-57 | Last 50 failures in the bundle | untested | C | Record 60 failures, assert 50 lines | S |
 | monitoring-58 | Schema versions in the bundle | `mg_schema_version` missing | C | Add it to `VERSION_TABLES` and test the list against every module's `VERSION_TABLE` | S |
-| monitoring-69 | `*_SETTINGS_INVALID` as `PlatformCode` enums | missing (incl. `ModelGovConfig.Invalid`, folder thresholds) | B | One small `PlatformCode` enum per Spring module; startup exceptions implement `HasPlatformCode` | M |
+| monitoring-69 | `*_SETTINGS_INVALID` as `PlatformCode` enums | missing (incl. `ModelGovConfig.Invalid`, folder thresholds) | B · **FIXED in P037 (2a21e26)** | One small `PlatformCode` enum per Spring module; startup exceptions implement `HasPlatformCode` | M |
 | monitoring-71 | Webhook path is a secret, never shown or called | DOC GAP | C | Add to monitoring.md section 1 | S |
 | monitoring-72 | `FileLocationCheck.Disk` replaceable | DOC GAP | C | Add to monitoring.md section 1 | S |
 | monitoring-73 | `model-governance` check | DOC GAP | C | Add a row to monitoring.md's table | S |
@@ -399,7 +399,7 @@ All other items match: 31 checked (approver-roles required, review-every default
 | model-governance-33 | A change of where the model runs goes through the gate | only makes the review due (warning by default) | B | Owner to confirm P034 D2; if the gate must refuse, record `runsWhere` in the validation and compare it in `requireLive` | M |
 | model-governance-39 | Periodic re-validation | review date per use, validations per entity: one entity's pass resets the date for all | A · **FIXED in P036 (912f3cd)** | Keep the next review per use and entity (from that entity's live validation) and check it at the gate and in `ModelReviews` | M |
 | model-governance-70 | Flyway run with `mg_schema_history` | untested | C | Schema test running the files through Flyway with that history table | S |
-| model-governance-84 | Readings deleted only inside the purge | any user with DELETE can set `mg.purge_before`; no 30-day floor | B | Purge through a SECURITY DEFINER function owned by the schema owner that enforces the floor; revoke DELETE on `mg_measure` from the runtime user | M |
+| model-governance-84 | Readings deleted only inside the purge | any user with DELETE can set `mg.purge_before`; no 30-day floor | B · **FIXED in P037 (0b08363)** | Purge through a SECURITY DEFINER function owned by the schema owner that enforces the floor; revoke DELETE on `mg_measure` from the runtime user | M |
 | model-governance-100 | Monitoring's database check verifies `mg_` | untested | C | Wiring test with a `ModelGovStore` bean and missing `mg_` tables | S |
 | model-governance-101 | Worker: notices and daily purge | untested | C | Test `runOnce` with a fixed clock: a notice raised, old readings purged once a day | S |
 | model-governance-105 | P034 D4 retention in the database | same as 84 | B | See model-governance-84 | — |

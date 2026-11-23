@@ -185,11 +185,11 @@ Gaps: A 0 · B 8 · C 34 (38 from the doc, 4 from the install guide)
 
 | ID | Rule | Status | Code | Test | Note |
 |---|---|---|---|---|---|
-| crypto-111 | (DOC GAP, P032) `CryptoError` and `CryptoCommand.Code` are `PlatformCode`s with message, cause and fix in `*.codes.properties`; the command's five codes are not in the section 6 table | DOC GAP | `C/CryptoError.java`, `C/command/CryptoCommand.java` `Code`, both `.codes.properties` | — | Add a line on P032 and list the `CRYPTO_COMMAND_USAGE` / `CRYPTO_DESTROY_*` codes in section 6. |
+| crypto-111 | (DOC GAP, P032) `CryptoError` and `CryptoCommand.Code` are `PlatformCode`s with message, cause and fix in `*.codes.properties`; the command's five codes are not in the section 6 table | DONE (P037, c3fa330) | `C/CryptoError.java`, `C/command/CryptoCommand.java` `Code`, both `.codes.properties` | — | Add a line on P032 and list the `CRYPTO_COMMAND_USAGE` / `CRYPTO_DESTROY_*` codes in section 6. |
 | crypto-112 | (DOC GAP, P021 decision 10) Destroyed keys give `CRYPTO_KEY_MISSING` because Vault cannot tell "destroyed" from "never created" | DOC GAP | `CryptoError.codes.properties` `CRYPTO_KEY_MISSING.fix` | — | The fix text says "Run the setup command". After a customer exit that would create new keys, and nothing old would open with them. The design and the fix text should say so. |
 | crypto-113 | `KeyService.destroyCustomerKeys` javadoc says the command calls it "with the set-up login" | DIFFERENT | `C/KeyService.java` | — | Out of date since P022: it needs the set-up and offboard login. Javadoc fix. |
-| crypto-114 | The texts in `CryptoCommand.Code.codes.properties` name the options correctly | DIFFERENT | `platform-crypto/src/main/resources/.../command/CryptoCommand.Code.codes.properties` `*.fix` | — | The text says `--tenant`; the option is `--tenant-id`. |
-| crypto-115 | The fix texts in `CryptoError.codes.properties` match the codes | DIFFERENT | `CryptoError.codes.properties` | — | `CRYPTO_SECRET_MISSING.fix` speaks of a "login secret (token file or AppRole secret ID)", but the code means a missing KV secret. `CRYPTO_PERMISSION_DENIED.fix` says "encrypt, decrypt and hmac"; the runtime policy is datakey, decrypt, rewrap, hmac and read on keys. |
+| crypto-114 | The texts in `CryptoCommand.Code.codes.properties` name the options correctly | DONE (P037, 77e6652) | `platform-crypto/src/main/resources/.../command/CryptoCommand.Code.codes.properties` `*.fix` | — | The text says `--tenant`; the option is `--tenant-id`. |
+| crypto-115 | The fix texts in `CryptoError.codes.properties` match the codes | DONE (P037, 77e6652) | `CryptoError.codes.properties` | — | `CRYPTO_SECRET_MISSING.fix` speaks of a "login secret (token file or AppRole secret ID)", but the code means a missing KV secret. `CRYPTO_PERMISSION_DENIED.fix` says "encrypt, decrypt and hmac"; the runtime policy is datakey, decrypt, rewrap, hmac and read on keys. |
 
 ## Install guide check: docs/install/crypto.md
 
@@ -243,11 +243,11 @@ startup; the startup problem list; `FieldValues.rewrap`, `ValueCipher.rewrap`, `
 | crypto-92 | Default destroy refuses | No test | C | Assert `CRYPTO_KEY_SERVICE_ERROR` from a `KeyService` without the override (for example OtherId) | S |
 | crypto-96 | Capability check unanswerable | No test | C | Vault test with a token without the default policy (`no_default_policy`): steps run, Vault refuses the delete | S |
 | crypto-102 | Default result file name | Untested | C | Run without `--result-out` in a temp working folder (or make the folder injectable) and assert the name | S |
-| crypto-111 | P032 codes in design | Not stated; command codes not in the table | C | Design section 6: note `PlatformCode` + `.codes.properties`; add the five command codes | S |
+| crypto-111 | P032 codes in design | Not stated; command codes not in the table | C · **FIXED in P037 (c3fa330)** | Design section 6: note `PlatformCode` + `.codes.properties`; add the five command codes | S |
 | crypto-112 | Destroyed keys look like never created | Not stated; fix text suggests running setup | C | Design section 11 + `CRYPTO_KEY_MISSING.fix`: "after a customer exit this is expected; do not re-create" | S |
 | crypto-113 | `destroyCustomerKeys` javadoc | Says set-up login | C | Javadoc: "with the set-up and offboard login" | S |
-| crypto-114 | Command code texts | `--tenant` instead of `--tenant-id` | C | Fix `CryptoCommand.Code.codes.properties` and regenerate the catalogue | S |
-| crypto-115 | Crypto code fix texts | `CRYPTO_SECRET_MISSING` and `CRYPTO_PERMISSION_DENIED` fixes describe other things | C | Rewrite both fix texts and regenerate the catalogue | S |
+| crypto-114 | Command code texts | `--tenant` instead of `--tenant-id` | C · **FIXED in P037 (77e6652)** | Fix `CryptoCommand.Code.codes.properties` and regenerate the catalogue | S |
+| crypto-115 | Crypto code fix texts | `CRYPTO_SECRET_MISSING` and `CRYPTO_PERMISSION_DENIED` fixes describe other things | C · **FIXED in P037 (77e6652)** | Rewrite both fix texts and regenerate the catalogue | S |
 | install-crypto-1 | Set-up env variables | Three variables and the one-login rule missing | C | Add `_NAMESPACE`, `_TRANSIT_MOUNT`, `_APPROLE_MOUNT` and "exactly one login" to section 5 | S |
 | install-crypto-2 | `--confirm` | Not mentioned | C | Mention `--confirm TEN-…` for runs without a console | S |
 | install-crypto-3 | tenant-id wording | Setup writes the licensing key | C | "setup writes `platform.licensing.tenant-id`, which this falls back to" | S |
