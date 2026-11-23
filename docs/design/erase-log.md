@@ -49,8 +49,9 @@ Source: owner decision (b) + (c), confirmed by the LexaVault thread (master), 20
    the applied position exact. An entry that was logged but keeps failing (its handler's code, for example
    `DOC_STORE_DOWN`) stops every later erasure with that same code until it is resolved; nothing later is logged
    meanwhile. **Each app's admin screen shows the pending entry and its code**: entry number, kind, record type and
-   ID, and the handler's code, from the `eraseLog` health details (`pending`, `code`) or `EraseGuard`'s state. No
-   value is shown, as there is none in the entry. Handlers keep this rare by refusing in `check` (legal hold)
+   ID, and the handler's code, from the `eraseLog` health details (`pending`, and `lastFailure` with `seq`, `kind`,
+   `recordType`, `recordId`, `handlerCode`) or `EraseGuard.State.lastFailure()` (kept by the instance that tried,
+   until the entry is applied). No value is shown, as there is none in the entry. Handlers keep this rare by refusing in `check` (legal hold)
    before anything is logged.
 4. **Key service backups:** Vault snapshot retention at most the backup retention (35 days by default,
    `docs/install/crypto.md` section 6). The offboarding certificate data carries two dates: live data destroyed on

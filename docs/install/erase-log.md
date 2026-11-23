@@ -63,6 +63,11 @@ A wrong or missing setting stops the app at startup with a list of every problem
 
 While the state is not UP, the app takes no work.
 
+While an erasure that was logged could not be applied on this instance (its handler failed, for example
+`DOC_STORE_DOWN`), the details also hold `lastFailure`: the entry number (`seq`), `kind`, `recordType`, `recordId`,
+the handler's code (`handlerCode`), the erase log's code (`code`) and when (`at`). IDs and codes only; an entry holds no
+value. It goes away once that entry is applied (the next erasure or the replay applies it first).
+
 ## 5. Restore runbook (in plain words)
 
 After restoring the app's database from a backup:
