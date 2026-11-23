@@ -7,6 +7,7 @@ import com.documentplatform.modelgov.ModelDigest;
 import com.documentplatform.modelgov.ModelGovSettings;
 import com.documentplatform.modelgov.ModelUse;
 
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -76,6 +77,32 @@ public final class ModelGovFixtures {
 
     public static Approver noRole() {
         return new Approver("someone", Set.of("VIEWER"));
+    }
+
+    /** Made-up pack texts for every use, with one independent review reference. */
+    public static com.documentplatform.modelgov.PackTexts packTexts() {
+        return new com.documentplatform.modelgov.PackTexts() {
+            @Override
+            public UseText describe(ModelUse use) {
+                return new UseText("A classifier over page images, tuned on public example data",
+                        "In: page images of the test documents; out: item positions with a confidence",
+                        "Low-confidence items go to a reviewer; nothing is applied without a person",
+                        "Weaker on handwriting and on pages scanned below 150 dpi");
+            }
+
+            @Override
+            public ThirdParty thirdParty(String product) {
+                return new ThirdParty("The vendor validates its default models; the customer validates its own, and "
+                        + "the app's test set runs against every model before it goes live.",
+                        List.of(new DocumentRef("Independent review of the default models", "review-2026-11.pdf",
+                                "ab".repeat(32))));
+            }
+
+            @Override
+            public String dataStatement(String product) {
+                return "No model is trained on customer documents; models read data while they work and keep nothing.";
+            }
+        };
     }
 
     private static byte[] sha256(String word) {

@@ -87,7 +87,7 @@ Each app then adds its test sets, pass marks, measures and admin screens in its 
 
 ## 9. As built (P033)
 
-Package `com.documentplatform.modelgov`, plain Java, depends only on platform-errors.
+Package `com.documentplatform.modelgov`, plain Java, depends only on platform-errors (P034 adds Apache PDFBox for the pack's PDF).
 
 - **Register:** `Model` (provider `VENDOR` / `CUSTOMER`, version, `ModelDigest` algorithm + lowercase hex, `RunsWhere`)
   and `ModelUse` (product, feature, entity or null = every entity, purpose, `Materiality` with reason, human in the
@@ -112,3 +112,47 @@ Package `com.documentplatform.modelgov`, plain Java, depends only on platform-er
   table `mg_schema_history`, run only by the schema step, `jdbc.ModelGovSchema.verify` at startup, DML-only user;
   `mg_validation`, `mg_validation_measure`, `mg_approval`, `mg_acceptance`, `mg_live_history` refuse UPDATE, DELETE
   and TRUNCATE by trigger, even for the owner); `InMemoryModelGovStore` in the testkit with the same rules.
+
+## 10. As built (P034)
+
+- **Monitoring intake (`ModelMeasures`):** `report(use, entity, measure, value, MeasurePeriod(from, to, samples))`,
+  numbers only, into insert-only `mg_measure`. Each measure needs a pass mark (`Monitoring.MonitorThreshold`: the
+  app's default or the customer's stricter one per entity; stricter = at least as strict a value in the same
+  direction and no more samples; `MOD_THRESHOLD_LOOSER` / `MOD_THRESHOLD_MISSING`), with a direction and a minimum
+  sample. A reading past the mark over at least the minimum sample is a drift (`mg_drift`, insert only, pass mark
+  copied in) and raises `ModelEvent` `DRIFT` (`MOD_DRIFT`) to the app's `ModelEvents`; the use "needs review" until
+  `recordAction(use, drift, note, by)` (`mg_drift_action`, insert only; `MOD_ACTION_ALREADY_RECORDED`).
+  `purge()` removes readings older than the retention (default 400 days, at least 30); the database allows a delete
+  of `mg_measure` only inside the purge (`mg.purge_before` set for the transaction). Drifts and actions are kept.
+- **Re-validation (`ModelReviews`):** next review = last validation + the use's own interval (`reviewEveryDays`) or
+  its materiality's; `due(now)` lists uses due within 30 days, within 7, and on or after the date, and raises
+  `REVIEW_DUE` (`MOD_REVIEW_DUE`, or `MOD_REVIEW_OVERDUE` for the last stage) once per use, due date and stage
+  (`mg_review_notice`). Changing a model's version, digest or where it runs, or a use's model or configuration,
+  sets the use's next review to today.
+- **Documentation pack (`ModelPack.export(product, entity, from, to)`):** JSON `platform-model-pack/1` (schema
+  `schema/platform-model-pack-1.schema.json`), canonical (keys sorted, no whitespace, lists in a fixed order, no export
+  time), fingerprint `sha256:` of its UTF-8 bytes, and a PDF (Apache PDFBox) that prints the fingerprint, with the
+  seven sections of section 6. The app supplies the descriptive texts (`PackTexts`; placeholders "Not supplied by the
+  app" otherwise); the independent review is a document reference (title, reference, optional SHA-256).
+- **Spring (`platform-model-governance-spring`):** `platform.model-governance.*` (`approver-roles`, `forbidden-roles`,
+  `review-every.high|medium|low`, `measure-retention`, `worker.enabled|every`), every problem listed at startup;
+  `ModelGovSchema.verify` on the app's DataSource before the Postgres store (or the app's `ModelGovStore`); beans
+  `ModelGovernance`, `ModelGate`, `ModelMeasures`, `ModelReviews`, `ModelPack`, `ModelGovWorker`; the monitoring check
+  `model-governance` (`ModelGovCheck`, when platform-monitoring is present). platform-monitoring-spring's database
+  check also verifies the `mg_` tables when the store is in use.
+
+### Decisions (P034)
+
+1. **One drift per measure until it is handled.** While a drift of a use, entity and measure has no action, further
+   readings past the mark are kept but raise no new event; after the action, the next reading past the mark raises a
+   new drift. This keeps the owner's inbox to one notice per problem.
+2. **Overdue on the due date.** A review is overdue from its due date (P033 counted from the day after); so "due at
+   once" after a change means overdue today, and a use that refuses an overdue review stops at once after a change of
+   where its model runs.
+3. **A model's name change** alone does not make its uses due; version, digest and where it runs do.
+4. **Retention** is enforced in the database too: readings can be deleted only inside the purge transaction.
+5. **PDF library:** no PDF library was a dependency of platform-core; Apache PDFBox 3.0 (Apache License 2.0, actively
+   maintained by the Apache Software Foundation, pure Java, no native parts) writes the PDF with the standard
+   Helvetica font, so no font files are shipped. The JSON is the record; the PDF is its readable copy.
+6. **The pack's period** applies to validations, readings, drifts (raised, acted on, or still open) and changes; the
+   register entries are as they are at export.

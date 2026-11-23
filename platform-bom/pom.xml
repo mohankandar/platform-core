@@ -161,6 +161,11 @@
                 <artifactId>platform-model-governance-testkit</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.documentplatform.platform</groupId>
+                <artifactId>platform-model-governance-spring</artifactId>
+                <version>${project.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 </project>

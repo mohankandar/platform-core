@@ -17,6 +17,7 @@ import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -59,6 +60,8 @@ public abstract class ModelGovContract {
 
     private static final Map<Class<?>, Set<ModelGovCode>> SEEN = new ConcurrentHashMap<>();
     private static final Map<Class<?>, AtomicInteger> RAN = new ConcurrentHashMap<>();
+    /** The monitoring check's code, tested with the Spring wiring. */
+    private static final Set<ModelGovCode> TESTED_ELSEWHERE = EnumSet.of(MOD_DRIFT_UNHANDLED);
 
     protected abstract ModelGovStore newStore();
 
@@ -70,6 +73,9 @@ public abstract class ModelGovContract {
     RecordingAudit audit;
     ModelGovernance gov;
     ModelGate gate;
+    ModelMeasures measures;
+    ModelReviews reviews;
+    List<ModelEvent> events;
     UUID entity;
     UUID otherEntity;
 
@@ -81,6 +87,13 @@ public abstract class ModelGovContract {
         audit = new RecordingAudit();
         gov = new ModelGovernance(store, audit, settings(), clock);
         gate = new ModelGate(store, clock);
+        events = new java.util.concurrent.CopyOnWriteArrayList<>();
+        ModelEvents sink = e -> {
+            events.add(e);
+            SEEN.computeIfAbsent(getClass(), k -> ConcurrentHashMap.newKeySet()).add(e.code());
+        };
+        measures = new ModelMeasures(store, sink, clock, ModelMeasures.DEFAULT_RETENTION);
+        reviews = new ModelReviews(store, sink, clock);
         entity = UUID.randomUUID();
         otherEntity = UUID.randomUUID();
     }
@@ -93,6 +106,7 @@ public abstract class ModelGovContract {
         if (ran == null || ran.get() < tests) return; // a single test was run on its own
         Set<ModelGovCode> missing = EnumSet.allOf(ModelGovCode.class);
         missing.removeAll(SEEN.getOrDefault(c, Set.of()));
+        missing.removeAll(TESTED_ELSEWHERE);
         assertEquals(Set.of(), missing, "every model-governance code is reached by a test");
     }
 
@@ -453,9 +467,9 @@ public abstract class ModelGovContract {
         gov.goLive(u.useId(), entity, v.validationId(), "release-manager");
         assertEquals(List.of(), start(u, entity).warnings());
 
-        clock.advance(Duration.ofDays(90));
-        assertEquals(List.of(), start(u, entity).warnings(), "due today is not overdue");
-        clock.advance(Duration.ofDays(1));
+        clock.advance(Duration.ofDays(89));
+        assertEquals(List.of(), start(u, entity).warnings(), "the day before the due date");
+        clock.advance(Duration.ofDays(1)); // the due date itself
         assertEquals(List.of(MOD_REVIEW_OVERDUE), start(u, entity).warnings());
 
         gov.changeUse(current(u).withReviewOverdueRefuses(true), current(u).version(), "customer");
@@ -520,6 +534,332 @@ public abstract class ModelGovContract {
         gov.goLive(every.useId(), entity, v.validationId(), "x");
         refuses(MOD_NOT_VALIDATED, () -> gate.requireLive(every.useId(), otherEntity, m.digest(),
                 ConfigFingerprint.of(CONFIG)));
+    }
+
+    // ---- monitoring (P034)
+
+    static Monitoring.MeasurePeriod over(long samples) {
+        return new Monitoring.MeasurePeriod(Instant.parse("2026-10-01T00:00:00Z"), Instant.parse("2026-11-01T00:00:00Z"),
+                samples);
+    }
+
+    ModelUse monitored(Model m) {
+        ModelUse u = use(m, null, ModelUse.Materiality.MEDIUM);
+        measures.setDefaultThreshold(Monitoring.MonitorThreshold.byDefault(u.useId(), "correction_rate",
+                new BigDecimal("0.10"), Threshold.Direction.LOWER_IS_BETTER, 50), "register-admin");
+        measures.setDefaultThreshold(Monitoring.MonitorThreshold.byDefault(u.useId(), "confidence",
+                new BigDecimal("0.80"), Threshold.Direction.HIGHER_IS_BETTER, 20), "register-admin");
+        return u;
+    }
+
+    @Test
+    void driftPastAThresholdInBothDirectionsWithAMinimumSample() {
+        ModelUse u = monitored(model(vendorModel()));
+        assertTrue(measures.report(u.useId(), entity, "correction_rate", new BigDecimal("0.20"), over(10)).drift()
+                .isEmpty(), "too few samples");
+        assertTrue(measures.report(u.useId(), entity, "correction_rate", new BigDecimal("0.10"), over(500)).drift()
+                .isEmpty(), "at the pass mark is not past it");
+        assertTrue(measures.report(u.useId(), entity, "confidence", new BigDecimal("0.80"), over(500)).drift()
+                .isEmpty());
+        assertFalse(measures.needsReview(u.useId()));
+        assertEquals(List.of(), events);
+
+        Monitoring.Drift high = measures.report(u.useId(), entity, "correction_rate", new BigDecimal("0.20"), over(50))
+                .drift().orElseThrow();
+        assertEquals(new BigDecimal("0.10"), high.threshold());
+        assertEquals(Threshold.Direction.LOWER_IS_BETTER, high.direction());
+        Monitoring.Drift low = measures.report(u.useId(), entity, "confidence", new BigDecimal("0.70"), over(20))
+                .drift().orElseThrow();
+        assertEquals(Threshold.Direction.HIGHER_IS_BETTER, low.direction());
+        assertTrue(measures.report(u.useId(), entity, "correction_rate", new BigDecimal("0.30"), over(80)).drift()
+                .isEmpty(), "no second drift while the first is open");
+
+        assertEquals(List.of(ModelEvent.Kind.DRIFT, ModelEvent.Kind.DRIFT), events.stream().map(ModelEvent::kind).toList());
+        ModelEvent e = events.get(0);
+        assertEquals(MOD_DRIFT, e.code());
+        assertEquals(u.useId(), e.useId());
+        assertEquals(entity, e.entity());
+        assertEquals("correction_rate", e.measure());
+        assertEquals(50L, e.samples());
+        assertEquals(high.driftId(), e.driftId());
+        assertEquals(6, store.readings(u.useId(), null, Instant.EPOCH, Instant.parse("2100-01-01T00:00:00Z")).size());
+        assertEquals(Set.of(high, low), Set.copyOf(store.drifts(u.useId(), entity)));
+    }
+
+    @Test
+    void needsReviewUntilAnActionIsRecorded() {
+        ModelUse u = monitored(model(vendorModel()));
+        Monitoring.Drift a = measures.report(u.useId(), entity, "correction_rate", new BigDecimal("0.20"), over(60))
+                .drift().orElseThrow();
+        Monitoring.Drift b = measures.report(u.useId(), otherEntity, "confidence", new BigDecimal("0.50"), over(60))
+                .drift().orElseThrow();
+        assertTrue(measures.needsReview(u.useId()));
+        assertEquals(2, measures.openDrifts().size());
+
+        refuses(MOD_REASON_REQUIRED, () -> measures.recordAction(u.useId(), a.driftId(), " ", "model-owner"));
+        refuses(MOD_UNKNOWN, () -> measures.recordAction(u.useId(), UUID.randomUUID(), "note", "model-owner"));
+        refuses(MOD_VALUE_INVALID, () -> measures.recordAction(u.useId(), a.driftId(), "password=hunter2", "x"));
+        clock.advance(Duration.ofHours(2));
+        Monitoring.DriftAction act = measures.recordAction(u.useId(), a.driftId(),
+                "Re-ran the test set: passed; the drift came from a batch of poor scans", "model-owner");
+        assertEquals(clock.now, act.actedAt());
+        assertEquals(Optional.of(act), store.driftAction(a.driftId()));
+        refuses(MOD_ACTION_ALREADY_RECORDED, () -> measures.recordAction(u.useId(), a.driftId(), "again", "x"));
+        assertTrue(measures.needsReview(u.useId()), "the other entity's drift is still open");
+        measures.recordAction(u.useId(), b.driftId(), "Rolled back to the earlier version", "model-owner");
+        assertFalse(measures.needsReview(u.useId()));
+        assertEquals(List.of(), measures.openDrifts());
+
+        assertTrue(measures.report(u.useId(), entity, "correction_rate", new BigDecimal("0.25"), over(60)).drift()
+                .isPresent(), "after the action, a reading past the mark raises a new drift");
+        assertTrue(measures.needsReview(u.useId()));
+    }
+
+    @Test
+    void monitoringPassMarksOnlyStricterAndRequired() {
+        Model m = model(vendorModel());
+        ModelUse u = monitored(m);
+        refuses(MOD_THRESHOLD_LOOSER, () -> measures.setEntityThreshold(Monitoring.MonitorThreshold.forEntity(
+                u.useId(), entity, "correction_rate", new BigDecimal("0.20"), Threshold.Direction.LOWER_IS_BETTER, 50),
+                "customer"));
+        refuses(MOD_THRESHOLD_LOOSER, () -> measures.setEntityThreshold(Monitoring.MonitorThreshold.forEntity(
+                u.useId(), entity, "correction_rate", new BigDecimal("0.05"), Threshold.Direction.LOWER_IS_BETTER, 500),
+                "customer"));
+        refuses(MOD_THRESHOLD_MISSING, () -> measures.setEntityThreshold(Monitoring.MonitorThreshold.forEntity(
+                u.useId(), entity, "refusal_rate", new BigDecimal("0.05"), Threshold.Direction.LOWER_IS_BETTER, 5),
+                "customer"));
+        measures.setEntityThreshold(Monitoring.MonitorThreshold.forEntity(u.useId(), entity, "correction_rate",
+                new BigDecimal("0.05"), Threshold.Direction.LOWER_IS_BETTER, 20), "customer");
+        assertTrue(measures.report(u.useId(), entity, "correction_rate", new BigDecimal("0.07"), over(20)).drift()
+                .isPresent(), "the customer's stricter mark applies to its entity");
+        assertTrue(measures.report(u.useId(), otherEntity, "correction_rate", new BigDecimal("0.07"), over(20))
+                .drift().isEmpty(), "the default applies elsewhere");
+        refuses(MOD_THRESHOLD_MISSING, () -> measures.report(u.useId(), entity, "refusal_rate", BigDecimal.ONE, over(9)));
+
+        ModelUse scoped = use(m, entity, ModelUse.Materiality.LOW);
+        measures.setDefaultThreshold(Monitoring.MonitorThreshold.byDefault(scoped.useId(), "confidence",
+                new BigDecimal("0.8"), Threshold.Direction.HIGHER_IS_BETTER, 1), "register-admin");
+        refuses(MOD_WRONG_USE, () -> measures.report(scoped.useId(), otherEntity, "confidence", BigDecimal.ONE, over(5)));
+        gov.changeUse(current(scoped).retired(), current(scoped).version(), "register-admin");
+        refuses(MOD_RETIRED, () -> measures.report(scoped.useId(), entity, "confidence", BigDecimal.ONE, over(5)));
+    }
+
+    @Test
+    void readingsArePurgedAfterTheRetentionDriftsStay() {
+        ModelUse u = monitored(model(vendorModel()));
+        measures.report(u.useId(), entity, "correction_rate", new BigDecimal("0.50"), over(60));
+        clock.advance(Duration.ofDays(401));
+        measures.report(u.useId(), entity, "confidence", new BigDecimal("0.95"), over(60));
+        assertEquals(1, measures.purge());
+        assertEquals(0, measures.purge());
+        List<Monitoring.Reading> left = store.readings(u.useId(), entity, Instant.EPOCH,
+                Instant.parse("2100-01-01T00:00:00Z"));
+        assertEquals(List.of("confidence"), left.stream().map(Monitoring.Reading::measure).toList());
+        assertEquals(1, store.drifts(u.useId(), entity).size());
+        assertThrows(IllegalArgumentException.class, () -> new ModelMeasures(store, ModelEvents.NONE, clock,
+                Duration.ofDays(29)));
+    }
+
+    // ---- re-validation (P034)
+
+    @Test
+    void dueDatesPerMaterialityAndNoticesOncePerStage() {
+        Model m = model(vendorModel());
+        ModelUse high = use(m, null, ModelUse.Materiality.HIGH);
+        ModelUse medium = use(m, null, ModelUse.Materiality.MEDIUM);
+        ModelUse low = use(m, null, ModelUse.Materiality.LOW);
+        ModelUse own = gov.changeUse(current(use(m, null, ModelUse.Materiality.HIGH)).withReviewEveryDays(30), 1,
+                "register-admin");
+        for (ModelUse u : List.of(high, medium, low, own)) pass(u, entity);
+        java.time.LocalDate today = java.time.LocalDate.parse("2026-11-01");
+        assertEquals(today.plusDays(90), current(high).nextReviewDue());
+        assertEquals(today.plusDays(180), current(medium).nextReviewDue());
+        assertEquals(today.plusDays(365), current(low).nextReviewDue());
+        assertEquals(today.plusDays(30), current(own).nextReviewDue());
+        assertEquals(List.of(), reviews.due(clock.now).stream().filter(r -> !r.use().useId().equals(own.useId())).toList());
+
+        clock.advance(Duration.ofDays(60));
+        List<ModelReviews.ReviewDue> due = reviews.due();
+        assertEquals(List.of(own.useId(), high.useId()), due.stream().map(r -> r.use().useId()).toList());
+        assertEquals(Monitoring.ReviewStage.OVERDUE, due.get(0).stage());
+        assertEquals(Monitoring.ReviewStage.IN_30_DAYS, due.get(1).stage());
+        assertEquals(30, due.get(1).daysLeft());
+        assertTrue(due.stream().allMatch(ModelReviews.ReviewDue::raisedNow));
+        int raised = events.size();
+        assertTrue(reviews.due().stream().noneMatch(ModelReviews.ReviewDue::raisedNow), "each stage once");
+        assertEquals(raised, events.size());
+
+        clock.advance(Duration.ofDays(23));
+        assertEquals(Monitoring.ReviewStage.IN_7_DAYS, reviews.due().stream()
+                .filter(r -> r.use().useId().equals(high.useId())).findFirst().orElseThrow().stage());
+        clock.advance(Duration.ofDays(7));
+        ModelReviews.ReviewDue overdue = reviews.due().stream().filter(r -> r.use().useId().equals(high.useId()))
+                .findFirst().orElseThrow();
+        assertEquals(Monitoring.ReviewStage.OVERDUE, overdue.stage());
+        assertEquals(0, overdue.daysLeft());
+        assertEquals(2, reviews.overdue(clock.now).size());
+
+        ModelEvent last = events.get(events.size() - 1);
+        assertEquals(ModelEvent.Kind.REVIEW_DUE, last.kind());
+        assertEquals(MOD_REVIEW_OVERDUE, last.code());
+        assertEquals(today.plusDays(90), last.dueDate());
+        assertTrue(events.stream().anyMatch(e -> e.code() == MOD_REVIEW_DUE));
+        assertEquals(5, events.size(), "own: in 30 days, overdue; high: in 30 days, in 7, overdue");
+
+        pass(current(high), entity);
+        assertTrue(reviews.overdue(clock.now).stream().noneMatch(r -> r.use().useId().equals(high.useId())));
+        gov.changeUse(current(low).retired(), current(low).version(), "register-admin");
+        clock.advance(Duration.ofDays(400));
+        assertTrue(reviews.due().stream().noneMatch(r -> r.use().useId().equals(low.useId())), "retired uses are not due");
+    }
+
+    @Test
+    void anyChangeMakesTheUseDueAtOnce() {
+        Model m = model(vendorModel());
+        Model other = model(customerModel());
+        ModelUse u = use(m, null, ModelUse.Materiality.LOW);
+        ModelUse unrelated = use(other, null, ModelUse.Materiality.LOW);
+        pass(u, entity);
+        pass(unrelated, entity);
+        java.time.LocalDate today = java.time.LocalDate.parse("2026-11-01");
+        clock.advance(Duration.ofDays(10));
+        java.time.LocalDate now = today.plusDays(10);
+
+        Model renamed = gov.changeModel(new Model(m.modelId(), "renamed-detector", m.provider(), m.modelVersion(),
+                m.digest(), m.runsWhere(), 1), 1, "register-admin");
+        assertEquals(today.plusDays(365), current(u).nextReviewDue(), "a new name alone changes nothing");
+
+        Model moved = gov.changeModel(new Model(m.modelId(), renamed.name(), m.provider(), m.modelVersion(), m.digest(),
+                Model.RunsWhere.HOSTED, 1), renamed.version(), "register-admin");
+        assertEquals(now, current(u).nextReviewDue(), "where it runs");
+        assertEquals(today.plusDays(365), current(unrelated).nextReviewDue());
+        assertEquals(List.of(u.useId()), reviews.overdue(clock.now).stream().map(r -> r.use().useId()).toList());
+        assertTrue(store.useHistory(u.useId()).get(store.useHistory(u.useId()).size() - 1).changedFields()
+                .contains("nextReviewDue"));
+
+        pass(current(u), entity);
+        gov.changeModel(moved.withVersion("1.1", moved.digest()), moved.version(), "register-admin");
+        assertEquals(now, current(u).nextReviewDue(), "version");
+        pass(current(u), entity);
+        Model v11 = store.model(m.modelId()).orElseThrow();
+        gov.changeModel(v11.withVersion("1.1", digest("vendor-1.1-rebuilt")), v11.version(), "register-admin");
+        assertEquals(now, current(u).nextReviewDue(), "digest");
+        pass(current(u), entity);
+        gov.changeUse(current(u).withModel(m.modelId(), ConfigFingerprint.of(CONFIG_CHANGED)), current(u).version(),
+                "register-admin");
+        assertEquals(now, current(u).nextReviewDue(), "configuration");
+        pass(current(u), entity);
+        gov.changeUse(current(u).withModel(other.modelId(), current(u).configFingerprint()), current(u).version(),
+                "register-admin");
+        assertEquals(now, current(u).nextReviewDue(), "another model");
+        assertEquals(today.plusDays(365), current(unrelated).nextReviewDue());
+    }
+
+    // ---- the documentation pack (P034)
+
+    static final String PLANTED = "Planted-Value-7Q4Z";
+
+    ModelPack.Pack fullPack(Instant to) {
+        Model vendor = model(vendorModel());
+        Model customer = model(customerModel());
+        ModelUse u = monitored(vendor);
+        ModelUse cu = use(customer, entity, ModelUse.Materiality.MEDIUM);
+        gov.changeUse(current(u).withModel(vendor.modelId(), ConfigFingerprint.of(
+                "{\"prompt\":\"find items like " + PLANTED + "\"}")), current(u).version(), "register-admin");
+        ValidationRecord v1 = pass(current(u), entity);
+        gov.approve(v1.validationId(), approver());
+        gov.goLive(u.useId(), entity, v1.validationId(), "release-manager");
+        clock.advance(Duration.ofDays(1));
+        Model v2model = gov.changeModel(vendor.withVersion("1.1", digest("vendor-1.1")), vendor.version(), "register-admin");
+        ValidationRecord v2 = pass(current(u), entity);
+        gov.approve(v2.validationId(), approver());
+        gov.goLive(u.useId(), entity, v2.validationId(), "release-manager");
+        gov.rollback(u.useId(), entity, "on-call");
+        ValidationRecord failed = fail(cu, entity);
+        gov.accept(failed.validationId(), complianceOfficer(), "Known weakness on small items; a reviewer checks each");
+        gov.approve(failed.validationId(), approver());
+        Monitoring.Drift d = measures.report(u.useId(), entity, "correction_rate", new BigDecimal("0.20"), over(60))
+                .drift().orElseThrow();
+        measures.recordAction(u.useId(), d.driftId(), "Re-validated; passed", "model-owner");
+        measures.report(u.useId(), entity, "confidence", new BigDecimal("0.50"), over(60));
+        assertNotNull(v2model);
+        ModelPack pack = new ModelPack(store, measures, packTexts());
+        return pack.export(PRODUCT, entity, Instant.parse("2026-10-01T00:00:00Z"), to);
+    }
+
+    @Test
+    void thePackIsDeterministicCompleteAndFreeOfContent() throws Exception {
+        Instant to = Instant.parse("2026-12-01T00:00:00Z");
+        ModelPack.Pack p = fullPack(to);
+        ModelPack again = new ModelPack(store, measures, packTexts());
+        ModelPack.Pack q = again.export(PRODUCT, entity, Instant.parse("2026-10-01T00:00:00Z"), to);
+        assertEquals(p.json(), q.json(), "same data, same JSON");
+        assertEquals(p.fingerprint(), q.fingerprint());
+        assertTrue(ConfigFingerprint.isFingerprint(p.fingerprint()));
+        assertEquals(p.fingerprint(), ConfigFingerprint.of(p.json()), "the JSON is already in canonical form");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> json = (Map<String, Object>) com.documentplatform.integration.json.Json.parse(p.json());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> schema = (Map<String, Object>) com.documentplatform.integration.json.Json.parse(
+                new String(ModelPack.class.getClassLoader().getResourceAsStream(
+                        "schema/platform-model-pack-1.schema.json").readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+        var problems = new com.documentplatform.integration.json.JsonSchema(schema).check(json, schema);
+        assertEquals(List.of(), problems, "fits its schema");
+
+        assertEquals(ModelPack.FORMAT, json.get("format"));
+        assertEquals(2, list(json, "register").size(), "1: both uses in scope");
+        assertTrue(list(json, "register").stream().anyMatch(e -> Boolean.TRUE.equals(((Map<?, ?>) e).get("needsReview"))));
+        assertTrue(((Map<?, ?>) list(json, "uses").get(0)).get("knownLimits").toString().contains("handwriting"), "2");
+        List<Object> vs = list(json, "validations");
+        assertEquals(3, vs.size(), "3: every validation of the period");
+        assertTrue(vs.stream().anyMatch(v -> ((Map<?, ?>) v).get("acceptance") != null), "3: the acceptance");
+        assertTrue(vs.stream().allMatch(v -> ((Map<?, ?>) v).get("approval") != null), "3: approvals");
+        Map<?, ?> mon = (Map<?, ?>) json.get("monitoring");
+        assertEquals(2, ((List<?>) mon.get("thresholds")).size(), "4: pass marks");
+        assertEquals(2, ((List<?>) mon.get("readings")).size(), "4: readings");
+        List<?> drifts = (List<?>) mon.get("drifts");
+        assertEquals(2, drifts.size(), "4: drifts");
+        assertTrue(drifts.stream().anyMatch(x -> ((Map<?, ?>) x).get("action") != null), "4: the action");
+        Map<?, ?> ch = (Map<?, ?>) json.get("changes");
+        assertTrue(((List<?>) ch.get("models")).stream().anyMatch(h -> ((Map<?, ?>) ((Map<?, ?>) h).get("recorded"))
+                .get("digest").equals(digest("vendor-1.1").toString())), "5: digests");
+        assertTrue(((List<?>) ch.get("live")).stream().anyMatch(l -> "ROLLED_BACK".equals(((Map<?, ?>) l).get("kind"))),
+                "5: the rollback");
+        assertFalse(((List<?>) ch.get("uses")).isEmpty(), "5: use changes");
+        Map<?, ?> tp = (Map<?, ?>) json.get("thirdParty");
+        assertEquals(1, ((List<?>) tp.get("vendorModels")).size(), "6");
+        assertEquals(1, ((List<?>) tp.get("customerModels")).size(), "6");
+        assertEquals(1, ((List<?>) tp.get("independentReviews")).size(), "6: the independent review");
+        assertTrue(json.get("dataStatement").toString().contains("trained"), "7");
+
+        String pdf;
+        try (var doc = org.apache.pdfbox.Loader.loadPDF(p.pdf())) {
+            pdf = new org.apache.pdfbox.text.PDFTextStripper().getText(doc);
+        }
+        assertTrue(pdf.contains(p.fingerprint()), "the PDF prints the fingerprint");
+        for (String s : ModelPack.SECTIONS) assertTrue(pdf.contains(s), s);
+        assertTrue(pdf.contains("rolled back"));
+        for (String text : List.of(p.json(), pdf, p.toString())) {
+            assertFalse(text.contains(PLANTED), "a planted value never appears");
+            assertFalse(text.contains("example prompt"));
+        }
+    }
+
+    @Test
+    void thePackCoversItsPeriodOnly() {
+        ModelPack.Pack p = fullPack(Instant.parse("2026-11-01T12:00:00Z"));
+        assertTrue(p.json().contains("\"validations\":[{"), "the first day's validation");
+        int count = p.json().split("\"validationId\"", -1).length - 1;
+        assertTrue(count >= 1);
+        assertFalse(p.json().contains("ROLLED_BACK"), "the rollback is after the period");
+        refuses(MOD_VALUE_INVALID, () -> new ModelPack(store, measures, packTexts()).export(PRODUCT, entity,
+                Instant.parse("2026-12-01T00:00:00Z"), Instant.parse("2026-11-01T00:00:00Z")));
+    }
+
+    @SuppressWarnings("unchecked")
+    static List<Object> list(Map<String, Object> m, String key) {
+        return (List<Object>) m.get(key);
     }
 
     // ---- no content

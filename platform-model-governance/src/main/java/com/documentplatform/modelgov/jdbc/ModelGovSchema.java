@@ -31,21 +31,25 @@ public final class ModelGovSchema {
     public static final String HISTORY_TABLE = "mg_schema_history";
 
     /** The table version this code needs: the number of the last migration file. */
-    public static final int VERSION = 1;
+    public static final int VERSION = 2;
 
     /** The tables the code reads and writes at runtime. */
     public static final List<String> TABLES = List.of("mg_model", "mg_model_history", "mg_model_use",
             "mg_model_use_history", "mg_threshold", "mg_validation", "mg_validation_measure", "mg_approval",
-            "mg_acceptance", "mg_live", "mg_live_history");
+            "mg_acceptance", "mg_live", "mg_live_history", "mg_monitor_threshold", "mg_measure", "mg_drift",
+            "mg_drift_action", "mg_review_notice");
 
     /** Insert-only tables (their triggers refuse UPDATE and DELETE): the app's user needs SELECT and INSERT only. */
     public static final List<String> INSERT_ONLY_TABLES = List.of("mg_validation", "mg_validation_measure",
-            "mg_approval", "mg_acceptance", "mg_live_history");
+            "mg_approval", "mg_acceptance", "mg_live_history", "mg_drift", "mg_drift_action", "mg_review_notice");
+
+    /** Readings: insert only, plus DELETE for the retention purge. */
+    public static final String READINGS_TABLE = "mg_measure";
 
     /** Holds the version of the files that were run. */
     public static final String VERSION_TABLE = "mg_schema_version";
 
-    private static final List<String> SCRIPTS = List.of("V1__modelgov.sql");
+    private static final List<String> SCRIPTS = List.of("V1__modelgov.sql", "V2__modelgov_monitoring.sql");
     private static final List<String> RIGHTS = List.of("SELECT", "INSERT", "UPDATE", "DELETE");
     private static final String RUN_STEP = "run the model-governance schema step (Flyway location " + LOCATION
             + ", history table " + HISTORY_TABLE + ") before starting the app";
@@ -112,7 +116,8 @@ public final class ModelGovSchema {
                         + version + ", missing: " + String.join(", ", missing) + "; " + RUN_STEP + ".");
             }
             for (String table : TABLES) {
-                requireRights(c, table, INSERT_ONLY_TABLES.contains(table) ? List.of("SELECT", "INSERT") : RIGHTS);
+                requireRights(c, table, INSERT_ONLY_TABLES.contains(table) ? List.of("SELECT", "INSERT")
+                        : READINGS_TABLE.equals(table) ? List.of("SELECT", "INSERT", "DELETE") : RIGHTS);
             }
         } catch (SQLException e) {
             throw new ModelGovSchemaException(MG_CHECK_FAILED, "Model-governance tables could not be checked: the database "

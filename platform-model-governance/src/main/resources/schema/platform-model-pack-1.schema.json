@@ -1,0 +1,250 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://documentplatform.invalid/schema/platform-model-pack-1.schema.json",
+  "title": "platform-model-pack/1",
+  "description": "The model documentation pack for a customer's model-risk team: one product and entity over a period. Numbers, IDs, names and the app's descriptive texts only; never document content or values. The fingerprint is the SHA-256 of this JSON's UTF-8 bytes (canonical form: keys sorted, no whitespace).",
+  "type": "object",
+  "required": ["format", "product", "entity", "period", "register", "uses", "validations", "monitoring", "changes", "thirdParty", "dataStatement"],
+  "additionalProperties": false,
+  "properties": {
+    "format": {"const": "platform-model-pack/1"},
+    "product": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,31}$"},
+    "entity": {"type": "string", "format": "uuid"},
+    "period": {
+      "type": "object",
+      "required": ["from", "to"],
+      "additionalProperties": false,
+      "properties": {"from": {"$ref": "#/$defs/time"}, "to": {"$ref": "#/$defs/time"}}
+    },
+    "register": {"type": "array", "items": {"$ref": "#/$defs/registerEntry"}},
+    "uses": {"type": "array", "items": {"$ref": "#/$defs/useText"}},
+    "validations": {"type": "array", "items": {"$ref": "#/$defs/validation"}},
+    "monitoring": {
+      "type": "object",
+      "required": ["thresholds", "readings", "drifts"],
+      "additionalProperties": false,
+      "properties": {
+        "thresholds": {"type": "array", "items": {"$ref": "#/$defs/monitorThreshold"}},
+        "readings": {"type": "array", "items": {"$ref": "#/$defs/reading"}},
+        "drifts": {"type": "array", "items": {"$ref": "#/$defs/drift"}}
+      }
+    },
+    "changes": {
+      "type": "object",
+      "required": ["models", "uses", "live"],
+      "additionalProperties": false,
+      "properties": {
+        "models": {"type": "array", "items": {"$ref": "#/$defs/historyRow"}},
+        "uses": {"type": "array", "items": {"$ref": "#/$defs/historyRow"}},
+        "live": {"type": "array", "items": {"$ref": "#/$defs/liveChange"}}
+      }
+    },
+    "thirdParty": {
+      "type": "object",
+      "required": ["vendorModels", "customerModels", "statement", "independentReviews"],
+      "additionalProperties": false,
+      "properties": {
+        "vendorModels": {"type": "array", "items": {"$ref": "#/$defs/model"}},
+        "customerModels": {"type": "array", "items": {"$ref": "#/$defs/model"}},
+        "statement": {"type": "string", "minLength": 1},
+        "independentReviews": {"type": "array", "items": {"$ref": "#/$defs/documentRef"}}
+      }
+    },
+    "dataStatement": {"type": "string", "minLength": 1}
+  },
+  "$defs": {
+    "time": {"type": "string", "format": "date-time"},
+    "optionalTime": {"type": ["string", "null"], "format": "date-time"},
+    "uuid": {"type": "string", "format": "uuid"},
+    "digest": {"type": "string", "pattern": "^[a-z0-9][a-z0-9+._-]{0,31}:[0-9a-f]{16,128}$"},
+    "fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "direction": {"enum": ["HIGHER_IS_BETTER", "LOWER_IS_BETTER"]},
+    "model": {
+      "type": "object",
+      "required": ["modelId", "name", "provider", "version", "digest", "runsWhere"],
+      "additionalProperties": false,
+      "properties": {
+        "modelId": {"$ref": "#/$defs/uuid"},
+        "name": {"type": "string"},
+        "provider": {"enum": ["VENDOR", "CUSTOMER"]},
+        "version": {"type": "string"},
+        "digest": {"$ref": "#/$defs/digest"},
+        "runsWhere": {"enum": ["CUSTOMER_ENVIRONMENT", "HOSTED"]}
+      }
+    },
+    "registerEntry": {
+      "type": "object",
+      "required": ["useId", "product", "feature", "scope", "status", "needsReview", "materiality", "materialityReason", "lastValidatedAt", "nextReviewDue", "reviewEveryDays", "vendorOwner", "customerOwner", "configFingerprint", "model"],
+      "additionalProperties": false,
+      "properties": {
+        "useId": {"$ref": "#/$defs/uuid"},
+        "product": {"type": "string"},
+        "feature": {"type": "string"},
+        "scope": {"enum": ["every entity", "this entity"]},
+        "status": {"enum": ["PROPOSED", "VALIDATED", "LIVE", "RETIRED"]},
+        "needsReview": {"type": "boolean"},
+        "materiality": {"enum": ["HIGH", "MEDIUM", "LOW"]},
+        "materialityReason": {"type": "string"},
+        "lastValidatedAt": {"$ref": "#/$defs/optionalTime"},
+        "nextReviewDue": {"type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+        "reviewEveryDays": {"type": ["integer", "null"], "minimum": 1, "maximum": 3650},
+        "vendorOwner": {"type": ["string", "null"]},
+        "customerOwner": {"type": ["string", "null"]},
+        "configFingerprint": {"$ref": "#/$defs/fingerprint"},
+        "model": {"anyOf": [{"$ref": "#/$defs/model"}, {"type": "null"}]}
+      }
+    },
+    "useText": {
+      "type": "object",
+      "required": ["useId", "feature", "purpose", "humanInTheLoop", "designSummary", "inputsAndOutputs", "guardrails", "knownLimits"],
+      "additionalProperties": false,
+      "properties": {
+        "useId": {"$ref": "#/$defs/uuid"},
+        "feature": {"type": "string"},
+        "purpose": {"type": "string"},
+        "humanInTheLoop": {"type": "string"},
+        "designSummary": {"type": "string"},
+        "inputsAndOutputs": {"type": "string"},
+        "guardrails": {"type": "string"},
+        "knownLimits": {"type": "string"}
+      }
+    },
+    "validation": {
+      "type": "object",
+      "required": ["validationId", "useId", "modelName", "modelVersion", "provider", "digest", "configFingerprint", "testSet", "measures", "passed", "ranBy", "ranAt", "approval", "acceptance"],
+      "additionalProperties": false,
+      "properties": {
+        "validationId": {"$ref": "#/$defs/uuid"},
+        "useId": {"$ref": "#/$defs/uuid"},
+        "modelName": {"type": "string"},
+        "modelVersion": {"type": "string"},
+        "provider": {"enum": ["VENDOR", "CUSTOMER"]},
+        "digest": {"$ref": "#/$defs/digest"},
+        "configFingerprint": {"$ref": "#/$defs/fingerprint"},
+        "testSet": {"type": "string"},
+        "measures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["measure", "result", "threshold", "direction", "passed"],
+            "additionalProperties": false,
+            "properties": {
+              "measure": {"type": "string"},
+              "result": {"type": "number"},
+              "threshold": {"type": "number"},
+              "direction": {"$ref": "#/$defs/direction"},
+              "passed": {"type": "boolean"}
+            }
+          }
+        },
+        "passed": {"type": "boolean"},
+        "ranBy": {"type": "string"},
+        "ranAt": {"$ref": "#/$defs/time"},
+        "approval": {
+          "anyOf": [{"type": "null"}, {
+            "type": "object",
+            "required": ["by", "roles", "at"],
+            "additionalProperties": false,
+            "properties": {"by": {"type": "string"}, "roles": {"type": "array", "items": {"type": "string"}}, "at": {"$ref": "#/$defs/time"}}
+          }]
+        },
+        "acceptance": {
+          "anyOf": [{"type": "null"}, {
+            "type": "object",
+            "required": ["by", "at", "results", "reason"],
+            "additionalProperties": false,
+            "properties": {"by": {"type": "string"}, "at": {"$ref": "#/$defs/time"}, "results": {"type": "string"}, "reason": {"type": "string"}}
+          }]
+        }
+      }
+    },
+    "monitorThreshold": {
+      "type": "object",
+      "required": ["useId", "measure", "setFor", "value", "direction", "minSample"],
+      "additionalProperties": false,
+      "properties": {
+        "useId": {"$ref": "#/$defs/uuid"},
+        "measure": {"type": "string"},
+        "setFor": {"enum": ["default", "this entity"]},
+        "value": {"type": "number"},
+        "direction": {"$ref": "#/$defs/direction"},
+        "minSample": {"type": "integer", "minimum": 1}
+      }
+    },
+    "reading": {
+      "type": "object",
+      "required": ["readingId", "useId", "measure", "value", "periodFrom", "periodTo", "samples", "reportedAt"],
+      "additionalProperties": false,
+      "properties": {
+        "readingId": {"$ref": "#/$defs/uuid"},
+        "useId": {"$ref": "#/$defs/uuid"},
+        "measure": {"type": "string"},
+        "value": {"type": "number"},
+        "periodFrom": {"$ref": "#/$defs/time"},
+        "periodTo": {"$ref": "#/$defs/time"},
+        "samples": {"type": "integer", "minimum": 0},
+        "reportedAt": {"$ref": "#/$defs/time"}
+      }
+    },
+    "drift": {
+      "type": "object",
+      "required": ["driftId", "useId", "measure", "value", "threshold", "direction", "samples", "raisedAt", "action"],
+      "additionalProperties": false,
+      "properties": {
+        "driftId": {"$ref": "#/$defs/uuid"},
+        "useId": {"$ref": "#/$defs/uuid"},
+        "measure": {"type": "string"},
+        "value": {"type": "number"},
+        "threshold": {"type": "number"},
+        "direction": {"$ref": "#/$defs/direction"},
+        "samples": {"type": "integer"},
+        "raisedAt": {"$ref": "#/$defs/time"},
+        "action": {
+          "anyOf": [{"type": "null"}, {
+            "type": "object",
+            "required": ["note", "by", "at"],
+            "additionalProperties": false,
+            "properties": {"note": {"type": "string"}, "by": {"type": "string"}, "at": {"$ref": "#/$defs/time"}}
+          }]
+        }
+      }
+    },
+    "historyRow": {
+      "type": "object",
+      "required": ["version", "by", "at", "changedFields", "recorded"],
+      "additionalProperties": false,
+      "properties": {
+        "modelId": {"$ref": "#/$defs/uuid"},
+        "useId": {"$ref": "#/$defs/uuid"},
+        "version": {"type": "integer", "minimum": 1},
+        "by": {"type": "string"},
+        "at": {"$ref": "#/$defs/time"},
+        "changedFields": {"type": "array", "items": {"type": "string"}},
+        "recorded": {"type": "object", "additionalProperties": {"type": "string"}}
+      }
+    },
+    "liveChange": {
+      "type": "object",
+      "required": ["useId", "kind", "fromValidationId", "toValidationId", "by", "at"],
+      "additionalProperties": false,
+      "properties": {
+        "useId": {"$ref": "#/$defs/uuid"},
+        "kind": {"enum": ["WENT_LIVE", "ROLLED_BACK"]},
+        "fromValidationId": {"anyOf": [{"$ref": "#/$defs/uuid"}, {"type": "null"}]},
+        "toValidationId": {"$ref": "#/$defs/uuid"},
+        "by": {"type": "string"},
+        "at": {"$ref": "#/$defs/time"}
+      }
+    },
+    "documentRef": {
+      "type": "object",
+      "required": ["title", "reference", "sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "title": {"type": "string"},
+        "reference": {"type": "string"},
+        "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}

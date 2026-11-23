@@ -2,6 +2,7 @@ package com.documentplatform.modelgov;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,8 +23,35 @@ public interface ModelGovStore {
         }
     }
 
-    /** One version of a model or use in its history. */
-    record HistoryRow(long version, String changedBy, Instant changedAt, List<String> changedFields) {
+    /**
+     * One version of a model or use in its history, with the values recorded then (models: name, provider,
+     * modelVersion, digest, runsWhere; uses: modelId, configFingerprint, materiality, status, nextReviewDue,
+     * reviewEveryDays).
+     */
+    record HistoryRow(long version, String changedBy, Instant changedAt, List<String> changedFields,
+                      Map<String, String> recorded) {
+        public HistoryRow {
+            changedFields = List.copyOf(changedFields);
+            recorded = Map.copyOf(recorded);
+        }
+    }
+
+    /** The values a model's history row records. */
+    static Map<String, String> recorded(Model m) {
+        return Map.of("name", m.name(), "provider", m.provider().name(), "modelVersion", m.modelVersion(),
+                "digest", m.digest().toString(), "runsWhere", m.runsWhere().name());
+    }
+
+    /** The values a use's history row records. */
+    static Map<String, String> recorded(ModelUse u) {
+        Map<String, String> rec = new java.util.LinkedHashMap<>();
+        rec.put("modelId", u.modelId().toString());
+        rec.put("configFingerprint", u.configFingerprint());
+        rec.put("materiality", u.materiality().name());
+        rec.put("status", u.status().name());
+        if (u.nextReviewDue() != null) rec.put("nextReviewDue", u.nextReviewDue().toString());
+        if (u.reviewEveryDays() != null) rec.put("reviewEveryDays", String.valueOf(u.reviewEveryDays()));
+        return rec;
     }
 
     Model insertModel(Model model, Change change);
@@ -73,4 +101,39 @@ public interface ModelGovStore {
     boolean switchLive(Decisions.Live next, long expectedVersion, Decisions.LiveChange change);
 
     List<Decisions.LiveChange> liveHistory(UUID useId, UUID entity);
+
+    // ---- the register as a list (P034)
+
+    /** The uses of a product (every product when null), ordered by product, feature and ID. */
+    List<ModelUse> uses(String product);
+
+    /** The uses of a model. */
+    List<ModelUse> usesOfModel(UUID modelId);
+
+    // ---- monitoring (P034)
+
+    /** Sets (or replaces) the monitoring pass mark for its use, entity (null = default) and measure. */
+    void putMonitorThreshold(Monitoring.MonitorThreshold threshold, Change change);
+
+    List<Monitoring.MonitorThreshold> monitorThresholds(UUID useId);
+
+    void insertReading(Monitoring.Reading reading);
+
+    /** The use's readings reported in [from, to), for one entity or every entity (null), oldest first. */
+    List<Monitoring.Reading> readings(UUID useId, UUID entity, Instant from, Instant to);
+
+    /** Removes the readings reported before {@code before} (the retention purge). @return how many */
+    int purgeReadings(Instant before);
+
+    void insertDrift(Monitoring.Drift drift);
+
+    /** The use's drifts, for one entity or every entity (null), oldest first. */
+    List<Monitoring.Drift> drifts(UUID useId, UUID entity);
+
+    void insertDriftAction(Monitoring.DriftAction action);
+
+    Optional<Monitoring.DriftAction> driftAction(UUID driftId);
+
+    /** Records that a review notice was raised; false when it was already (one per use, due date and stage). */
+    boolean insertReviewNotice(UUID useId, java.time.LocalDate due, Monitoring.ReviewStage stage, Instant at);
 }

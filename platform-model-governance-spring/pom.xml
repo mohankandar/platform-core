@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.documentplatform.platform</groupId>
+        <artifactId>platform-core</artifactId>
+        <version>0.5.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>platform-model-governance-spring</artifactId>
+    <description>Spring Boot wiring for model governance: validated properties (platform.model-governance: approver and
+        forbidden roles, review intervals per materiality, reading retention), the Postgres store on the app's
+        DataSource after the startup check of the mg_ tables (never creates them), the register, the gate, monitoring
+        intake, re-validation reviews and the documentation pack, a background worker (review notices, reading purge)
+        and a monitoring check (platform-monitoring, optional).</description>
+    <dependencies>
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-model-governance</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+            <version>${spring.boot.version}</version>
+        </dependency>
+        <!-- The monitoring check only when the app uses platform-monitoring. -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-monitoring</artifactId>
+            <version>${project.version}</version>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-model-governance-testkit</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-test</artifactId>
+            <version>${spring.boot.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- ApplicationContextRunner's assertable context needs it on the test classpath. -->
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>${assertj.version}</version>
+            <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>net.bytebuddy</groupId>
+                    <artifactId>byte-buddy</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-postgresql</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>${postgresql.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

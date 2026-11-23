@@ -13,12 +13,20 @@
         thresholds in force copied in), the change gate (Model approver with the separation rule, documented
         acceptance for medium-materiality customer models, go live and rollback per entity), the gate at model start
         (digest and configuration fingerprint), result stamping. Postgres store and SQL db/platform/modelgov (history
-        table mg_schema_history, run only by the schema step), start-up check ModelGovSchema.verify.</description>
+        table mg_schema_history, run only by the schema step), start-up check ModelGovSchema.verify; monitoring intake
+        with drift and needs-review, re-validation due dates, and the documentation pack (JSON platform-model-pack/1
+        and PDF through Apache PDFBox).</description>
     <dependencies>
         <dependency>
             <groupId>com.documentplatform.platform</groupId>
             <artifactId>platform-errors</artifactId>
             <version>${project.version}</version>
+        </dependency>
+        <!-- The documentation pack's PDF (Apache License 2.0). -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>${pdfbox.version}</version>
         </dependency>
     </dependencies>
 </project>
