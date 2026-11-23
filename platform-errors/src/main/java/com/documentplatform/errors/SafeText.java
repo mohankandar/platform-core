@@ -1,13 +1,14 @@
 package com.documentplatform.errors;
 
 import java.util.Locale;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * Keeps secrets and content out of errors, logs and bundles. A detail named like a secret ({@code password},
  * {@code secret}, {@code token}, {@code key}, {@code credential}, …) loses its value, and so does any value that looks
- * like a JWT, a PEM block, a {@code password=…} pair, an {@code Authorization} value or a long run of key-like
- * characters. Names and addresses of things (a secret path, a key alias, a server address) stay.
+ * like a JWT, a PEM block, a {@code password=…} pair, an {@code Authorization} value, the user part of a
+ * URL ({@code scheme://user:password@host}) or a long run of key-like characters. Names and addresses of things (a secret path, a key alias, a server address) stay.
  */
 public final class SafeText {
 
@@ -25,6 +26,11 @@ public final class SafeText {
     private static final Pattern PAIR = Pattern.compile(
             "(?i)(password|passwd|pwd|secret|token|api[_-]?key|client_secret)\\s*[=:]\\s*\\S+");
     private static final Pattern AUTH = Pattern.compile("(?i)\\b(Bearer|Basic)\\s+[A-Za-z0-9._~+/=-]{8,}");
+    /**
+     * The user part of a URL ({@code scheme://user:password@host}, also {@code jdbc:postgresql://…}). Greedy up to the
+     * last {@code @} of the authority, so a password holding an {@code @} goes whole; a path, query or fragment ends it.
+     */
+    private static final Pattern URL_USER = Pattern.compile("://[^/?#\\s]*@");
     private static final Pattern KEYLIKE = Pattern.compile("[A-Za-z0-9+/_=-]{40,}");
 
     private SafeText() {
@@ -45,6 +51,7 @@ public final class SafeText {
         v = JWT.matcher(v).replaceAll(REMOVED);
         v = PAIR.matcher(v).replaceAll(m -> m.group(1) + "=" + REMOVED);
         v = AUTH.matcher(v).replaceAll(m -> m.group(1) + " " + REMOVED);
+        v = URL_USER.matcher(v).replaceAll(Matcher.quoteReplacement("://" + REMOVED + "@"));
         v = KEYLIKE.matcher(v).replaceAll(m -> keyLike(m.group()) ? REMOVED : m.group());
         return v;
     }
