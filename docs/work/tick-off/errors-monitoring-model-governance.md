@@ -121,13 +121,13 @@ Short paths used below:
 
 | ID | Rule | Status | Code | Test | Note |
 |---|---|---|---|---|---|
-| monitoring-28 | `platform.monitoring.*` per the install guide, including `every` ("how often each check runs") | DIFFERENT | `MS/MonitoringProperties.java` `every` | none | `every` is read by nothing; each check uses its own `every()` (default 60 s). Only the undocumented `tick` (5 s) is used, by `status.start`. Setting `every` has no effect |
+| monitoring-28 | `platform.monitoring.*` per the install guide, including `every` ("how often each check runs") | DONE (P039, e0b4e89) | `MS/MonitoringProperties.java` `every` | none | `every` is read by nothing; each check uses its own `every()` (default 60 s). Only the undocumented `tick` (5 s) is used, by `status.start`. Setting `every` has no effect |
 | monitoring-29 | Built-in checks from a DataSource, with the schemas whose module's main bean is there | DONE | `MS/BuiltInChecks.java` `all`, `schemasInUse` | `MW` `theBuiltInChecksComeFromTheAppsBeansAndSettings` (identity) | model-governance schema see model-governance-100 |
-| monitoring-30 | `KeyService` bean gives `key-service`, required when `customer-keys-required=true` | UNTESTED | `MS/BuiltInChecks.java` `Crypto` | none | decides a start refusal |
+| monitoring-30 | `KeyService` bean gives `key-service`, required when `customer-keys-required=true` | DONE (P039, e0b4e89) | `MS/BuiltInChecks.java` `Crypto` | none | decides a start refusal |
 | monitoring-31 | `SecretResolver` with `secrets` gives `secret-store` | DONE | `MS/BuiltInChecks.java` `Secrets` | `MW` `theBuiltInChecks…` | |
 | monitoring-32 | `LicenceService` gives `licence` | UNTESTED | `MS/BuiltInChecks.java` `Licensing` | none | |
 | monitoring-33 | `LoginConnectionStore` + `IssuerFetch` + `product-code` (tenant from `platform.licensing.tenant-id`) give `login-system` | UNTESTED | `MS/BuiltInChecks.java` `Login` | none (`MW` has the store but no product code, so no check) | |
-| monitoring-34 | The notifications mail settings give `channel-mail` | DIFFERENT | `MS/BuiltInChecks.java` `all` | none | port defaults to 587 whatever `mail.security` says (notifications defaults to 587 / 465 / 25 by security); `from-address` is required, but with Microsoft 365 notifications lets it default to the mailbox, so a valid set-up shows `MON_CHANNEL_SETTINGS_INCOMPLETE` |
+| monitoring-34 | The notifications mail settings give `channel-mail` | DONE (P039, e0b4e89) | `MS/BuiltInChecks.java` `all` | none | port defaults to 587 whatever `mail.security` says (notifications defaults to 587 / 465 / 25 by security); `from-address` is required, but with Microsoft 365 notifications lets it default to the mailbox, so a valid set-up shows `MON_CHANNEL_SETTINGS_INCOMPLETE` |
 | monitoring-35 | `folders.*`, `services.*` | DONE | `MS/BuiltInChecks.java` | `MW` `theBuiltInChecks…` | |
 | monitoring-36 | The integration store gives one check per enabled integration | DONE | `MS/IntegrationSource.java` | `MW` `integrationsAreInTheListButNeverInReadiness` | |
 | monitoring-37 | The app's own `DependencyCheck` beans join | DONE | `MS/MonitoringAutoConfiguration.java` `platformDependencyStatus` | `MW` `theAppRefusesToStart…`, `readinessHolds…` | |
@@ -217,7 +217,7 @@ Short paths used below:
 | model-governance-16 | No model or version goes live without a recorded validation that meets the thresholds | DONE | `G/ModelGovernance.java` `approve`, `goLive`; `G/ModelGate.java` | `GC` `failedVendorValidationNeverApproved`, `gateRefusesUntilLive` | |
 | model-governance-17 | A record holds model, version, digest, use, configuration fingerprint, test set (name, version), measures and results, thresholds, pass/fail, who ran it, who approved, date | DONE | `G/ValidationRecord.java`, `G/Decisions.java` `Approval` | `GC` `registerValidateApproveGoLiveGateStamp` | |
 | model-governance-18 | Never document content or values in a record | DONE | numbers only; `G/Values.java` `text` | `GC` `recordsAndRefusalsHoldNoContent` | |
-| model-governance-19 | The app's default pass marks per use; the customer's stricter per entity, never looser | PARTLY | `G/ModelGovernance.java` `setEntityThreshold`, `setDefaultThreshold` | `GC` `customerThresholdOnlyStricter` | checked only when the customer sets theirs; when the app later tightens its default, an existing entity mark that is now looser stays in force (same in `ModelMeasures.setDefaultThreshold`) |
+| model-governance-19 | The app's default pass marks per use; the customer's stricter per entity, never looser | DONE (P039, eba60f2) | `G/ModelGovernance.java` `setEntityThreshold`, `setDefaultThreshold` | `GC` `customerThresholdOnlyStricter` | checked only when the customer sets theirs; when the app later tightens its default, an existing entity mark that is now looser stays in force (same in `ModelMeasures.setDefaultThreshold`) |
 | model-governance-20 | The thresholds in force are part of the record | DONE | `G/ModelGovernance.java` `recordValidation` | `GC` `customerThresholdOnlyStricter` | |
 | model-governance-21 | A pass does not switch a model on; the Model approver approves, audited | DONE | `G/ModelGovernance.java` `approve`, `goLive` | `GC` `gateRefusesUntilLive`, `historyAndAuditOfEveryChange` | |
 | model-governance-22 | The Business Admin can never also be the approver | DONE | `G/ModelGovernance.java` `checkApprover` | `GC` `approverRolesAndSeparationOfDuties` | the forbidden roles come from the app's settings; `forbidden-roles` may be empty and nothing warns (install-model-governance-5) |
@@ -231,7 +231,7 @@ Short paths used below:
 | model-governance-30 | Every AI result records model, version and digest | DONE | `G/LiveModel.java` `stamp`, `G/ModelStamp.java` | `GC` `registerValidateApproveGoLiveGateStamp` | storing the stamp with the result is the app's |
 | model-governance-31 | The gate applies to a new model, version or digest | DONE | `G/ModelGate.java` | `GC` `digestChangeRefusedAtTheGate` | |
 | model-governance-32 | The gate applies to a prompt or setting change in the app's release | DONE | `G/ModelGate.java` (`MOD_CONFIG_CHANGED`) | `GC` `configurationChangeRefusedAtTheGate` | |
-| model-governance-33 | The gate applies to a change of where the model runs | DIFFERENT | `G/ModelGovernance.java` `changeModel` (`dueAtOnce`) | `GC` `anyChangeMakesTheUseDueAtOnce` | a `runsWhere` change only makes the uses due today (P034 decision 2): the gate warns `MOD_REVIEW_OVERDUE` and lets the model run unless the use is set to refuse; the validation record does not hold `runsWhere` and the gate never compares it. The code follows P034 decision 2, which narrows section 4; the owner should confirm |
+| model-governance-33 | The gate applies to a change of where the model runs | DONE (P039, eba60f2) | `G/ModelGovernance.java` `changeModel` (`dueAtOnce`) | `GC` `anyChangeMakesTheUseDueAtOnce` | a `runsWhere` change only makes the uses due today (P034 decision 2): the gate warns `MOD_REVIEW_OVERDUE` and lets the model run unless the use is set to refuse; the validation record does not hold `runsWhere` and the gate never compares it. The code follows P034 decision 2, which narrows section 4; the owner should confirm |
 | model-governance-34 | The vendor's default models are validated by an independent outside reviewer before the first customer | APP-SIDE | reference in the pack: `G/PackTexts.java` `DocumentRef` | `GC` `thePackIsDeterministic…` ("6: the independent review") | vendor's process |
 
 ## model-governance — section 5 Ongoing monitoring hooks
@@ -323,7 +323,7 @@ Short paths used below:
 | model-governance-102 | P034 D1: one drift per measure until handled | DONE | `G/ModelMeasures.java` `report` | `GC` `driftPast…` ("no second drift"), `needsReviewUntil…` | |
 | model-governance-103 | P034 D2: overdue on the due date | DONE | `G/ModelGate.java`, `G/ModelReviews.java` (`days <= 0`) | `GC` `reviewOverdueWarnsOrRefuses` ("the due date itself") | code follows D2, not P033 D4 |
 | model-governance-104 | P034 D3: a name change alone does not make uses due | DONE | `G/ModelGovernance.java` `changeModel` | `GC` `anyChangeMakesTheUseDueAtOnce` | |
-| model-governance-105 | P034 D4: retention enforced in the database too | PARTLY | see 84 | see 84 | see 84 |
+| model-governance-105 | P034 D4: retention enforced in the database too | DONE (P039, 0b08363 (P037, with model-governance-84)) | see 84 | see 84 | see 84 |
 | model-governance-106 | P034 D5: Apache PDFBox 3.0, standard Helvetica, no font files | DONE | `G/PackPdf.java` (`Standard14Fonts` HELVETICA) | `GC` `thePackIsDeterministic…` (PDF loads, text found) | |
 | model-governance-107 | P034 D6: the pack's period covers validations, readings, drifts, changes; register as at export | DONE | `G/ModelPack.java` | `GC` `thePackCoversItsPeriodOnly` | |
 | model-governance-108 | P033 report D1 (forbidden role checked first, so a holder of both gets `MOD_APPROVER_CONFLICT`) | DOC GAP | — | — | not in the design body |
@@ -378,11 +378,11 @@ All other items match: 31 checked (approver-roles required, review-every default
 | error-codes-35 | Last 200 kept | cap untested | C · **FIXED in P037 (77e6652)** | Record 201 and assert 200 remain, oldest dropped | S |
 | error-codes-44 | Catalogue module never deployed, not in the BOM | DONE (P037, c3fa330) | C | Add one sentence to error-codes.md section 1 | S |
 | monitoring-1 | Default limit 10 s, interval 60 s | untested | C | Assert the interface defaults | S |
-| monitoring-28 | `platform.monitoring.every` | setting has no effect | B | Use it as the interval of the built-in checks (or drop it from the properties and guide) | S |
-| monitoring-30 | Key service check from the bean, required per `customer-keys-required` | untested | B | Wiring test with an in-memory `KeyService`, down, both settings | S |
+| monitoring-28 | `platform.monitoring.every` | setting has no effect | B · **FIXED in P039 (e0b4e89)** | Use it as the interval of the built-in checks (or drop it from the properties and guide) | S |
+| monitoring-30 | Key service check from the bean, required per `customer-keys-required` | untested | B · **FIXED in P039 (e0b4e89)** | Wiring test with an in-memory `KeyService`, down, both settings | S |
 | monitoring-32 | Licence check from the bean | untested | C | Wiring test with a `LicenceService` bean | S |
 | monitoring-33 | Login-system check from beans and `product-code` | untested | C | Wiring test with store, `IssuerFetch` and product code | S |
-| monitoring-34 | Mail check from the notifications settings | wrong port default; false DOWN without `from-address` under Microsoft 365 | B | Read the mail settings through notifications-spring's checked config (or mirror its port and sender defaults) and test it | S |
+| monitoring-34 | Mail check from the notifications settings | wrong port default; false DOWN without `from-address` under Microsoft 365 | B · **FIXED in P039 (e0b4e89)** | Read the mail settings through notifications-spring's checked config (or mirror its port and sender defaults) and test it | S |
 | monitoring-39 | Readiness includes the app's own readiness state | REFUSING_TRAFFIC branch untested | C | Wiring test publishing `ReadinessState.REFUSING_TRAFFIC` | S |
 | monitoring-40 | Spring Boot's own `readinessState` backs off | untested | C | Wiring test with Actuator's availability auto-configuration | S |
 | monitoring-48 | `platform.integration.attempts` | untested | C | Wiring test: one call through `CallEngine`, counter incremented with tags | S |
@@ -395,14 +395,14 @@ All other items match: 31 checked (approver-roles required, review-every default
 | monitoring-71 | Webhook path is a secret, never shown or called | DOC GAP | C | Add to monitoring.md section 1 | S |
 | monitoring-72 | `FileLocationCheck.Disk` replaceable | DOC GAP | C | Add to monitoring.md section 1 | S |
 | monitoring-73 | `model-governance` check | DOC GAP | C | Add a row to monitoring.md's table | S |
-| model-governance-19 | Customer pass marks never looser | an entity mark becomes looser when the app tightens its default, and stays in force | B | On a default change, refuse it or treat looser entity marks as replaced by the default (both validation and monitoring marks); test it | S |
-| model-governance-33 | A change of where the model runs goes through the gate | only makes the review due (warning by default) | B | Owner to confirm P034 D2; if the gate must refuse, record `runsWhere` in the validation and compare it in `requireLive` | M |
+| model-governance-19 | Customer pass marks never looser | an entity mark becomes looser when the app tightens its default, and stays in force | B · **FIXED in P039 (eba60f2)** | On a default change, refuse it or treat looser entity marks as replaced by the default (both validation and monitoring marks); test it | S |
+| model-governance-33 | A change of where the model runs goes through the gate | only makes the review due (warning by default) | B · **FIXED in P039 (eba60f2)** | Owner to confirm P034 D2; if the gate must refuse, record `runsWhere` in the validation and compare it in `requireLive` | M |
 | model-governance-39 | Periodic re-validation | review date per use, validations per entity: one entity's pass resets the date for all | A · **FIXED in P036 (912f3cd)** | Keep the next review per use and entity (from that entity's live validation) and check it at the gate and in `ModelReviews` | M |
 | model-governance-70 | Flyway run with `mg_schema_history` | untested | C | Schema test running the files through Flyway with that history table | S |
 | model-governance-84 | Readings deleted only inside the purge | any user with DELETE can set `mg.purge_before`; no 30-day floor | B · **FIXED in P037 (0b08363)** | Purge through a SECURITY DEFINER function owned by the schema owner that enforces the floor; revoke DELETE on `mg_measure` from the runtime user | M |
 | model-governance-100 | Monitoring's database check verifies `mg_` | untested | C | Wiring test with a `ModelGovStore` bean and missing `mg_` tables | S |
 | model-governance-101 | Worker: notices and daily purge | untested | C | Test `runOnce` with a fixed clock: a notice raised, old readings purged once a day | S |
-| model-governance-105 | P034 D4 retention in the database | same as 84 | B | See model-governance-84 | — |
+| model-governance-105 | P034 D4 retention in the database | same as 84 | B · **FIXED in P039 (0b08363 (P037, with model-governance-84))** | See model-governance-84 | — |
 | model-governance-108 | P033 D1 | DOC GAP | C | Add to model-governance.md section 9 | S |
 | model-governance-109 | P033 D2 | DOC GAP | C | Add to section 9 | S |
 | model-governance-110 | P033 D3 | DOC GAP | C | Add to section 9 | S |
@@ -418,6 +418,6 @@ All other items match: 31 checked (approver-roles required, review-every default
 | install-model-governance-2 | Runtime grants | message and SQL header contradict the guide; narrow grants untested | C | Make the message and header give the narrow grants; schema test with exactly the guide's grants | S |
 | install-model-governance-3 | `enabled` | not in the guide | C | Document it | S |
 | install-model-governance-4 | Setting limits | not in the guide | C | Document 1d–3650d and ≥ 1 minute | S |
-| install-model-governance-5 | `forbidden-roles` | may be empty silently; separation then lost | B | Refuse (or warn loudly at startup) when `forbidden-roles` is empty; say in the guide it must be set | S |
+| install-model-governance-5 | `forbidden-roles` | may be empty silently; separation then lost | B · **FIXED in P039 (eba60f2)** | Refuse (or warn loudly at startup) when `forbidden-roles` is empty; say in the guide it must be set | S |
 
 Gap totals: A 0 · B 13 · C 41 (54 rows; four of them point to another row: model-governance-105, install-monitoring-1, -3, -5).
