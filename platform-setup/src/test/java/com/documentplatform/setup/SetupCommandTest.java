@@ -458,11 +458,64 @@ class SetupCommandTest {
     }
 
     private static Licence licence(String id, long version, List<String> slots) {
+        return licence(id, version, slots, LocalDate.parse("2026-01-01"), LocalDate.parse("2027-12-31"));
+    }
+
+    private static Licence licence(String id, long version, List<String> slots, LocalDate starts, LocalDate ends) {
         List<EntitySlot> s = slots.stream().map(slot -> new EntitySlot(slot,
                 List.of(new Allowance(A, AllowanceType.PAGES_PER_MONTH, 100)))).toList();
         return new Licence(id, version, "Demo Customer Ltd", TENANT, List.of(A, "PRODUCT_B"), s,
-                LicenceType.SUBSCRIPTION, LicenceKind.PRODUCTION, LocalDate.parse("2026-01-01"),
-                LocalDate.parse("2027-12-31"), null, Deployment.ON_PREM, "test-key-1", NOW);
+                LicenceType.SUBSCRIPTION, LicenceKind.PRODUCTION, starts, ends, null, Deployment.ON_PREM,
+                "test-key-1", NOW);
+    }
+
+    @Test
+    void grantsOfASlotTheMappingFileNoLongerNamesAreNotInTheFile() throws Exception {
+        demo();
+        Pg db = Pg.migrated();
+        assertEquals(0, run(db, "apply", A).exit());
+        // Every row of ENT-DEMO-0002 is gone: the slot is not named in the file at all.
+        write("role-mapping-product-a.csv", "# Product: PRODUCT_A\nentity_id,entity_name,group,role\n"
+                + "ENT-DEMO-0001,,Demo Finance Readers,READER\nENT-DEMO-0001,,Demo Finance Editors,EDITOR\n");
+        String readers = "grant " + S2 + " PRODUCT_A: group \"Demo Legal Readers\" -> READER (not in the mapping file)";
+        String auditors = "grant " + S2 + " PRODUCT_A: group \"Demo Auditors\" -> AUDITOR (not in the mapping file)";
+
+        Result keep = run(db, "apply", A);
+        assertEquals(SetupCommand.EXIT_NEEDS_FLAG, keep.exit(), keep.all());
+        assertTrue(keep.out().contains("not removed " + readers + "; kept."), keep.out());
+        assertTrue(keep.out().contains("not removed " + auditors + "; kept."), keep.out());
+        assertEquals(2, db.count("select count(*) from idn_group_grant where slot_id = '" + S2 + "'"),
+                "kept without the flag");
+
+        Result remove = run(db, "apply", A, "--remove-unlisted-grants");
+        assertEquals(0, remove.exit(), remove.all());
+        assertTrue(remove.out().contains("remove      " + readers), remove.out());
+        assertTrue(remove.out().contains("remove      " + auditors), remove.out());
+        assertEquals(0, db.count("select count(*) from idn_group_grant where slot_id = '" + S2 + "'"));
+        assertEquals(2, db.count("select count(*) from idn_group_grant where slot_id = '" + S1 + "'"));
+    }
+
+    @Test
+    void grantsUnderAnotherIssuerAreLeftAlone() throws Exception {
+        demo();
+        Pg db = Pg.migrated();
+        assertEquals(0, run(db, "apply", A).exit());
+        String older = "https://login.demo.example/oauth2/default";
+        String newer = "https://login-new.demo.example/oauth2/default";
+        // The customer moves to another login system; the file no longer names ENT-DEMO-0002 either.
+        write("signin-demo.json", read("signin-demo.json").replace(older, newer));
+        write("role-mapping-product-a.csv", "# Product: PRODUCT_A\nentity_id,entity_name,group,role\n"
+                + "ENT-DEMO-0001,,Demo Finance Readers,READER\nENT-DEMO-0001,,Demo Finance Editors,EDITOR\n");
+
+        Result r = run(db, "apply", A, "--remove-unlisted-grants");
+        assertEquals(0, r.exit(), r.all());
+        assertFalse(r.out().contains("(not in the mapping file)"), "no grant of the older issuer is listed: " + r.out());
+        assertTrue(r.out().contains("create      grant " + S1 + " PRODUCT_A: group \"Demo Finance Readers\" -> READER"),
+                r.out());
+        assertEquals(List.of(S1 + " " + older, S1 + " " + older, S2 + " " + older, S2 + " " + older),
+                db.strings("select slot_id || ' ' || issuer_uri from idn_group_grant where issuer_uri = '" + older
+                        + "' order by 1"), "every grant under the older issuer is untouched");
+        assertEquals(2, db.count("select count(*) from idn_group_grant where issuer_uri = '" + newer + "'"));
     }
 
     @Test
