@@ -56,6 +56,22 @@ final class Pg {
         return appUser(rights, true);
     }
 
+    /** A login with no rights on the tables (usage on the schema only); its user name is {@link #bareUserName}. */
+    DataSource bareUser() {
+        String user = bareUserName();
+        exec(admin(null), "create role " + user + " login password 'pw'", "grant usage on schema " + schema + " to " + user);
+        PGSimpleDataSource ds = new PGSimpleDataSource();
+        ds.setURL(CONTAINER.getJdbcUrl());
+        ds.setUser(user);
+        ds.setPassword("pw");
+        ds.setCurrentSchema(schema);
+        return ds;
+    }
+
+    String bareUserName() {
+        return schema + "_bare";
+    }
+
     /** Full rights on the tables, but no EXECUTE on the purge function. */
     DataSource appUserWithoutPurge() {
         return appUser("select, insert, update, delete", false);

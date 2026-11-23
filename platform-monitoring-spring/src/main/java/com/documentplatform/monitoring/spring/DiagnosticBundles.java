@@ -29,8 +29,10 @@ import java.util.TreeMap;
 public final class DiagnosticBundles {
 
     public static final int FAILURES = 50;
-    private static final List<String> VERSION_TABLES = List.of("idn_schema_version", "lic_schema_version",
-            "notif_schema_version", "fld_schema_version", "erl_schema_version", "int_schema_version");
+    /** The version table of every platform schema (P040, install-monitoring-5: model governance's was missing). */
+    static final List<String> VERSION_TABLES = List.of("idn_schema_version", "lic_schema_version",
+            "notif_schema_version", "fld_schema_version", "erl_schema_version", "int_schema_version",
+            "mg_schema_version");
 
     private final DependencyStatus status;
     private final Environment env;

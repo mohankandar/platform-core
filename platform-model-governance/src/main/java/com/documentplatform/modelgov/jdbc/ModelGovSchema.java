@@ -198,8 +198,8 @@ public final class ModelGovSchema {
         }
         if (!lacking.isEmpty()) {
             throw new ModelGovSchemaException(MG_PRIVILEGES_MISSING, "The app's database user lacks "
-                    + String.join(", ", lacking) + " on " + table + ": grant SELECT, INSERT, UPDATE and DELETE on the "
-                    + "mg_ tables (and SELECT on " + VERSION_TABLE + ") to that user.");
+                    + String.join(", ", lacking) + " on " + table + ": grant " + String.join(", ", lacking) + " on " + table
+                    + " to that user (the rights per table are in docs/install/model-governance.md section 1).");
         }
     }
 }
