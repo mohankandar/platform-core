@@ -113,6 +113,18 @@ Package `com.documentplatform.modelgov`, plain Java, depends only on platform-er
   `mg_validation`, `mg_validation_measure`, `mg_approval`, `mg_acceptance`, `mg_live_history` refuse UPDATE, DELETE
   and TRUNCATE by trigger, even for the owner); `InMemoryModelGovStore` in the testkit with the same rules.
 
+### Decisions (P033)
+
+1. **The forbidden role is checked before the approver role.** A person who holds both gets `MOD_APPROVER_CONFLICT`,
+   the rule that matters, and so does someone who holds only the Business Admin role.
+2. **Acceptance needs an eligible approver.** `accept` runs the same check as `approve`: an approver role and no
+   forbidden role. The design says who accepts is recorded, not which role; this is the stricter reading.
+3. **Validations, go-live and rollback are per use and entity**, also for a use of every entity (`entity` null): a
+   validation is always for one entity, and the gate, `goLive` and `rollback` take the use and the entity.
+4. **Thresholds are replaced in place.** `mg_threshold` is not insert only: a new pass mark replaces the old one (the
+   row keeps who set it and when), and each change goes to the app's `ModelGovAudit`. The evidence is the copy of the
+   pass marks in force in each validation record, which is insert only.
+
 ## 10. As built (P034)
 
 - **Monitoring intake (`ModelMeasures`):** `report(use, entity, measure, value, MeasurePeriod(from, to, samples))`,
@@ -140,7 +152,11 @@ Package `com.documentplatform.modelgov`, plain Java, depends only on platform-er
   `ModelGovSchema.verify` on the app's DataSource before the Postgres store (or the app's `ModelGovStore`); beans
   `ModelGovernance`, `ModelGate`, `ModelMeasures`, `ModelReviews`, `ModelPack`, `ModelGovWorker`; the monitoring check
   `model-governance` (`ModelGovCheck`, when platform-monitoring is present). platform-monitoring-spring's database
-  check also verifies the `mg_` tables when the store is in use.
+  check also verifies the `mg_` tables when the store is in use. **The app may leave out the `ModelGovAudit`
+  bean** (P034 decision 8): register changes are then kept in the history tables only, and a line at startup says
+  so. A missing DataSource
+  with no `ModelGovStore` bean is refused at startup (`MOD_SETTINGS_INVALID`), as is an empty `approver-roles` or
+  `forbidden-roles`.
 
 ### Decisions (P034)
 
