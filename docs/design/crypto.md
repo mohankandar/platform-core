@@ -135,6 +135,18 @@ lower case. Give it the field's normalised value (platform-fields) and the field
 | `CRYPTO_CIPHERTEXT_INVALID` | changed, cut short, reordered, wrong context, or a wrapped key that is not this customer's |
 | `CRYPTO_FORMAT_UNKNOWN` | not a known format or version |
 
+The key destruction command (`crypto destroy-customer-keys`, `CryptoCommand.Code`) adds:
+
+| Code | When |
+|---|---|
+| `CRYPTO_COMMAND_USAGE` | unknown or missing options (for example no `--tenant-id`) |
+| `CRYPTO_DESTROY_NOT_CONFIRMED` | the tenant ID was not typed back (`--confirm`) |
+| `CRYPTO_DESTROY_CONFIRMATION_WRONG` | the tenant ID typed back differs |
+| `CRYPTO_DESTROY_NO_KEYS` | the customer has no keys in the key service |
+| `CRYPTO_DESTROY_RESULT_FILE` | the result file exists already or cannot be created |
+
+Both `CryptoError` and `CryptoCommand.Code` are `PlatformCode`s (P032): message, cause and fix are in their
+`.codes.properties` files and in `docs/errors/platform-error-codes.md`.
 **Nothing secret leaves:** no message, log line or `toString()` holds a token, a secret ID, a data key, a KV value, a
 plaintext, a fingerprinted value or a wrapped key; only ids (customer, key name and version), the setting's name and
 Vault's short error text. `CryptoException` carries no cause. The library logs one DEBUG line (an AppRole login) and
