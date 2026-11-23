@@ -112,6 +112,69 @@ public enum IntegrationCode {
     /** Writing failed for another reason; only the package's .partial folder was touched. */
     INT_FOLDER_WRITE_FAILED("Writing to the export folder failed. Only the package's .partial folder was touched."),
 
+    // ---- Intake: API polling ----
+    /** The list answer has no array of items where the configuration says. */
+    INT_POLL_ITEMS_MISSING("The source's list answer has no list of items where the configuration expects it. Check "
+            + "the items pointer against the source's API."),
+    /** An item without a usable source item ID (missing, not a value, too long); it is reported and left alone. */
+    INT_POLL_ITEM_ID_MISSING("An item in the source's list has no usable ID where the configuration expects it. Check "
+            + "the item ID pointer against the source's API."),
+    /** The next page's cursor or address cannot be used (not a value, or an address on another host). */
+    INT_POLL_NEXT_PAGE_INVALID("The source gave a next page that cannot be followed (an address on another server, or "
+            + "a cursor that is not a value). Check the paging settings against the source's API."),
+    /** The downloaded document could not be kept in the temporary folder (full, no permission). */
+    INT_POLL_STORAGE_FAILED("A downloaded document could not be kept in the app's temporary folder. Check its free "
+            + "space and the service account's rights there."),
+    /** The app's intake handler failed (an error, not an answer): the pass stopped, nothing was acknowledged. */
+    INT_POLL_HANDLER_FAILED,
+
+    // ---- Intake: watched folder or share ----
+    /** The watched folder does not exist (or is not a folder). */
+    INT_WATCH_ROOT_NOT_FOUND("The watched folder does not exist or is not a folder. Create it, or correct the folder "
+            + "in the integration's configuration."),
+    /** The service account may not read, create, rename or delete in the watched folder. */
+    INT_WATCH_NO_PERMISSION("The app's service account may not work in the watched folder. Give it the right to list, "
+            + "read, create, rename and delete folders and files there."),
+    /** The network share cannot be reached (before or during a pass). */
+    INT_WATCH_SHARE_UNREACHABLE("The watched folder's network share cannot be reached (server down, share removed, "
+            + "network or sign-in problem). Drops already claimed are released by themselves after the claim time."),
+    /** The trigger file cannot be read: malformed JSON or XML, too large, too deep, or a DTD or entity in XML. */
+    INT_WATCH_TRIGGER_UNREADABLE("The drop's trigger file cannot be read (it is not well-formed JSON or XML, it is too "
+            + "large or too deeply nested, or the XML has a DTD or entities). The drop was moved to _problem; fix the "
+            + "file and put the drop back."),
+    /** The claim was lost: another app instance took the drop first, or a stuck claim was released meanwhile. */
+    INT_WATCH_CLAIM_LOST,
+    /** Moving a drop (to _processing, _archive, _problem or _quarantine) failed. */
+    INT_WATCH_MOVE_FAILED("A drop could not be moved inside the watched folder. Check the service account's right to "
+            + "rename and delete there, and that no other program holds the files open."),
+    /** A file of the drop changed after it was claimed (its checksum or size differs). */
+    INT_WATCH_FILE_CHANGED("A file of the drop changed after the app took it. The customer's process must finish "
+            + "writing every file before it writes the trigger file. The drop was moved to _problem."),
+    /**
+     * The drop cannot be taken as it is: a link (symbolic link or junction) or a folder inside it, more files than
+     * the limit, a file larger than the limit, or a trigger name that two files match.
+     */
+    INT_WATCH_DROP_INVALID("The drop cannot be taken: it holds a link or a folder, more files than allowed, a file "
+            + "larger than allowed, or more than one trigger file. The drop was moved to _problem."),
+    /** Files present without their trigger after the incomplete-drop time (reported once; nothing is moved). */
+    INT_WATCH_INCOMPLETE("A drop has files but no trigger file after the waiting time. The customer's process may have "
+            + "stopped before writing the trigger file. Nothing was moved."),
+    /** The app refused the drop; its own code is in problem.json. */
+    INT_WATCH_REFUSED,
+    /** The app's intake handler failed (an error, not an answer): the drop was put back, to be tried again. */
+    INT_WATCH_HANDLER_FAILED,
+
+    // ---- Virus scan ----
+    /** The scanner found a virus: the file is quarantined and never handed over. */
+    INT_SCAN_INFECTED("The virus scanner found a virus in an incoming file. The file was quarantined and not "
+            + "processed. Tell the sender; delete the quarantined copy after checking it."),
+    /** The scanner answered with an error or something that is not a scan result. The file is held, never let through. */
+    INT_SCAN_FAILED("The virus scanner could not scan an incoming file (it answered with an error). The file is held "
+            + "and scanned again at the next pass. Check the scanner's log."),
+    /** The scanner cannot be reached or did not answer in time. The file is held, never let through. */
+    INT_SCAN_UNREACHABLE("The virus scanner cannot be reached or did not answer in time. Incoming files are held until "
+            + "it answers. Check the scanner's address, port and firewall."),
+
     // ---- Sign-in bundle ----
     INT_SECRET_NOT_FOUND,
     INT_SECRET_UNAVAILABLE,
@@ -239,6 +302,16 @@ public enum IntegrationCode {
      * with a Location reference), no done or failed values, or the same value in two lists.
      */
     INT_CONFIG_ACCEPTED_INVALID,
+    /**
+     * API polling: no poll source, or one whose steps, pointers, paging or values are not valid (a body on a GET, a
+     * placeholder where it cannot go, a page size or page count out of range).
+     */
+    INT_CONFIG_POLL_INVALID,
+    /**
+     * Watched folder: no source, a root that is not an absolute local or share path, a trigger pattern that is not
+     * valid, a mapping that is not a JSON pointer or XML path, or times and limits out of range; or the hosted service.
+     */
+    INT_CONFIG_WATCH_INVALID,
     INT_CONFIG_RULE_INVALID,
     INT_CONFIG_STEPS_INVALID,
     INT_CONFIG_VERSION_CONFLICT,

@@ -65,34 +65,7 @@ public final class ConfigJson {
         l.put("maxPackageBytes", c.limits().maxPackageBytes());
         m.put("limits", l);
         List<Object> steps = new ArrayList<>();
-        for (CallStep s : c.steps()) {
-            Map<String, Object> sm = new LinkedHashMap<>();
-            sm.put("name", s.name());
-            sm.put("method", s.method().name());
-            sm.put("path", s.path());
-            sm.put("headers", new LinkedHashMap<>(s.headers()));
-            sm.put("body", s.body().name());
-            if (s.bodyTemplate() != null) sm.put("bodyTemplate", s.bodyTemplate());
-            sm.put("repeat", s.repeat().name());
-            sm.put("read", new LinkedHashMap<>(s.read()));
-            sm.put("required", new ArrayList<>(new java.util.TreeSet<>(s.required())));
-            if (!s.rules().isEmpty()) sm.put("rules", rules(s.rules()));
-            if (s.multipart() != null) {
-                Map<String, Object> mp = new LinkedHashMap<>();
-                mp.put("jsonPart", s.multipart().jsonPart());
-                mp.put("filePart", s.multipart().filePart());
-                mp.put("fileName", s.multipart().fileNameTemplate());
-                sm.put("multipart", mp);
-            }
-            if (s.integrity() != null) {
-                Map<String, Object> in = new LinkedHashMap<>();
-                if (s.integrity().sha256Value() != null) in.put("sha256Value", s.integrity().sha256Value());
-                if (s.integrity().sizeValue() != null) in.put("sizeValue", s.integrity().sizeValue());
-                sm.put("integrity", in);
-            }
-            if (s.accepted() != null) sm.put("accepted", accepted(s.accepted()));
-            steps.add(sm);
-        }
+        for (CallStep s : c.steps()) steps.add(stepMap(s));
         m.put("steps", steps);
         if (c.errorCodePointer() != null) m.put("errorCodePointer", c.errorCodePointer());
         m.put("rules", rules(c.rules()));
@@ -121,7 +94,100 @@ public final class ConfigJson {
             cb.put("signingSecret", c.callback().signingSecret().value());
             m.put("callback", cb);
         }
+        if (c.poll() != null) m.put("poll", poll(c.poll()));
+        if (c.watch() != null) m.put("watch", watch(c.watch()));
         return m;
+    }
+
+    private static Map<String, Object> stepMap(CallStep s) {
+        Map<String, Object> sm = new LinkedHashMap<>();
+        sm.put("name", s.name());
+        sm.put("method", s.method().name());
+        sm.put("path", s.path());
+        sm.put("headers", new LinkedHashMap<>(s.headers()));
+        sm.put("body", s.body().name());
+        if (s.bodyTemplate() != null) sm.put("bodyTemplate", s.bodyTemplate());
+        sm.put("repeat", s.repeat().name());
+        sm.put("read", new LinkedHashMap<>(s.read()));
+        sm.put("required", new ArrayList<>(new java.util.TreeSet<>(s.required())));
+        if (!s.rules().isEmpty()) sm.put("rules", rules(s.rules()));
+        if (s.multipart() != null) {
+            Map<String, Object> mp = new LinkedHashMap<>();
+            mp.put("jsonPart", s.multipart().jsonPart());
+            mp.put("filePart", s.multipart().filePart());
+            mp.put("fileName", s.multipart().fileNameTemplate());
+            sm.put("multipart", mp);
+        }
+        if (s.integrity() != null) {
+            Map<String, Object> in = new LinkedHashMap<>();
+            if (s.integrity().sha256Value() != null) in.put("sha256Value", s.integrity().sha256Value());
+            if (s.integrity().sizeValue() != null) in.put("sizeValue", s.integrity().sizeValue());
+            sm.put("integrity", in);
+        }
+        if (s.accepted() != null) sm.put("accepted", accepted(s.accepted()));
+        return sm;
+    }
+
+    private static Map<String, Object> poll(PollSource p) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("list", stepMap(p.list()));
+        m.put("itemsPointer", p.itemsPointer());
+        m.put("idPointer", p.idPointer());
+        if (!p.values().isEmpty()) m.put("values", new LinkedHashMap<>(p.values()));
+        if (p.fileNameValue() != null) m.put("fileNameValue", p.fileNameValue());
+        PollSource.Paging g = p.paging();
+        Map<String, Object> pg = new LinkedHashMap<>();
+        pg.put("mode", g.mode().name());
+        if (g.pointer() != null) pg.put("pointer", g.pointer());
+        if (g.param() != null) pg.put("param", g.param());
+        if (g.sizeParam() != null) pg.put("sizeParam", g.sizeParam());
+        pg.put("pageSize", (long) g.pageSize());
+        pg.put("firstPage", (long) g.firstPage());
+        pg.put("maxPagesPerPass", (long) g.maxPagesPerPass());
+        pg.put("resume", g.resume().name());
+        m.put("paging", pg);
+        m.put("download", stepMap(p.download()));
+        if (p.acknowledge() != null) m.put("acknowledge", stepMap(p.acknowledge()));
+        return m;
+    }
+
+    private static Map<String, Object> watch(WatchSource w) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("root", w.root());
+        m.put("layout", w.layout().name());
+        m.put("trigger", w.triggerPattern());
+        m.put("triggerType", w.triggerType().name());
+        m.put("stableForSeconds", w.stableFor().toSeconds());
+        m.put("incompleteAfterSeconds", w.incompleteAfter().toSeconds());
+        m.put("claimTimeoutSeconds", w.claimTimeout().toSeconds());
+        m.put("maxDropsPerPass", (long) w.maxDropsPerPass());
+        m.put("maxTriggerBytes", w.maxTriggerBytes());
+        if (!w.mapping().isEmpty()) m.put("mapping", new LinkedHashMap<>(w.mapping()));
+        if (w.fileListValue() != null) m.put("fileListValue", w.fileListValue());
+        return m;
+    }
+
+    private static PollSource poll(Map<String, Object> m) {
+        if (m == null) return null;
+        Map<String, Object> pg = map(m, "paging");
+        PollSource.Paging paging = new PollSource.Paging(PollSource.Paging.Mode.valueOf(str(pg, "mode")),
+                (String) pg.get("pointer"), (String) pg.get("param"), (String) pg.get("sizeParam"),
+                (int) num(pg, "pageSize"), (int) num(pg, "firstPage"), (int) num(pg, "maxPagesPerPass"),
+                PollSource.Paging.Resume.valueOf(str(pg, "resume")));
+        return new PollSource(readStep(map(m, "list")), str(m, "itemsPointer"), str(m, "idPointer"),
+                m.containsKey("values") ? strings(map(m, "values")) : Map.of(), (String) m.get("fileNameValue"),
+                paging, readStep(map(m, "download")),
+                m.containsKey("acknowledge") ? readStep(map(m, "acknowledge")) : null);
+    }
+
+    private static WatchSource watch(Map<String, Object> m) {
+        if (m == null) return null;
+        return new WatchSource(str(m, "root"), WatchSource.Layout.valueOf(str(m, "layout")), str(m, "trigger"),
+                WatchSource.TriggerType.valueOf(str(m, "triggerType")),
+                Duration.ofSeconds(num(m, "stableForSeconds")), Duration.ofSeconds(num(m, "incompleteAfterSeconds")),
+                Duration.ofSeconds(num(m, "claimTimeoutSeconds")), (int) num(m, "maxDropsPerPass"),
+                num(m, "maxTriggerBytes"), m.containsKey("mapping") ? strings(map(m, "mapping")) : Map.of(),
+                (String) m.get("fileListValue"));
     }
 
     private static Map<String, Object> accepted(CallStep.Accepted a) {
@@ -234,7 +300,8 @@ public final class ConfigJson {
                             "allowedSensitiveFields"))) : Set.of(),
                     m.containsKey("settings") ? strings(map(m, "settings")) : Map.of(), folder(optMap(m, "folder")),
                     m.containsKey("callback")
-                            ? new CallbackTarget(SecretRef.of(str(map(m, "callback"), "signingSecret"))) : null);
+                            ? new CallbackTarget(SecretRef.of(str(map(m, "callback"), "signingSecret"))) : null,
+                    poll(optMap(m, "poll")), watch(optMap(m, "watch")));
         } catch (Unreadable u) {
             throw u;
         } catch (RuntimeException bad) {
@@ -314,15 +381,32 @@ public final class ConfigJson {
         List<CallStep> steps = new ArrayList<>();
         for (Object o : raw) {
             @SuppressWarnings("unchecked") Map<String, Object> s = (Map<String, Object>) o;
-            Set<String> required = new HashSet<>(stringList(list(s, "required")));
-            steps.add(new CallStep(str(s, "name"), HttpMethod.valueOf(str(s, "method")), str(s, "path"),
-                    strings(map(s, "headers")), CallStep.Body.valueOf(str(s, "body")),
-                    (String) s.get("bodyTemplate"), CallStep.Repeat.valueOf(str(s, "repeat")),
-                    strings(map(s, "read")), required,
-                    s.containsKey("rules") ? readRuleList(list(s, "rules")) : List.of(), multipart(s), integrity(s),
-                    accepted(s)));
+            steps.add(readStep(s));
         }
         return steps;
+    }
+
+    private static CallStep readStep(Map<String, Object> s) {
+        Set<String> required = new HashSet<>(stringList(list(s, "required")));
+        return new CallStep(str(s, "name"), HttpMethod.valueOf(str(s, "method")), str(s, "path"),
+                strings(map(s, "headers")), CallStep.Body.valueOf(str(s, "body")),
+                (String) s.get("bodyTemplate"), CallStep.Repeat.valueOf(str(s, "repeat")),
+                strings(map(s, "read")), required,
+                s.containsKey("rules") ? readRuleList(list(s, "rules")) : List.of(), multipart(s), integrity(s),
+                accepted(s));
+    }
+
+    /** A poll source as data, from a JSON object (the same shape as in a stored configuration), for profiles. */
+    public static PollSource readPoll(String jsonObject) {
+        try {
+            return poll(Json.object(jsonObject));
+        } catch (Json.Invalid e) {
+            throw new Unreadable("poll not JSON");
+        } catch (Unreadable u) {
+            throw u;
+        } catch (RuntimeException bad) {
+            throw new Unreadable("the poll source is not valid");
+        }
     }
 
     /** Rules as data, from a JSON array (the same shape as in a stored configuration), for profiles. */

@@ -31,6 +31,8 @@ import java.util.regex.Pattern;
  *       In JSON outside a string it is written by its type (number, text, address object, list for a multi-value
  *       field); inside a string, in a header or a path, as its text</li>
  *   <li>{@code {step.<step>.<value>}}: a value read from an earlier step's answer</li>
+ *   <li>{@code {item.id}}, {@code {item.<name>}}: API polling only, in the download and acknowledge steps: the polled
+ *       item's source ID and the values read from it</li>
  * </ul>
  * The one list construct, JSON only: {@code [{#each doc}{"id":"{doc.sourceDocumentId}"}{/each}]} writes the part
  * between the markers once per document, separated by commas. It cannot be nested.
@@ -103,6 +105,9 @@ public final class Template {
     public static final String EACH_END = "{/each}";
     public static final String FIELD_PREFIX = "field:";
     public static final String ATTR_PREFIX = "doc.attr.";
+    /** API polling: {@code {item.id}} and {@code {item.<name>}}, the polled item's ID and values read from it. */
+    public static final String ITEM = "item";
+    public static final String ITEM_ID = "item.id";
 
     public static final Set<String> NUMERIC = Set.of("package.documentCount", "doc.size");
     public static final Set<String> FIXED = Set.of("correlationId", "package.id", "package.documentCount",
@@ -243,6 +248,8 @@ public final class Template {
         if (FIXED.contains(name) || name.equals(CallStep.Accepted.REFERENCE)) return;
         String[] seg = name.split("\\.", -1);
         if (seg.length == 2 && seg[0].equals("value") && NAME.matcher(seg[1]).matches()) return;
+        // API polling: the polled item's ID and the values read from it (download and acknowledge steps only).
+        if (seg.length == 2 && seg[0].equals(ITEM) && NAME.matcher(seg[1]).matches()) return;
         if (seg.length == 3 && seg[0].equals("doc") && seg[1].equals("attr") && NAME.matcher(seg[2]).matches()) {
             return;
         }

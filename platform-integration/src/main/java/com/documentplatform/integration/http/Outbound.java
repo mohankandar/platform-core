@@ -204,6 +204,26 @@ public final class Outbound implements AutoCloseable {
      */
     public Answer send(Call call, Duration connectTimeout, int maxResponseBytes, boolean useProxy,
                        ClientCertificate certificate) throws Failure {
+        return send(call, connectTimeout, maxResponseBytes, useProxy, certificate, null);
+    }
+
+    /**
+     * Receives a 2xx answer's body as a stream (a download), instead of it being read into memory. It reads what it
+     * wants and keeps its own limit; its own local failures (a full disk) it records itself and returns. An
+     * {@link IOException} it throws is a network failure ({@code INT_TIMEOUT}, {@code INT_CONNECTION_LOST}).
+     */
+    @FunctionalInterface
+    public interface BodySink {
+        /** @return true when it read the body to its end; false when it stopped early (the connection is dropped) */
+        boolean read(InputStream body) throws IOException;
+    }
+
+    /**
+     * As {@link #send(Call, Duration, int, boolean, ClientCertificate)}; a 2xx answer's body goes to {@code sink}
+     * (the answer then has an empty body). Any other answer is read up to {@code maxResponseBytes} as usual.
+     */
+    public Answer send(Call call, Duration connectTimeout, int maxResponseBytes, boolean useProxy,
+                       ClientCertificate certificate, BodySink sink) throws Failure {
         URI uri = call.uri();
         String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
         if (!scheme.equals("https") && !(scheme.equals("http") && installation.allowPlainHttp())) {
@@ -262,6 +282,20 @@ public final class Outbound implements AutoCloseable {
             }
             HttpEntity entity = response.getEntity();
             byte[] body = new byte[0];
+            if (sink != null && status / 100 == 2) {
+                InputStream in = entity == null ? InputStream.nullInputStream() : entity.getContent();
+                try {
+                    if (!sink.read(in) && in instanceof org.apache.hc.core5.http.io.EofSensorInputStream e) {
+                        e.abort(); // stopped early: the connection is dropped, never drained
+                    }
+                    in.close();
+                } catch (SocketTimeoutException e) {
+                    throw new Failure(IntegrationCode.INT_TIMEOUT);
+                } catch (IOException e) {
+                    throw new Failure(IntegrationCode.INT_CONNECTION_LOST);
+                }
+                return new Answer(status, headers(response), body, false);
+            }
             if (entity != null) {
                 try (InputStream in = entity.getContent()) {
                     body = in.readNBytes(maxResponseBytes + 1);

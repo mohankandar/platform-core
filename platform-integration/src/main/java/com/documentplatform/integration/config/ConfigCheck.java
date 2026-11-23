@@ -75,6 +75,9 @@ public final class ConfigCheck {
 
         if (c.kind() == Kind.FOLDER_EXPORT) {
             folder(c, installation, errors, fieldLists);
+        } else if (c.kind() == Kind.WATCHED_FOLDER) {
+            if (c.folder() != null) errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_INVALID, "folder", null));
+            watch(c, installation, errors);
         } else {
             if (c.folder() != null) errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_INVALID, "folder", null));
             if (c.kind() == Kind.CALLBACK && c.signIn() instanceof SignIn.None) {
@@ -109,8 +112,17 @@ public final class ConfigCheck {
 
         if (c.kind() == Kind.API_PUSH) {
             steps(c, errors, fieldLists);
-        } else if (!c.steps().isEmpty() && c.kind() != Kind.API_POLL) {
+        } else if (!c.steps().isEmpty()) {
+            // API polling has its calls in its poll source.
             errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_STEPS_INVALID, "steps", null));
+        }
+        if (c.kind() == Kind.API_POLL) {
+            poll(c, errors);
+        } else if (c.poll() != null) {
+            errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_POLL_INVALID, "poll", null));
+        }
+        if (c.kind() != Kind.WATCHED_FOLDER && c.watch() != null) {
+            errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_WATCH_INVALID, "watch", null));
         }
 
         if (c.health() != null) {
@@ -184,6 +196,161 @@ public final class ConfigCheck {
         if (f.fileNameTemplate() != null) {
             nameTemplate(f.fileNameTemplate(), "folder.fileName", true, c, fields, fieldLists != null, errors);
         }
+    }
+
+    private static final Pattern QUERY_NAME = Pattern.compile("[A-Za-z0-9_.\\[\\]-]{1,64}");
+
+    /**
+     * API polling: list, download and acknowledge calls from the fixed building blocks (run once each time, no body
+     * or a JSON body, headers as for push), pointers, paging in range; the list call may use only
+     * {@code {correlationId}}, the per-item calls also {@code {item.id}} and {@code {item.<name>}} for values read.
+     */
+    private static void poll(IntegrationConfig c, List<ConfigProblem> errors) {
+        PollSource p = c.poll();
+        if (p == null) {
+            errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_POLL_INVALID, "poll", null));
+            return;
+        }
+        String apiKeyHeader = SignIn.headerSignIn(c.signIn()) instanceof SignIn.ApiKey k
+                ? k.header().toLowerCase(Locale.ROOT) : null;
+        if (!p.itemsPointer().isEmpty() && !Json.isPointer(p.itemsPointer())) bad(errors, "poll.itemsPointer");
+        if (!Json.isPointer(p.idPointer()) || p.idPointer().isEmpty()) bad(errors, "poll.idPointer");
+        for (Map.Entry<String, String> v : p.values().entrySet()) {
+            if (!CallStep.NAME.matcher(v.getKey()).matches() || v.getKey().equals("id")
+                    || !Json.isPointer(v.getValue())) {
+                bad(errors, "poll.values." + v.getKey());
+            }
+        }
+        if (p.values().size() > 50) bad(errors, "poll.values");
+        if (p.fileNameValue() != null && !p.values().containsKey(p.fileNameValue())) bad(errors, "poll.fileNameValue");
+        pollStep(p.list(), "poll.list", false, p, apiKeyHeader, errors);
+        pollStep(p.download(), "poll.download", true, p, apiKeyHeader, errors);
+        if (p.acknowledge() != null) pollStep(p.acknowledge(), "poll.acknowledge", true, p, apiKeyHeader, errors);
+        PollSource.Paging g = p.paging();
+        boolean ok = g.pageSize() >= 1 && g.pageSize() <= PollSource.Paging.MAX_PAGE_SIZE
+                && g.maxPagesPerPass() >= 1 && g.maxPagesPerPass() <= PollSource.Paging.MAX_PAGES
+                && (g.sizeParam() == null || QUERY_NAME.matcher(g.sizeParam()).matches())
+                && (g.pointer() == null || Json.isPointer(g.pointer()));
+        switch (g.mode()) {
+            case NONE -> ok &= g.pointer() == null && g.param() == null && g.maxPagesPerPass() == 1;
+            case CURSOR -> ok &= g.pointer() != null && g.param() != null && QUERY_NAME.matcher(g.param()).matches();
+            case NEXT_LINK -> ok &= g.param() == null;
+            case PAGE_NUMBER -> ok &= g.pointer() == null && g.param() != null
+                    && QUERY_NAME.matcher(g.param()).matches() && (g.firstPage() == 0 || g.firstPage() == 1);
+        }
+        if (g.param() != null && g.param().equals(g.sizeParam())) ok = false;
+        if (!ok) bad(errors, "poll.paging");
+    }
+
+    private static void pollStep(CallStep s, String at, boolean perItem, PollSource p, String apiKeyHeader,
+                                 List<ConfigProblem> errors) {
+        boolean ok = s.repeat() == CallStep.Repeat.ONCE && s.multipart() == null && s.integrity() == null
+                && s.accepted() == null && (s.body() == CallStep.Body.NONE || s.body() == CallStep.Body.JSON)
+                && s.method() != HttpMethod.HEAD
+                && !(s.body() == CallStep.Body.JSON && s.method() == HttpMethod.GET)
+                && s.rules().size() <= MAX_RULES && s.read().isEmpty();
+        if (!perItem) ok &= s.method() == HttpMethod.GET || s.method() == HttpMethod.POST;
+        if (!ok) bad(errors, at);
+        List<Placed> templates = new ArrayList<>();
+        parse(s.path(), Template.Place.PATH, at + ".path", false, templates, errors);
+        Set<String> seenHeaders = new HashSet<>();
+        for (Map.Entry<String, String> h : s.headers().entrySet()) {
+            String lower = h.getKey().toLowerCase(Locale.ROOT);
+            String hw = at + ".headers." + h.getKey();
+            if (!SignIn.HEADER_NAME.matcher(h.getKey()).matches() || !seenHeaders.add(lower)) {
+                errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_HEADER_INVALID, hw, null));
+            } else if (RESERVED_HEADERS.contains(lower) || lower.equals(apiKeyHeader)) {
+                errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_HEADER_RESERVED, hw, null));
+            } else {
+                parse(h.getValue(), Template.Place.HEADER, hw, false, templates, errors);
+            }
+        }
+        if (s.body() == CallStep.Body.JSON) {
+            Placed body = parse(s.bodyTemplate(), Template.Place.JSON, at + ".bodyTemplate", false, templates, errors);
+            if (body != null) {
+                try {
+                    if (body.template().hasEach() || !body.template().optionalPlaceholders().isEmpty()) {
+                        throw new Json.Invalid();
+                    }
+                    Json.parse(body.template().fill(SAMPLE));
+                } catch (Json.Invalid | Template.Problem e) {
+                    errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_BODY_NOT_JSON, at + ".bodyTemplate", null));
+                }
+            }
+        }
+        for (Placed t : templates) {
+            for (String ph : t.template().placeholders()) {
+                boolean allowed = ph.equals("correlationId")
+                        || perItem && (ph.equals(Template.ITEM_ID) || ph.startsWith(Template.ITEM + ".")
+                        && p.values().containsKey(ph.substring(Template.ITEM.length() + 1)));
+                if (!allowed) errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_PLACEHOLDER_PLACE, t.where(), ph));
+            }
+        }
+    }
+
+    /**
+     * Watched folder: not on the hosted service; no endpoint, health call or sign-in bundle (the service account's
+     * rights); an absolute local or share root; a valid trigger pattern; times and limits in range; a mapping only for
+     * a JSON or XML trigger, each path valid for its type; the file list one of the mapped values.
+     */
+    private static void watch(IntegrationConfig c, Installation installation, List<ConfigProblem> errors) {
+        if (installation.hosted()) {
+            errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_FOLDER_HOSTED, "watch", null));
+        }
+        if (c.endpoint() != null) errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_INVALID, "endpoint", null));
+        if (c.health() != null) errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_INVALID, "health", null));
+        if (!(c.signIn() instanceof SignIn.None)) {
+            errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_INVALID, "signIn", null));
+        }
+        WatchSource w = c.watch();
+        if (w == null) {
+            errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_WATCH_INVALID, "watch", null));
+            return;
+        }
+        if (!FolderTarget.validFolder(w.root())) watchBad(errors, "watch.root");
+        if (!WatchSource.validPattern(w.triggerPattern())) watchBad(errors, "watch.trigger");
+        if (w.layout() == WatchSource.Layout.BASE_NAME && w.triggerPattern().indexOf('.') < 0) {
+            watchBad(errors, "watch.trigger"); // the trigger must differ from its drop's files by its extension
+        }
+        if (!within(w.stableFor(), java.time.Duration.ofSeconds(1), java.time.Duration.ofHours(1))) {
+            watchBad(errors, "watch.stableFor");
+        }
+        if (!within(w.incompleteAfter(), java.time.Duration.ofMinutes(1), java.time.Duration.ofDays(7))
+                || w.incompleteAfter().compareTo(w.stableFor()) <= 0) {
+            watchBad(errors, "watch.incompleteAfter");
+        }
+        if (!within(w.claimTimeout(), java.time.Duration.ofMinutes(1), java.time.Duration.ofHours(24))) {
+            watchBad(errors, "watch.claimTimeout");
+        }
+        if (w.maxDropsPerPass() < 1 || w.maxDropsPerPass() > 1000) watchBad(errors, "watch.maxDropsPerPass");
+        if (w.maxTriggerBytes() < 1 || w.maxTriggerBytes() > WatchSource.MAX_TRIGGER_BYTES) {
+            watchBad(errors, "watch.maxTriggerBytes");
+        }
+        if (w.triggerType() == WatchSource.TriggerType.MARKER && !w.mapping().isEmpty()) {
+            watchBad(errors, "watch.mapping");
+        }
+        if (w.mapping().size() > 100) watchBad(errors, "watch.mapping");
+        for (Map.Entry<String, String> m : w.mapping().entrySet()) {
+            boolean valid = CallStep.NAME.matcher(m.getKey()).matches() && (w.triggerType() == WatchSource.TriggerType.XML
+                    ? com.documentplatform.integration.watch.TriggerValues.validXmlPath(m.getValue())
+                    : com.documentplatform.integration.watch.TriggerValues.validJsonPath(m.getValue()));
+            if (!valid) watchBad(errors, "watch.mapping." + m.getKey());
+        }
+        if (w.fileListValue() != null && !w.mapping().containsKey(w.fileListValue())) {
+            watchBad(errors, "watch.fileListValue");
+        }
+    }
+
+    private static boolean within(java.time.Duration d, java.time.Duration min, java.time.Duration max) {
+        return d.compareTo(min) >= 0 && d.compareTo(max) <= 0;
+    }
+
+    private static void bad(List<ConfigProblem> errors, String where) {
+        errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_POLL_INVALID, where, null));
+    }
+
+    private static void watchBad(List<ConfigProblem> errors, String where) {
+        errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_WATCH_INVALID, where, null));
     }
 
     private static void nameTemplate(String text, String where, boolean fileName, IntegrationConfig c, FieldSet fields,
@@ -463,8 +630,8 @@ public final class ConfigCheck {
     private static void placeholder(String p, CallStep s, Map<String, CallStep> earlier, Placed t, boolean outsideEach,
                                     List<ConfigProblem> errors) {
         boolean perDoc = s.repeat() == CallStep.Repeat.EACH_DOCUMENT;
-        if (p.equals(CallStep.Accepted.REFERENCE)) {
-            // Only in an "accepted, check later" status path.
+        if (p.equals(CallStep.Accepted.REFERENCE) || p.startsWith(Template.ITEM + ".")) {
+            // Only in an "accepted, check later" status path; an item's values only in API polling.
             errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_PLACEHOLDER_PLACE, t.where(), p));
         }
         if (p.startsWith("doc.") && outsideEach && !t.documentContext()) {
