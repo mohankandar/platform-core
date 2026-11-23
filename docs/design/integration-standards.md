@@ -1,15 +1,15 @@
 # Integration standards and operations — requirements (owner-approved, not yet designed)
 
-Recorded 2026-11-21 by the Shared capabilities thread, from the LexaVault capabilities thread's list "Decisions not yet captured in the repos" (items 11–16 and 20). Project docs: `Shared-Capabilities.md` capabilities 4 and 5 and section 6, `Redaction-Capabilities.md`. Each item gets its own design before it is built. Order: after case fields (definitions, then value storage).
+Recorded 2026-11-21 by the Shared capabilities thread, from an app capabilities thread's list "Decisions not yet captured in the repos" (items 11–16 and 20). Project docs: `Shared-Capabilities.md` capabilities 4 and 5 and section 6, `Redaction-Capabilities.md`. Each item gets its own design before it is built. Order: after case fields (definitions, then value storage).
 
-## Round 1 — needed for LexaVault → Vero delivery
+## Round 1 — needed for the first app-to-vault delivery (a redaction app delivering to a document vault)
 
 | # | Requirement | Shared part (platform-core) | App part |
 |---|---|---|---|
 | 11 | **Virus scan on intake, optional (owner, 2026-11-21).** On-premises: used only if the customer provides a scanner; we configure it to their scanner; if they provide none, scanning is off. When on: every incoming file is scanned before processing; infected files are quarantined and never processed; the IT Admin is alerted. (Recommendation to confirm: always on for our hosted service.) | Scanner interface + adapters (e.g. ICAP / ClamAV-style), quarantine rule, alert event, specific failure codes | Call it at intake |
 | 12 | **Status back to the sender:** a status API ("where is case X?") and an optional callback (done or failed). | The **callback**: signed, retried, idempotent (reusing the notifications outbox pattern) | The status API endpoint and its data |
-| 13 | **Integration credentials:** watch folders and file locations use a customer service account; APIs accept mutual TLS (customer client certificate) as well as service-account credentials; one credential per integration per entity; rotation without downtime; expiry warnings to the IT Admin. Today LexaVault refuses mTLS for delivery (0022 #203, #227). | Credential model, mTLS support, rotation with an overlap window, expiry warning events | Use it in each integration |
-| 14 | **Integrity check on delivery** (same checksum idea as intake SHA-256). | Part of the LexaVault → Vero delivery contract (with the case-field delivery format) | Send and verify |
+| 13 | **Integration credentials:** watch folders and file locations use a customer service account; APIs accept mutual TLS (customer client certificate) as well as service-account credentials; one credential per integration per entity; rotation without downtime; expiry warnings to the IT Admin. At the time, the first app refused mTLS for delivery. | Credential model, mTLS support, rotation with an overlap window, expiry warning events | Use it in each integration |
+| 14 | **Integrity check on delivery** (same checksum idea as intake SHA-256). | Part of the app-to-vault delivery contract (with the case-field delivery format) | Send and verify |
 
 ## Round 2 — promised in the contract checklist
 

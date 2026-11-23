@@ -1,16 +1,16 @@
 # platform-integration — shared, configurable integrations (owner-approved 2026-11-21)
 
-Source: the LexaVault thread's request (record: `docs/work/integration-module-decision.md` in secure-document-platform), checked and planned by the Shared capabilities thread. Project doc: `Integration-Module-Design.md`. Builds on `docs/design/integration-standards.md` (requirements 11–16), platform-fields and platform-notifications. Each part gets its detailed design in its task.
+Source: a request from an earlier app's thread (its record is kept in that app's own repository), checked and planned by the Shared capabilities thread. Project doc: `Integration-Module-Design.md`. Builds on `docs/design/integration-standards.md` (requirements 11–16), platform-fields and platform-notifications. Each part gets its detailed design in its task.
 
 ## Why
 
-LexaVault's live run against Vero (0031) found its Vero sender doesn't match Vero R7 (addresses, upload headers, sign-in): earlier tests used a fake built from LexaVault's own contract document. Integrations become **one shared, configurable module, inbound and outbound**. An app picks an integration and configures it. Anything outside the building blocks is a coded extension for that customer, never an app change.
+An earlier app's live run against a document vault's ingestion API found that its sender did not match the vault's released API (addresses, upload headers, sign-in): earlier tests used a fake built from the app's own contract document. Integrations become **one shared, configurable module, inbound and outbound**. An app picks an integration and configures it. Anything outside the building blocks is a coded extension for that customer, never an app change.
 
 ## Split of duties
 
-**platform-core (the module):** configured calls (method, address, header and body templates, response mapping); field mapping by platform-fields keys (e.g. `contract_number` → `loanId`); the sign-in bundle; files in and out; common plumbing. It makes **one attempt** and reports a classified result: **sent / already received / refused with code / sign-in failed / can't connect / busy**. Health check per destination. **Vero R7's ingestion API as a ready-made profile.**
+**platform-core (the module):** configured calls (method, address, header and body templates, response mapping); field mapping by platform-fields keys (e.g. `contract_number` → `loanId`); the sign-in bundle; files in and out; common plumbing. It makes **one attempt** and reports a classified result: **sent / already received / refused with code / sign-in failed / can't connect / busy**. Health check per destination. **No product's API ships here** (P030): an API's owner publishes a profile (`platform-integration-profile/1`, `docs/design/integration-profile-format.md`) next to its spec, and the installation gives the file (`profile.ProfileFolder`). platform-core's own tests use made-up profiles only.
 
-**Each app keeps its workflow.** LexaVault: export job and rules (pause when the health check fails, 5 min–12 h retry schedule, one rebuild, "Waiting for you", IT queue, screens, retention per destination — 0027–0030); intake rules; its own push API specification (callers' sign-in checked with the shared bundle); the manifest's app section (case fields, file list with checksums, redaction status, sensitivity levels).
+**Each app keeps its workflow.** For example, a redaction app: export job and rules (pause when the health check fails, 5 min–12 h retry schedule, one rebuild, "Waiting for you", IT queue, screens, retention per destination); intake rules; its own push API specification (callers' sign-in checked with the shared bundle); the manifest's app section (case fields, file list with checksums, redaction status, sensitivity levels).
 
 ## Catalog
 
@@ -20,7 +20,7 @@ LexaVault's live run against Vero (0031) found its Vero sender doesn't match Ver
 | Export | API push; folder / network share with a manifest JSON written last (common envelope + app section) | SFTP drop (likely early); cloud storage; DMS profiles (SharePoint, Box; iManage, NetDocuments) | Message queue notice |
 | Not offered | Email export | | |
 | Sign-in | None (internal network, on-prem only, off by default, warned, audited, on the compliance report, never hosted); shared secret (user+password, or API key in a header, never in the address); fixed bearer token; OAuth2 client credentials / JWT; mutual TLS (certificate uploaded, stored encrypted, shown only as subject/fingerprint/expiry, expiry warnings, replacement without downtime; or a server keystore); HMAC-signed requests for callbacks | Private-key JWT; Windows sign-in (Kerberos/NTLM); SSH keys (SFTP); cloud access keys / managed identity | |
-| Packaging | Multipart (documents + JSON); two steps, create then upload (Vero's way); one file per call with details in headers | JSON with base64; ZIP bundle; XML / SOAP incl. MISMO (likely early) | |
+| Packaging | Multipart (documents + JSON); two steps, create then upload (as a document vault's API does); one file per call with details in headers | JSON with base64; ZIP bundle; XML / SOAP incl. MISMO (likely early) | |
 | Behaviours (V1) | 202 accepted then status check or callback; paging; 429 / Retry-After; customer's outbound proxy; private certificate authority; request IDs and checksums; size limits and timeouts per integration | | |
 
 ## Safety
@@ -29,9 +29,9 @@ Fixed building blocks, no free scripting; secrets only in the secret store; no d
 
 ## Testing
 
-A **Test** action with fake data on every integration; **contract tests** against each published API (Vero R7 first) in every build; live-system integration tests marked to run only on request.
+A **Test** action with fake data on every integration (API push, folder export, callbacks). For API polling and watched folders the Test is `TestMode.CHECK_ONLY` (their default): the configured HTTP health check, when there is one, and the sign-in; nothing is fetched, claimed or handed to the app (`INT_TEST_CHECKED` when both pass). A `FULL` test of these kinds gives `NOT_CONFIGURED` / `INT_KIND_NOT_SUPPORTED`. A watched folder has no sign-in and no HTTP health check, so its Test says nothing about the folder; its health check (`WatchedFolder.health`) does. **Contract tests** (P030): platform-core's build checks the format, the engine and the mocks with **made-up profiles only**; no product's spec or profile is pinned here. The **contract kit** `ProfileContract` (testkit: `checkAgainstSpec`, `checkAgainstServer`) is for an API's owner, who runs it in their own build against their published profile and spec. Live-system integration tests are marked to run only on request.
 
-**Mock destination server (from `LV-Test-Strategy.md`, owned by platform-core, built with P022/P023):** built from the pinned Vero spec so it can't drift; switches per test or by a small admin call: working, down, slow, busy (429 + Retry-After), unavailable (503), refuses with a code (e.g. `SDV-SEN-006`, `SDV-INT-011`), already received (200 replay, `DUPLICATE_ALREADY_STORED`), sign-in refused (`SDV-AUT-*`), health failing while uploads work and the reverse. Records what it received (headers, fields, checksums; never document text). Also a mock folder/share (can be unwritable or slow) and a mock source API for polling intake. LexaVault uses them from switch-over part 3.
+**Mock destination server (owned by platform-core, built with P022/P023; spec mode since P030):** in spec mode (`MockDestination.specMode(OpenApiSpec, SpecBehaviour)`) it is built from **any** OpenAPI file it is given, so it can't drift from that spec (`ProfileMock` does the same from a profile and its OpenAPI file); switches per test or by a small admin call: working, down, slow, busy (429 + Retry-After), unavailable (503), refuses with a code (the API's own codes), already received (200 replay), sign-in refused, health failing while uploads work and the reverse. Records what it received (headers, JSON field names, checksums; never document text). Also a mock folder/share (`MockFolder`, can be unwritable or slow) and a mock source API for polling intake (`MockSource`). Apps use them in their own tests.
 
 ## What platform-core already has (checked 2026-11-21)
 
@@ -44,20 +44,22 @@ A **Test** action with fake data on every integration; **contract tests** agains
 | Field keys, types, delivery format key + type + value, receiving-side verifier | platform-fields (P017) |
 | Requirements: virus scan (optional), credentials / mTLS / rotation / expiry warnings, delivery integrity, callback, health and diagnostics, API standard | `integration-standards.md` rounds 1–2 (requirements only, not designed) |
 
-**Missing (to build):** the configured-call engine and templates, response mapping, field mapping to external names, packaging modes, 202 + status/callback, paging, outbound proxy and private CA, cloud-metadata guard, "None" and bearer sign-in, mTLS certificate upload and encrypted storage, per-destination health and Test action, configuration audit and versioning, folder export with manifest last, API polling intake, watched-folder intake with per-customer trigger files, the Vero R7 profile and contract tests.
+**How the table was used (P022 B decision 2, P028):** integration did **not** reuse the notifications plumbing, so as not to pull in the notification engine. It copied the small shared pieces (Retry-After, no redirects, status mapping) and built its own generic token client (`signin.ClientCredentialsTokens`). Since P028 that HTTP code lives in `platform-outbound` (section "P028" below), which integration and identity both use. Only `SecretResolver` / `SecretRef` and `RetryPolicy` still come from platform-notifications.
 
-**Prerequisite found:** encrypted storage (mTLS certificates here, sensitive case-field values in P019) needs the **secrets and encryption module** (capability 6: move Vero's `sdv-crypto` — Vault client, envelope encryption, keyed fingerprints) **first**.
+**Missing (to build):** the configured-call engine and templates, response mapping, field mapping to external names, packaging modes, 202 + status/callback, paging, outbound proxy and private CA, cloud-metadata guard, "None" and bearer sign-in, mTLS certificate upload and encrypted storage, per-destination health and Test action, configuration audit and versioning, folder export with manifest last, API polling intake, watched-folder intake with per-customer trigger files, the profile format and its contract kit (first planned as one product's profile and contract tests; replaced by P030).
 
-## Vero R7 profile: decisions (2026-11-21, LexaVault and SDV threads, owner)
+**Prerequisite found:** encrypted storage (mTLS certificates here, sensitive case-field values in P019) needs the **secrets and encryption module** (capability 6: move a document vault's crypto code — Vault client, envelope encryption, keyed fingerprints) **first**.
 
-1. **Pinned contract.** On merging Vero 0040, Vero tags the merge commit `sdv-ingestion-v1.0.0`. Platform-core keeps its own copy of `sdv-ingestion-v1.openapi.json` (source: `secure-document-vault` `docs/api/`, error codes in `docs/api/error-codes.md`), with the version and source commit noted. Contract tests run against that copy, updated deliberately with each Vero release that changes the API.
-2. **The claim Vero calls "tenant" means the entity (`ENT-…`)**, not the customer; Vero renames it "entity" at its switch-over.
-3. **Lookup, not custom claims.** Vero finds the entity and source from the verified client ID via `MachineEntityBindings` (one credential per integration per entity). Tokens need only the standard audience and subject; any entity or source claims present must match the binding or the call is refused. *(Target state. Updated 2026-11-22: R7 still requires custom claims; the profile supports both until Vero builds the lookup before the first install — see "Decisions on the P022 proposal", item 1.)*
-4. Sign-in: OAuth2 client credentials. Health: `/actuator/health/readiness`. Build the profile once Vero 0040 is merged.
+## A document vault's ingestion profile: decisions (2026-11-21, the app threads, owner; profile parts replaced by P030)
 
-## Registering integration client IDs (LexaVault thread decision, 2026-11-21)
+1. **Pinned contract** (replaced by P030). The plan was for platform-core to keep its own copy of the vault's OpenAPI file, pinned at the vault's release tag, with contract tests against that copy. P030 removed the copy, the profile and those tests: no product's spec or profile is kept here. The API's owner publishes the profile next to its spec and runs the contract kit (`ProfileContract`) in its own build.
+2. **A claim the vault called "tenant" means the entity (`ENT-…`)**, not the customer; the vault renames it "entity".
+3. **Lookup, not custom claims.** A receiving app finds the entity and source from the verified client ID via `MachineEntityBindings` (one credential per integration per entity). Tokens need only the standard audience and subject; any entity or source claims present must match the binding or the call is refused. Since P028 this is identity's `push.PushCaller` (`docs/design/setup.md` section 8). *(Target state. Updated 2026-11-22: the vault's release then still required custom claims; a profile can support both, see "Decisions on the P022 proposal", item 1.)*
+4. Sign-in: OAuth 2.0 client credentials; health: the API's readiness address. Since P030 these are data in the owner's published profile, not here.
 
-Applies to Vero's and LexaVault's own push-API callers.
+## Registering integration client IDs (app thread decision, 2026-11-21)
+
+Applies to every app's own push-API callers.
 
 - **Now (A):** the setup command loads an input file next to the role mapping: client ID → entity → source. Safe to rerun.
 - **Rules:**
@@ -73,23 +75,23 @@ Applies to Vero's and LexaVault's own push-API callers.
 
 | Task | What |
 |---|---|
-| P018 | **platform-crypto**: move Vero's `sdv-crypto` (read-only source) — Vault client, AES-256-GCM envelope encryption, keyed fingerprint (HMAC) for exact-match search, key-service plug-in point |
+| P018 | **platform-crypto**: move a document vault's crypto code (read-only source) — Vault client, AES-256-GCM envelope encryption, keyed fingerprint (HMAC) for exact-match search, key-service plug-in point |
 | P019 | Case field **values**: encrypted sensitive values, fingerprint search, primary uniqueness |
-| P020 | **Per-entity time zone** (before LexaVault P5) — done |
-| P021 | **Erase log** (shared) and **customer key destruction** — needed for LexaVault switch-over part 1 (`docs/design/erase-log.md`) |
-| P022 | Integration: **read-only investigation and proposal** — LexaVault intake/export code, 0031 findings, **Vero R7's real ingestion API** (from the SDV repo), integration-standards.md; module layout and task split |
-| P023+ | Integration build in the order P022 proposes: core (config model, audit and versioning, sign-in bundle, safety, classified result, health, Test) → outbound API push + packagings + field mapping + **Vero R7 profile and contract tests** → folder export with manifest → intake (API polling, watched folder with trigger file, virus scan hook) → callback and push-API sign-in check |
+| P020 | **Per-entity time zone** — done |
+| P021 | **Erase log** (shared) and **customer key destruction** (`docs/design/erase-log.md`) |
+| P022 | Integration: **read-only investigation and proposal** — an earlier app's intake/export code, its live-run findings, a document vault's real ingestion API, integration-standards.md; module layout and task split |
+| P023+ | Integration build in the order P022 proposes: core (config model, audit and versioning, sign-in bundle, safety, classified result, health, Test) → outbound API push + packagings + field mapping + profile and contract tests (made generic by P030) → folder export with manifest → intake (API polling, watched folder with trigger file, virus scan hook) → callback and push-API sign-in check |
 
-LexaVault moves intake and export onto it as **part 3 of its switch-over**; the 0031 live run is re-run jointly when both sides are ready.
+The apps move their intake and export onto it in their own switch-over work.
 
-## Decisions on the P022 proposal (LexaVault thread, master, 2026-11-22)
+## Decisions on the P022 proposal (app thread, master, 2026-11-22)
 
-1. **Vero sign-in:** Vero builds the client-ID lookup (`MachineEntityBindings`) **before the first install**. The `sdv-ingestion-v1` profile supports R7's custom claims (`sdv_tenant_id`, `sdv_source_id`) now and the lookup later (configuration switch, no code change).
-2. **Busy vs outage:** **busy** = Vero's 503 with its busy code (plus Retry-After when sent): wait, send fewer, **no attempt used**. A 503 **without** that code is an **outage** (health check, then pause or the case's own retries). AUT-004 is a **sign-in fault**, not busy. The generic engine expresses this as profile rules (status + code → result class), not Vero code.
-3. **Trigger file:** requirement committed in LexaVault at `docs/work/watched-folder-trigger-file.md` (branch `feature/0037-switchover-1a`, merging soon). Split: **platform-core watches, reads and waits** (folder stability, trigger file last, timeout for incomplete drops); **LexaVault interprets** the trigger file's content.
-4. LexaVault's `staged-pipeline-design.md` text about Vero's 409 is corrected (Vero answers 200 for "already received"; 409 = same key, different content).
-5. Profiles ship as **data** named after the published API (`sdv-ingestion-v1`); the spec copy is pinned to the current Vero commit until the `sdv-ingestion-v1.0.0` tag, then re-pinned.
-6. **Order approved:** P023 core + mock server → P024 packagings, field mapping, integrity, `sdv-ingestion-v1` profile, pinned spec, contract tests → P025 Spring + folder export with manifest → P026 mTLS + callbacks → P027 intake (polling, watched folder, virus scan hook) → P028 push-API sign-in check + client-ID bindings in setup. **LexaVault's part 3 starts after P023 + P024.** Full proposal: `docs/work/P022-report.md` sections B1–B8.
+1. **Sign-in of the vault's callers:** the receiving app builds the client-ID lookup (`MachineEntityBindings`) **before the first install**. A profile can support an API's custom entity and source claims now and the lookup later (configuration switch, no code change).
+2. **Busy vs outage:** **busy** = a 503 with the API's busy code (plus Retry-After when sent): wait, send fewer, **no attempt used**. A 503 **without** that code is an **outage** (health check, then pause or the case's own retries). A sign-in code is a **sign-in fault**, not busy. The generic engine expresses this as profile rules (status + code → result class), never product code.
+3. **Trigger file:** the requirement is the app's. Split: **platform-core watches, reads and waits** (folder stability, trigger file last, timeout for incomplete drops); **the app interprets** the trigger file's content.
+4. "Already received" is a 200 replay; a 409 means the same key with different content (an earlier app's design text was corrected).
+5. Profiles are **data** named after the published API. *(Replaced by P030: no profile and no spec copy is shipped or pinned in platform-core; the API's owner publishes them.)*
+6. **Order approved:** P023 core + mock server → P024 packagings, field mapping, integrity, profile, spec mode, contract tests → P025 Spring + folder export with manifest → P026 mTLS + callbacks → P027 intake (polling, watched folder, virus scan hook) → P028 push-API sign-in check + client-ID bindings in setup. Full proposal: `docs/work/P022-report.md` sections B1–B8.
 
 ## Decisions on the P023 report (shared-capabilities thread, 2026-11-22)
 
@@ -97,15 +99,15 @@ P023 accepted: 897 tests, 3 TLS tests skipped on the owner's laptop (Norton re-s
 
 1. **DNS rebinding:** accepted for V1 (check every resolved address right before each call; not pinned). P025's install guide states it. **Strict pinning is built in P026** on the socket layer it builds for mTLS, and is required before the hosted service goes live.
 2. **Skipped TLS tests:** no repo change. They must pass on a machine without TLS interception (CI or another machine) before a release that changes `safety/` or `http/`. A Norton exclusion on the laptop is the owner's choice.
-3. **Proxy sign-in:** built in P025 with the Spring properties. The proxy password comes by secret reference; the install guide tells the customer to start the app with `-Djdk.http.auth.tunneling.disabledSchemes=` when their proxy needs Basic. The library never sets JVM properties.
+3. **Proxy sign-in:** built in P025 with the Spring properties. The proxy password comes by secret reference. The library never sets JVM properties. *(Replaced by P026: the JVM start option `-Djdk.http.auth.tunneling.disabledSchemes=` is no longer needed, because Apache HttpClient sends the Basic sign-in on CONNECT itself; see "Client certificates, pinning, callbacks" below.)*
 4. **503 default stays outage.** A destination that sends 503 + Retry-After to mean busy gets a profile rule. The configuration screen (P025) offers "503 with Retry-After means busy" as a ready-made rule.
 5. **`SecretResolver` from platform-notifications** accepted for now. When a third module needs it, it moves to a small shared module (no task yet).
 
-## Vero busy vs down at the health check (LexaVault thread, master, 2026-11-22)
+## Busy vs down at the health check (app thread, master, 2026-11-22)
 
-No counting of failed checks. In the `sdv-ingestion-v1` profile, a readiness answer of **503 with `SDV-SYS-018` or with `Retry-After` = busy**: wait, send fewer at once, no pause, no attempt used. **Can't connect, a timeout, or a 503 without the busy code = down**: pause and probe. A busy spell over 30 minutes raises one IT notice (app side, LexaVault). Vero is asked to put the busy code and Retry-After on its readiness answer. Built in P024 (health rules may map to BUSY generically).
+No counting of failed checks. A profile's health rules say, as data, that a readiness answer of **503 with the API's busy code or with `Retry-After` = busy**: wait, send fewer at once, no pause, no attempt used. **Can't connect, a timeout, or a 503 without the busy code = down**: pause and probe. A busy spell over 30 minutes raises one IT notice (app side). Built in P024: health rules may map to BUSY generically (`HealthResult.busy()`, `Rule.healthBusyWhen503WithRetryAfter()`).
 
-**Update (master, 2026-11-22):** P024 pins Vero's spec at `docs/ingestion-contract` `76307d6` (0040 Part 2), re-pinned at `sdv-ingestion-v1.0.0`. Busy = 503 `SDV-SYS-018` with Retry-After (Vero setting 1–300 s, default 5). `SDV-STO-004` is a 503 without the busy code = **down**. Readiness-busy arrives in a separate Vero commit; the profile takes it when it lands.
+**Update (master, 2026-11-22):** P024 pinned one product's spec at a commit, to be re-pinned at its release tag, with its busy and outage codes in the profile. *(Removed by P030: nothing is pinned here; such codes are rules in the owner's published profile.)*
 
 ## Folder export and its manifest (P025)
 
@@ -157,7 +159,7 @@ The app calls `FolderExport.attempt(stored, delivery, new ExportInfo(slotId, app
 
 ## Proxy sign-in and "omit when missing" (P025)
 
-**Proxy sign-in** ("Decisions on the P023 report", item 3): the proxy's user and its password, by secret reference (read at every call), go as `Proxy-Authorization: Basic …`. That header is sent on the CONNECT of an https call and on plain-http requests through the proxy, never to the destination. The library never sets JVM properties. If the JVM still disables Basic for tunnels (the JDK's default), an https call through a proxy with sign-in fails before connecting with `INT_PROXY_SIGN_IN_DISABLED_BY_JVM`. That code's message names the start option `-Djdk.http.auth.tunneling.disabledSchemes=`. A 407 from the proxy gives `INT_PROXY_SIGN_IN_REFUSED`.
+**Proxy sign-in** ("Decisions on the P023 report", item 3): the proxy's user and its password, by secret reference (read at every call), go as `Proxy-Authorization: Basic …`. That header is sent on the CONNECT of an https call and on plain-http requests through the proxy, never to the destination. The library never sets JVM properties. A 407 from the proxy gives `INT_PROXY_SIGN_IN_REFUSED`. *(As built in P025, an https call through a proxy with sign-in failed before connecting with `INT_PROXY_SIGN_IN_DISABLED_BY_JVM` while the JDK disabled Basic for tunnels. Replaced by P026: Apache HttpClient sends the sign-in itself, so the JVM option no longer matters; P027 removed that code.)*
 
 **"Omit when missing"** (P024 question 1): one more fixed building block in JSON body templates. A placeholder written `{name?}` that is the whole value of an object member (`"loan":"{field:loan_number?}"`, `"amount":{field:loan_amount?}`) leaves out that whole member, with its comma, when it has no value. A value that is present but cannot be placed is still refused. Anywhere else it is refused at save (`INT_CONFIG_OMIT_PLACE`). Still no expressions.
 
@@ -168,8 +170,8 @@ The app calls `FolderExport.attempt(stored, delivery, new ExportInfo(slotId, app
 P025 accepted (1048 tests on CI, 0 skipped; the test-count question was a counting error in P031's report, not a double run). Its decisions stand, including: manifest "identical" ignores `createdAt`, `correlationId` and `integration.configVersion`; sensitive fields only when allowed and never in names; folder export refused on the hosted service; proxy sign-in sent preemptively; health cached 60 s.
 
 1. **`doc.attr.*` stays in the app section** of the manifest; the envelope stays stable.
-2. **A full disk (`INT_FOLDER_FULL`)** should raise one IT notice at once: app side (passed to the LexaVault thread on the board).
-3. **The `integrations` health contributor** is revisited in P032 (monitoring): there, each destination is reported as Working / Having problems / Down with its cause, and the app's own health and readiness never go DOWN because another system is down.
+2. **A full disk (`INT_FOLDER_FULL`)** should raise one IT notice at once: app side (passed to the app threads on the board).
+3. **The `integrations` health contributor** is revisited in P032 (monitoring): there, each destination is reported as Working / Having problems / Down with its cause, and the app's own health and readiness never go DOWN because another system is down. *(Outcome, P032: with platform-monitoring-spring the entries are monitoring's `dependencies` checks and the `integrations` contributor is not made; see "Decisions carried from the reports", item 7.)*
 
 ## Client certificates, pinning, callbacks and "accepted, check later" (P026)
 
@@ -209,7 +211,7 @@ P026 accepted (1085 tests on CI, 0 skipped). Its decisions stand, including:
 
 **Virus scan** (requirement 11, `scan.FileScanner`, `scan.Scanning`): `ClamdScanner` (`zINSTREAM` in 64 KiB chunks) and `IcapScanner` (`RESPMOD` with `Allow: 204`; 204 clean, 200 or a threat header infected), both through the address guard (internal on premises) to the checked address. Off without a scanner. Every incoming file is scanned before the app sees it, a watched drop's trigger too. INFECTED: never handed over, polling does not acknowledge, a drop goes to `_quarantine`, `ScanEvents.infected` tells the app. SCAN_FAILED (`INT_SCAN_FAILED`, `INT_SCAN_UNREACHABLE`): held, the pass stops, scanned again at the next one. Health: clamd `PING`, ICAP `OPTIONS`. The testkit's `MockScanner` speaks both; `Eicar` builds the test file at run time, so no file of the build holds the signature, and tests that write it to disk skip where a desktop scanner removes it (CI forbids skips).
 
-**Spring.** `platform.integration.scanner.*` (type NONE / CLAMD / ICAP, host, port, ICAP service, timeout) and `intake.work-folder`, checked at startup; beans `FileScanner`, `Scanning` (with the app's `ScanEvents`), `PollEngine`, `WatchedFolder` (the app may give `WatchFiles`); the `integrations` health contributor covers sources and has a `scanner` entry.
+**Spring.** `platform.integration.scanner.*` (type NONE / CLAMD / ICAP, host, port, ICAP service, timeout) and `intake.work-folder`, checked at startup; beans `FileScanner`, `Scanning` (with the app's `ScanEvents`), `PollEngine`, `WatchedFolder` (the app may give `WatchFiles`); the `integrations` health contributor covers sources and has a `scanner` entry. With platform-monitoring-spring that contributor is not made: each integration is a check in monitoring's `dependencies` (P032, decision 7 of the list below).
 
 **P026 follow-ups.** `INT_PROXY_SIGN_IN_DISABLED_BY_JVM`, `safety.JvmProxySignIn` and the `Outbound(..., JvmProxySignIn)` constructor are removed. A held OAuth 2.0 token is bound to the fingerprint of the client certificate in use when it was fetched: after a switch (by the admin, at its set time, or on another instance) it is never used again and a new token is fetched.
 
@@ -228,7 +230,7 @@ P027 accepted (1141 tests on CI, 0 skipped). Its decisions stand, including:
 3. **Incomplete drops** are reported once per app instance; the app de-duplicates by drop ID before an IT notice (passed to the app threads).
 4. **Refused downloads** are in `PollResult.problems` for the app to show IT. A source that wants retries gets a rule mapping its status to OUTAGE.
 
-**Note (board LV-16, 2026-11-22):** the outbound safety code becomes its own module, `platform-outbound`, in P028, so identity's test sign-in uses the same rules without `platform-integration`. Integration depends on it; its behaviour and result codes don't change.
+**Note (board, 2026-11-22):** the outbound safety code becomes its own module, `platform-outbound`, in P028, so identity's test sign-in uses the same rules without `platform-integration`. Integration depends on it; its behaviour and result codes don't change.
 
 ## P028: the outbound module, push callers (built 2026-11-22, `docs/work/P028-report.md`)
 
@@ -268,6 +270,50 @@ by integration; integration results keep the `INT_*` codes. The identity test si
 ## Decisions on the P028 report (shared-capabilities thread, 2026-11-23)
 
 P028 accepted (v0.3.0). 1. Platform grants on the IT Admin's page: app side, read-only first. 2. The app's integration page calls `PushCaller.forget()` when it switches a binding off: app side, when that page is built. 3. A certificate-only caller takes entity and source from the binding alone; a product needing more sets `requireTokenAndCertificate`.
+
+## Decisions carried from the reports (P023–P032)
+
+These decisions were made in the build reports and stand. They are recorded here so the design says what the code
+does.
+
+1. **No product's profile, spec or contract tests in platform-core (P030).** The independence rule removed the module
+   `platform-integration-profiles` with one product's profile, its pinned spec, its mock and its contract tests. What
+   was generic moved into platform-integration (the profile format, `ProfileLoader`, `ProfileValidator`,
+   `ProfileFolder`, `json.JsonSchema`) and the testkit (`MockDestination.specMode`, `ProfileMock`, the contract kit
+   `ProfileContract`). Tests use made-up profiles only. Older sections above that speak of one product's profile or
+   a pinned spec are history; this line replaces them.
+2. **"Already received" for the whole attempt only when every call was a replay (P023 decision 6).** When some calls
+   were new and some replays, the attempt is SENT, and each call's own outcome is in `steps`.
+3. **History times are kept to the microsecond (P023 decision 9),** as Postgres keeps them, so the stored history and
+   the audit give the same times.
+4. **A sensitive case field goes in JSON bodies only (P024 decision 3),** never in a header or a path: addresses and
+   headers end up in proxy and server logs. It is checked at save (`INT_CONFIG_SENSITIVE_FIELD_NOT_ALLOWED`, with
+   `allowedSensitiveFields` and `FieldLists`) and again at send (`INT_SENSITIVE_FIELD_NOT_ALLOWED`). Folder and file names never carry one, even
+   when allowed (P025).
+5. **The mock destination records JSON field names only (P024 decision 6);** values only after `recordValues(true)`.
+6. **The required-claims check reads the token for presence only (P024 decision 7):** the JWT payload, not verified
+   (that is the receiver's job); it is never kept or logged (`INT_TOKEN_CLAIMS_MISSING`).
+7. **`integrations` health and monitoring (P032 decision 5).** With platform-monitoring-spring on the classpath,
+   integration-spring's `integrations` contributor is not made; each enabled integration is a check
+   `integration-<id>` in monitoring's `dependencies` and never counts for readiness (`docs/design/monitoring.md`
+   section 2). Without monitoring the contributor stays.
+8. **`ProfileFolder` is in the core module (P025 decision 8),** so apps without Spring have it too; the Spring bean
+   only wraps it.
+9. **Uploading a certificate while a NEXT exists is refused (P026 decision 6)** with `INT_CREDENTIAL_NEXT_EXISTS`; IT
+   discards the NEXT first. This keeps "at most two" simple and visible.
+10. **One customer per installation in the Spring wiring (P026 decision 12):** `IntegrationCredentials` uses the
+    app's `CustomerId` bean. An installation that serves several customers defines its own `IntegrationCredentials`
+    bean with its entity-to-customer function.
+11. **A file that changed while the handler ran goes to `_problem` (P027 decision 4)** with `INT_WATCH_FILE_CHANGED`.
+    Any other handler failure puts the drop back (so a database outage does not send every drop to `_problem`).
+12. **`ClientCertificate.key()` and `chain()` are public (P028 decision 5),** because `Outbound` presents the
+    certificate from another module; only `CredentialFiles` uses them, to seal the stored form. They are never logged.
+13. **The User-Agent stays `platform-integration` (P028 decision 6)** after the move to platform-outbound, so
+    destinations see no change.
+14. **Fallback beans in integration-spring (P028 decision 13):** a fallback `Outbound` bean for an app that defines
+    only its own `Installation`, and a fallback `Installation` bean that fails with integration's problem list when
+    no `platform.outbound.*` setting is given, so the missing `platform.outbound.installation` is named whichever bean
+    asks first.
 
 ## Intake IDs in log lines (P037)
 
