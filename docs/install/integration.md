@@ -56,8 +56,10 @@ outbound settings stop the app with `OUTBOUND_SETTINGS_INVALID` and every proble
 If an integration setting is wrong, the app does not start. Its log then shows `INTEGRATION_SETTINGS_INVALID` with
 every problem at once, for example `platform.outbound.installation is required: ON_PREMISES or HOSTED`.
 
-The app's database user needs only these rights on the integration tables (created by the app's schema step, never
-at startup; schema version 2):
+The integration tables are created only by a schema step, never at startup: a separate Flyway run with location
+`classpath:db/platform/integration` and history table `int_schema_history`, run as the schema owner in the app's
+database schema (schema version 2: `V1__integration.sql`, `V2__credentials_callbacks.sql`). The app's
+database user needs only these rights on them:
 
 | Table | Rights |
 |---|---|
@@ -66,8 +68,10 @@ at startup; schema version 2):
 | `int_callback_outbox` | `SELECT, INSERT, UPDATE, DELETE` |
 | `int_schema_version` | `SELECT` |
 
-If the tables are missing or at another version, the app does not start. After an upgrade from version 1, run the
-schema step once (it adds the version 2 tables) and grant the new rights.
+If the tables are missing or at another version, the app does not start, with one of the codes `INT_TABLES_MISSING`,
+`INT_VERSION_UNKNOWN`, `INT_VERSION_OLDER`, `INT_VERSION_NEWER`, `INT_TABLES_INCOMPLETE`, `INT_PRIVILEGES_MISSING`
+or `INT_CHECK_FAILED` (cause and fix in `docs/errors/platform-error-codes.md`). After an upgrade from version 1, run
+the schema step once (it adds the version 2 tables) and grant the new rights.
 
 **Logging.** Never set the log level of `org.apache.hc.client5.http.wire` or `org.apache.hc.client5.http.headers` to
 `DEBUG`. That is the HTTP library's own trace, and it would write every request header, sign-in included, to the log.
