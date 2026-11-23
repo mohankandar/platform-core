@@ -32,7 +32,7 @@ policies:
 | Property | Default | |
 |---|---|---|
 | `platform.crypto.enabled` | `true` | `false` switches the module off |
-| `platform.crypto.tenant-id` | `platform.licensing.tenant-id` | the customer ID (`TEN-…`); the setup command writes it into `platform-tenant.properties` |
+| `platform.crypto.tenant-id` | `platform.licensing.tenant-id` | the customer ID (`TEN-…`); the setup command writes `platform.licensing.tenant-id` into `platform-tenant.properties`, which this falls back to |
 | `platform.crypto.vault.address` | — | `https://vault.internal:8200` |
 | `platform.crypto.vault.namespace` | none | Vault Enterprise / HCP namespace |
 | `platform.crypto.vault.login` | `APPROLE` | `APPROLE` (servers), `TOKEN_FILE` (Vault Agent), `TOKEN` (local runs only) |
@@ -44,8 +44,9 @@ policies:
 | `platform.crypto.vault.key-prefix` | `customer-` | the same as the setup command's `PLATFORM_SETUP_VAULT_KEY_PREFIX` |
 | `platform.crypto.vault.timeout` | `10s` | 1s to 2m, for connecting and for each call |
 
-Give secrets as files or environment variables (`PLATFORM_CRYPTO_VAULT_SECRET_ID`), not in a config file under version
-control. A wrong or missing setting stops the app at startup with a list of every problem and the property names;
+Give secrets as files (`secret-id-file`, `token-file`) or environment variables, not in a config file under version
+control. Spring's environment name of a property is its name in capitals with dots as `_` and dashes removed: for
+`platform.crypto.vault.secret-id` that is `PLATFORM_CRYPTO_VAULT_SECRETID`. A wrong or missing setting stops the app at startup with a list of every problem and the property names;
 no message shows a token or secret ID.
 
 The app does **not** call Vault at startup, so a Vault outage never stops it from starting: it shows in the health
@@ -73,10 +74,17 @@ the offboarding certificate.
 
 1. Agree the date with the customer, and that their data will not be needed again.
 2. Get a Vault login with the `platform-crypto-setup` **and** `platform-crypto-offboard` policies, for this run
-   only. A login with the set-up policy alone is refused with `CRYPTO_PERMISSION_DENIED` and nothing is changed. Set it in the environment, as for the
-   setup command: `PLATFORM_SETUP_VAULT_ADDR` and one of `PLATFORM_SETUP_VAULT_TOKEN`,
-   `PLATFORM_SETUP_VAULT_TOKEN_FILE` or `PLATFORM_SETUP_VAULT_ROLE_ID` + `PLATFORM_SETUP_VAULT_SECRET_ID`
-   (`PLATFORM_SETUP_VAULT_KEY_PREFIX` if the installation does not use `customer-`).
+   only. A login with the set-up policy alone is refused with `CRYPTO_PERMISSION_DENIED` and nothing is changed.
+   Set it in the environment, as for the setup command:
+
+   | Variable | |
+   |---|---|
+   | `PLATFORM_SETUP_VAULT_ADDR` | required, Vault's address |
+   | `PLATFORM_SETUP_VAULT_NAMESPACE` | optional (Vault Enterprise / HCP) |
+   | `PLATFORM_SETUP_VAULT_TOKEN`, or `PLATFORM_SETUP_VAULT_TOKEN_FILE`, or `PLATFORM_SETUP_VAULT_ROLE_ID` + `PLATFORM_SETUP_VAULT_SECRET_ID` | **exactly one** login; none or more than one is `CRYPTO_SETTINGS_INVALID` |
+   | `PLATFORM_SETUP_VAULT_APPROLE_MOUNT` | AppRole only, default `approle` |
+   | `PLATFORM_SETUP_VAULT_TRANSIT_MOUNT` | default `transit` |
+   | `PLATFORM_SETUP_VAULT_KEY_PREFIX` | default `customer-` (the same as the app's `key-prefix`) |
 3. Run, from the product's distribution:
 
    ```
@@ -86,7 +94,9 @@ the offboarding certificate.
    `--backup-retention-days` is the installation's backup retention (30 to 90, default 35; the same number as
    `platform.erase-log.backup-retention-days`).
 
-   It asks you to type the tenant ID again. If it is missing or different, nothing is destroyed.
+   It asks you to type the tenant ID again. For a run without a console (a script), give it as
+   `--confirm TEN-…` instead. If it is missing (`CRYPTO_DESTROY_NOT_CONFIRMED`) or different
+   (`CRYPTO_DESTROY_CONFIRMATION_WRONG`), nothing is destroyed. Codes: `docs/errors/platform-error-codes.md`.
 4. Keep the result file (`customer-keys-destroyed-<tenant>-<time>.json`; or give `--result-out`) with the offboarding
    records. It lists the customer, the two keys with their versions, the date and time, and who ran it. No secrets.
    It carries the two dates for the certificate: **live data destroyed on** (`liveDataDestroyedOn`) and

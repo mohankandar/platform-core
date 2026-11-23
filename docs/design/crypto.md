@@ -1,9 +1,11 @@
 # platform-crypto — encryption and keys (P018)
 
-Modules `platform-crypto` (package `com.documentplatform.crypto`; plain Java, no Spring, no runtime dependencies) and
-`platform-crypto-testkit` (test scope only). Built in P018 by moving Vero's `sdv-crypto` here and making it
-product-neutral. Vero removes `sdv-crypto` at its switch-over (section 8). LexaVault uses it with value storage
-(sensitive case fields, `docs/design/case-fields.md` rule 6).
+Modules `platform-crypto` (package `com.documentplatform.crypto`; plain Java, no Spring; depends only on
+platform-errors, since P032: `CryptoError` and `CryptoCommand.Code` are `PlatformCode`s, `CryptoException` is a
+`HasPlatformCode`) and `platform-crypto-testkit` (test scope only). Built in P018 by moving an earlier app's own crypto
+module (a document intake app's) here and making it product-neutral. That app removes its module at its switch-over
+(section 8). A document vault app uses platform-crypto with value storage (sensitive case fields,
+`docs/design/case-fields.md` rule 6).
 
 ## 1. What it does
 
@@ -75,14 +77,15 @@ item (once per value):       "pci1." + Base64url( version 1 (1) | nonce (12, ran
 
 Associated data per item:
 `platform-crypto/record/1|customer=<uuid>|keys=<key service id>|record=<record context>|item=<item context>`, so an
-item cannot be moved to another customer, record or item. platform-fields uses `fld/<SHA-256 of entity, product,
-record type and record ID>` as the record context and `<field key>/<position>` as the item context. `newKey` (new
+item cannot be moved to another customer, record or item. platform-fields uses `fld/` + Base64url (no padding) of
+SHA-256 of `entity|product|recordType|recordId` as the record context and `<folded field key>/<position>` as the
+item context (`docs/design/case-fields.md`, "Sealing contexts and form"; pinned by `FieldsKnownAnswerTest`, P038). `newKey` (new
 record) and `openKey` (read, or add items under the same key) are **one key service call each**, whatever the number
 of items; the `RecordKey` holds the plaintext key only for that operation and `close()` wipes it. No plaintext key is
 cached. `rewrap` changes only the envelope. Random 96-bit nonces under one key are safe far beyond the at most
 50 values per field of one record.
 
-**Stream** (`StreamCipher`), moved from Vero's streaming envelope with the same framing:
+**Stream** (`StreamCipher`), moved from the earlier app's streaming envelope with the same framing:
 
 ```
 header:  "PCSTRM01" | version (int) | chunk size 65536 (int) | nonce prefix (8 random bytes)
@@ -98,8 +101,10 @@ ciphertext) is stored by the app next to the object.
 
 **Fingerprint:** `f<version>.<Base64url of 32 bytes>`, HMAC-SHA256 over
 `"platform-crypto/fp/1" NUL context NUL canonical(value)`; canonical = NFC, trimmed, white space runs as one space,
-lower case. Give it the field's normalised value (platform-fields) and the field key as context. `fingerprintAll` /
-`ofAll` fingerprint many values in one key service call (Vault Transit `batch_input`; `KeyService.fingerprints`).
+lower case. Give it the field's normalised value (platform-fields) and the field key as context. Many values at once
+(Vault Transit `batch_input`; `KeyService.fingerprints`, P019 decision 5): `ofAll` (one given key version) is **one**
+key service call however many values; `fingerprintAll` (the latest version) is **two**: the key's versions, then one
+batch. Empty input calls nothing.
 
 ## 5. The key service plug-in point
 
@@ -186,45 +191,47 @@ StreamCipher streams = new StreamCipher(keys);
 Fingerprinter fingerprints = new Fingerprinter(keys);
 ```
 
-## 8. Vero's switch-over (sdv-crypto removed)
+## 8. The earlier app's switch-over (its own crypto module removed)
 
-What moved, and what changed on the way:
+What moved from the document intake app's own crypto module, and what changed on the way:
 
-| sdv-crypto | platform-crypto |
+| The app's crypto module before | platform-crypto |
 |---|---|
-| `SdvEnc001StreamingCrypto` (profile `SDV-ENC-001`, magic `SDVENC01`, AAD with `tenant=`) | `StreamCipher` (format `platform-stream` 1, magic `PCSTRM01`, AAD with `customer=`); same chunking, nonces, final record |
+| its streaming class (its own profile name and magic, AAD with `tenant=`) | `StreamCipher` (format `platform-stream` 1, magic `PCSTRM01`, AAD with `customer=`); same chunking, nonces, final record |
 | `KeyProtectionProvider`, `ProtectedDataKey` | `KeyService`, `KeyService.DataKey` (wiped on `close`) |
 | `VaultTransitKeyProtectionProvider` (token only, `IOException` with text) | `VaultKeyService` + `VaultClient` (token, token file, AppRole; namespace; specific codes; no redirects) |
 | key created on every `generateDataKey` (runtime needed create rights) | keys created once by the set-up step; runtime policy has no create |
-| key name `sdv-tenant-<hex>` | `customer-<hex>` (prefix is a setting) |
+| key name `<app>-tenant-<hex>` | `customer-<hex>` (prefix is a setting) |
 | provider id `VAULT_TRANSIT`, version text `v7` | key service id `vault-transit`, key version as a number |
-| `KeyServiceHealthProbe` (in sdv-application) | `KeyService.health()` |
-| `VaultCryptoConfiguration`, `DisabledCryptoConfiguration` (Spring, `sdv.crypto.*`) | replaced by `platform-crypto-spring` (`platform.crypto.*`, P019) |
+| `KeyServiceHealthProbe` (in the app's application module) | `KeyService.health()` |
+| `VaultCryptoConfiguration`, `DisabledCryptoConfiguration` (Spring, the app's own `crypto.*` settings) | replaced by `platform-crypto-spring` (`platform.crypto.*`, P019) |
 | Jackson | none (own small JSON reader) |
 | — | new: `ValueCipher`, `Fingerprinter`, KV secrets, rewrap, rotation, retired versions |
 
-What Vero changes:
+What the app changes:
 
-1. Remove the `sdv-crypto` module (parent `<modules>`, the dependency in `sdv-web`). Add `platform-crypto` (version
+1. Remove its crypto module (parent `<modules>`, the dependency in its web module). Add `platform-crypto` (version
    from `platform-bom`) and, in test scope, `platform-crypto-testkit` instead of its own in-memory key provider.
-2. Implement `StreamingCryptoPort` with `StreamCipher` (or replace the port by it). `tenantId` becomes
-   `CustomerId.of(tenantId)`. Map `CryptoEnvelope` ↔ `EnvelopeInfo`: `cryptoProfile` = `platform-stream`,
+2. Implement `StreamingCryptoPort` with `StreamCipher` (or replace the port by it). `tenantId` (`TEN-…`) becomes
+   `CustomerId.fromTenantId(tenantId)` (P019 decision 1; `CustomerId.of` only parses a UUID). Map `CryptoEnvelope` ↔
+   `EnvelopeInfo`: `cryptoProfile` = `platform-stream`,
    `cryptoVersion` = 1, `keyProviderId` = `vault-transit`, `protectedDataKeyReference` = `wrappedKey`,
    `keyProviderVersion` = the key version, `encryptedSizeBytes`, `ciphertextSha256`. `document_crypto_metadata`
    keeps its columns (the customer is the row's `tenant_id`).
-3. Crypto failures are `CryptoException` (unchecked) with a code, not `IOException` text. Map the codes to Vero's:
-   `CRYPTO_SETTINGS_INVALID` → SDV-SYS-007; `CRYPTO_KEY_SERVICE_UNREACHABLE`, `_SEALED`, `_TLS` → SDV-KEY-002;
-   `CRYPTO_PERMISSION_DENIED`, `CRYPTO_LOGIN_REFUSED` → SDV-KEY-003; `CRYPTO_CIPHERTEXT_INVALID`,
-   `CRYPTO_WRONG_CUSTOMER`, `CRYPTO_KEY_DISABLED` → SDV-KEY-004; `CRYPTO_KEY_MISSING` → a set-up problem (new code).
-   Stream read/write errors stay `IOException`.
-4. Settings: `SDV_VAULT_BASE_URL`, `SDV_VAULT_TOKEN` / `SDV_VAULT_TOKEN_FILE`, mount, key prefix → `VaultClient` +
+3. Crypto failures are `CryptoException` (unchecked) with a code, not `IOException` text. Map the codes to the
+   app's own: `CRYPTO_SETTINGS_INVALID` → its settings code; `CRYPTO_KEY_SERVICE_UNREACHABLE`, `_SEALED`, `_TLS` →
+   its "key service unavailable" code; `CRYPTO_PERMISSION_DENIED`, `CRYPTO_LOGIN_REFUSED` → its "key service access"
+   code; `CRYPTO_CIPHERTEXT_INVALID`, `CRYPTO_WRONG_CUSTOMER`, `CRYPTO_KEY_DISABLED` → its "cannot decrypt" code;
+   `CRYPTO_KEY_MISSING` → a set-up problem (new code). Stream read/write errors stay `IOException`.
+4. Settings: the app's Vault address, token / token file, mount and key prefix → `VaultClient` +
    `VaultAuth.token` / `tokenFile` (add AppRole role ID + secret ID as the recommended option) + `VaultKeyService`.
-   `SDV_KEY_PROVIDER=disabled` and SDV-KEY-001 stay Vero's own.
-5. Health: the key service health indicator uses `KeyService.health()`; Vero keeps `NOT_CONFIGURED` for "disabled".
-6. Set-up: the setup command creates the customer's keys (`setup apply`, owner answer P018-1); Vero's install runs it
-   with the set-up login and gives the runtime the `platform-crypto-app` policy.
+   Its "key provider disabled" setting and code stay the app's own.
+5. Health: the key service health indicator uses `KeyService.health()`; the app keeps `NOT_CONFIGURED` for
+   "disabled".
+6. Set-up: the setup command creates the customer's keys (`setup apply`, owner answer P018-1); the app's install runs
+   it with the set-up login and gives the runtime the `platform-crypto-app` policy.
 7. Stored data: none exists anywhere (nothing in production or test), so no re-encryption is needed. Any local
-   development data encrypted as `SDV-ENC-001` does not open any more: ingest it again.
+   development data encrypted in the app's old format does not open any more: ingest it again.
 
 ## 9. Owner answers to P018 (2026-11-22, task P019)
 
@@ -251,6 +258,11 @@ Spring Boot wiring, the same layout as the other `-spring` modules. Install guid
   `CryptoFailureAnalyzer`); no message holds a token or secret ID.
 - Beans: `VaultClient` (closed on shutdown, which revokes an AppRole token), `KeyService` (`VaultKeyService`),
   `ValueCipher`, `RecordCipher`, `StreamCipher`, `Fingerprinter`, and `CustomerId` when a tenant ID is configured.
+- **One customer per installation (P026 decision 12):** the `CustomerId` bean is the installation's only customer,
+  from `platform.crypto.tenant-id` (or `platform.licensing.tenant-id`). A hosted installation that serves several
+  customers from one app derives each `CustomerId` itself (`CustomerId.fromTenantId`) and defines its own beans that
+  take it (for example its own `IntegrationCredentials` with its entity-to-customer function); the key service and
+  ciphers already take the customer per call.
   Every bean backs off when the app defines its own; an app-defined `KeyService` (for example the in-memory one in
   tests) means no Vault beans at all.
 - Vault is not called at startup: an outage never stops the app.
@@ -271,6 +283,9 @@ record, value, document and backup of that customer unreadable. The offboarding 
 - **Afterwards:** `unwrap`, `rewrap`, `newDataKey` and fingerprints give `CRYPTO_KEY_MISSING`, so `ValueCipher.open`,
   `RecordCipher.openKey`, `StreamCipher.decrypt` and `Fingerprinter` fail with that code for this customer. Other
   customers are untouched. Creating keys again for the customer makes **new** keys: nothing old opens with them.
+- **Destroyed looks like never created (P021 decision 10):** Vault cannot tell "destroyed" from "never created", so
+  both give `CRYPTO_KEY_MISSING` (the in-memory key service's message says "destroyed"). After a customer exit this
+  code is expected: do **not** run the setup command to create keys again, since new keys open nothing old.
 - **Who may (P022):** only the offboarding run's login, which has **both** `platform-crypto-setup` (its `read` gives
   the versions, its `update` covers `config` `deletion_allowed`) and `platform-crypto-offboard` (`delete` only, the
   same paths). The set-up step's login no longer has `delete`, so no set-up run can destroy keys.
