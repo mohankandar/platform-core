@@ -152,7 +152,7 @@ public final class Outbound implements AutoCloseable {
     private record ClientKey(boolean proxied, Duration connectTimeout, String certificate) {
     }
 
-    private record Client(CloseableHttpClient http, PoolingHttpClientConnectionManager connections) {
+    private record Client(CloseableHttpClient http, PoolingHttpClientConnectionManager connections, SSLContext ssl) {
     }
 
     private final Installation installation;
@@ -286,7 +286,14 @@ public final class Outbound implements AutoCloseable {
         } catch (Failure f) {
             throw f;
         } catch (IOException e) {
-            throw new Failure(classify(e, proxied, certificate != null));
+            IntegrationCode code = classify(e, proxied, certificate != null);
+            if ((code == IntegrationCode.INT_CONNECTION_LOST || code == IntegrationCode.INT_TLS_FAILED)
+                    && certificate != null && !proxied
+                    && scheme.equals("https") && !checked.addresses().isEmpty()
+                    && certificateRefused(client.ssl(), uri, checked.addresses().get(0), connectTimeout)) {
+                code = IntegrationCode.INT_CREDENTIAL_REFUSED;
+            }
+            throw new Failure(code);
         } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
             throw new Failure(IntegrationCode.INT_CANT_CONNECT);
         } finally {
@@ -351,6 +358,33 @@ public final class Outbound implements AutoCloseable {
         return IntegrationCode.INT_CONNECTION_LOST;
     }
 
+
+    /**
+     * With TLS 1.3 a server checks the client certificate after the handshake has finished, so a refusal often shows
+     * only as a lost connection. After such a failure of a call that presented a certificate, one TLS 1.2 handshake
+     * to the same checked address (where the check is part of the handshake) tells whether the server refuses the
+     * certificate. Nothing is sent over it.
+     */
+    private static boolean certificateRefused(SSLContext ssl, URI uri, InetAddress address, Duration timeout) {
+        int port = uri.getPort() > 0 ? uri.getPort() : 443;
+        try (java.net.Socket plain = new java.net.Socket()) {
+            plain.connect(new java.net.InetSocketAddress(address, port), (int) Math.min(timeout.toMillis(), 30_000));
+            plain.setSoTimeout((int) Math.min(timeout.toMillis(), 30_000));
+            try (javax.net.ssl.SSLSocket s = (javax.net.ssl.SSLSocket) ssl.getSocketFactory()
+                    .createSocket(plain, uri.getHost(), port, false)) {
+                javax.net.ssl.SSLParameters p = s.getSSLParameters();
+                p.setProtocols(new String[]{"TLSv1.2"});
+                p.setEndpointIdentificationAlgorithm("HTTPS");
+                s.setSSLParameters(p);
+                s.startHandshake();
+                return false;
+            }
+        } catch (SSLException e) {
+            return certificateAlert(e);
+        } catch (IOException | RuntimeException e) {
+            return false;
+        }
+    }
     /** A TLS alert about the client's certificate ("Received fatal alert: bad_certificate" and the like). */
     private static boolean certificateAlert(Throwable t) {
         for (; t != null; t = t.getCause()) {
@@ -428,7 +462,7 @@ public final class Outbound implements AutoCloseable {
                 .disableContentCompression()
                 .setUserAgent("platform-integration");
         if (key.proxied()) builder.setProxy(new HttpHost("http", proxy.host(), proxy.port()));
-        return new Client(builder.build(), connections);
+        return new Client(builder.build(), connections, context);
     }
 
     private void closeAll() {
