@@ -68,6 +68,38 @@ class CatalogueTest {
     }
 
     /**
+     * monitoring-69, xc-catalogue-4 … -12 (P037): each Spring module's start-up refusal (settings, missing beans) carries
+     * a {@code *_SETTINGS_INVALID} {@link PlatformCode} and its message starts with that code.
+     */
+    @Test
+    void everySpringModulesStartupRefusalCarriesItsSettingsCode() throws Exception {
+        List<String> classes = List.of(
+                "com.documentplatform.outbound.spring.OutboundConfigException",
+                "com.documentplatform.integration.spring.IntegrationConfigException",
+                "com.documentplatform.crypto.spring.CryptoConfigException",
+                "com.documentplatform.licensing.spring.LicensingConfigException",
+                "com.documentplatform.notifications.spring.NotificationsConfigException",
+                "com.documentplatform.eraselog.spring.EraseLogConfigException",
+                "com.documentplatform.modelgov.spring.ModelGovConfig$Invalid",
+                "com.documentplatform.identity.spring.PushCallerConfigException",
+                "com.documentplatform.monitoring.spring.MonitoringConfigException");
+        Set<String> codes = new TreeSet<>();
+        for (String name : classes) {
+            java.lang.reflect.Constructor<?> c = Class.forName(name).getDeclaredConstructor(List.class);
+            c.setAccessible(true);
+            Throwable t = (Throwable) c.newInstance(List.of("platform.x.y is missing"));
+            assertInstanceOf(com.documentplatform.errors.HasPlatformCode.class, t, name);
+            PlatformCode code = ((com.documentplatform.errors.HasPlatformCode) t).platformCode();
+            assertTrue(code.code().endsWith("_SETTINGS_INVALID"), name + ": " + code.code());
+            assertTrue(t.getMessage().startsWith(code.code() + ": "), t.getMessage());
+            assertTrue(t.getMessage().contains("platform.x.y is missing"), t.getMessage());
+            assertTrue(catalogue.entries().stream().anyMatch(e -> e.code().equals(code.code())), code.code());
+            codes.add(code.code());
+        }
+        assertEquals(classes.size(), codes.size(), "one code per module: " + codes);
+    }
+
+    /**
      * xc-catalogue-3, error-codes-9 (P037): the check sees every module. Every module of the root {@code <modules>}
      * except the BOM, the testkits and this one is a dependency of this module, so a new module cannot be left out.
      */

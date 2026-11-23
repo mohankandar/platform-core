@@ -52,6 +52,7 @@ public class MonitoringAutoConfiguration {
                                               ObjectProvider<DependencyCheck> appChecks,
                                               ObjectProvider<MonitoringListener> listeners,
                                               ObjectProvider<Clock> clock) {
+        MonitoringConfigException.check(p);
         Clock c = clock.getIfAvailable(Clock::systemUTC);
         List<DependencyCheck> checks = new ArrayList<>(BuiltInChecks.all(beans, p, env, c));
         appChecks.orderedStream().forEach(checks::add);

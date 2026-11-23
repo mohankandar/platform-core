@@ -71,8 +71,8 @@ public class EraseLogAutoConfiguration {
     ErasePosition erasePosition(ObjectProvider<DataSource> dataSource) {
         DataSource ds = dataSource.getIfUnique();
         if (ds == null) {
-            throw new IllegalStateException("The erase log needs the app's DataSource (the database it protects, with "
-                    + "table erl_position), or an ErasePosition bean");
+            throw new EraseLogConfigException(java.util.List.of("the erase log needs the app's DataSource (the database it "
+                    + "protects, with table erl_position), or an ErasePosition bean"));
         }
         EraseLogSchema.verify(ds);
         return new PostgresErasePosition(ds);

@@ -59,8 +59,9 @@ public class ModelGovAutoConfiguration {
     StoreDatabase modelGovStoreDatabase(ObjectProvider<DataSource> dataSource) {
         DataSource ds = dataSource.getIfUnique();
         if (ds == null) {
-            throw new IllegalStateException("Model governance needs the app's DataSource (the database with the mg_ "
-                    + "tables, created by the schema step from " + ModelGovSchema.LOCATION + "), or a ModelGovStore bean");
+            throw new ModelGovConfig.Invalid(java.util.List.of("model governance needs the app's DataSource (the "
+                    + "database with the mg_ tables, created by the schema step from " + ModelGovSchema.LOCATION
+                    + "), or a ModelGovStore bean"));
         }
         ModelGovSchema.verify(ds);
         return new StoreDatabase(ds);
