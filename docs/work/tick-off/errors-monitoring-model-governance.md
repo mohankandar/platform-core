@@ -179,8 +179,8 @@ Short paths used below:
 | monitoring-68 | P032 accepted 1: the bundle download button (IT Admin only) is app side | APP-SIDE | `MS/DiagnosticBundles.java` `write` | — | app's Support screen |
 | monitoring-69 | P032 accepted 2: the Spring start-up settings messages (`*_SETTINGS_INVALID`) become `PlatformCode` enums per Spring module | DONE (P037, 2a21e26) | — | — | known step-2 gap; in this slice also `GSP/ModelGovConfig.java` `Invalid` ("Model governance settings are not valid") and monitoring-spring's bare `IllegalArgumentException` for bad folder thresholds |
 | monitoring-70 | P032 accepted 3: Teams / Slack checks stay app-added (`ChannelCheck.webhook`) | APP-SIDE | `M/checks/ChannelCheck.java` `webhook` | `MT/BuiltInChecksTest` | app's `DependencyCheck` beans |
-| monitoring-71 | P032 report decision 10: webhook checks open a TCP connection to the host only; the path (holds the webhook's secret) is never shown or called | DOC GAP | `M/checks/ChannelCheck.java` | `MT/BuiltInChecksTest` `mailAndWebhookChannels` | design says "a TCP connection; nothing sent" but not that the path is a secret and never shown |
-| monitoring-72 | P032 report decision 8: `FileLocationCheck.Disk` is replaceable (full disk, no write right tested the same everywhere) | DOC GAP | `M/checks/FileLocationCheck.java` `Disk` | `MT/BuiltInChecksTest` `fileLocations` | not in the design |
+| monitoring-71 | P032 report decision 10: webhook checks open a TCP connection to the host only; the path (holds the webhook's secret) is never shown or called | DONE (P040, ca0d211) | `M/checks/ChannelCheck.java` | `MT/BuiltInChecksTest` `mailAndWebhookChannels` | design says "a TCP connection; nothing sent" but not that the path is a secret and never shown |
+| monitoring-72 | P032 report decision 8: `FileLocationCheck.Disk` is replaceable (full disk, no write right tested the same everywhere) | DONE (P040, ca0d211) | `M/checks/FileLocationCheck.java` `Disk` | `MT/BuiltInChecksTest` `fileLocations` | not in the design |
 | monitoring-73 | P034: model governance adds the check `model-governance` | DOC GAP | `GSP/ModelGovCheck.java` | `GW` | monitoring.md's built-in table does not list it (only model-governance.md section 10) |
 
 ---
@@ -326,11 +326,11 @@ Short paths used below:
 | model-governance-105 | P034 D4: retention enforced in the database too | DONE (P039, 0b08363 (P037, with model-governance-84)) | see 84 | see 84 | see 84 |
 | model-governance-106 | P034 D5: Apache PDFBox 3.0, standard Helvetica, no font files | DONE | `G/PackPdf.java` (`Standard14Fonts` HELVETICA) | `GC` `thePackIsDeterministic…` (PDF loads, text found) | |
 | model-governance-107 | P034 D6: the pack's period covers validations, readings, drifts, changes; register as at export | DONE | `G/ModelPack.java` | `GC` `thePackCoversItsPeriodOnly` | |
-| model-governance-108 | P033 report D1 (forbidden role checked first, so a holder of both gets `MOD_APPROVER_CONFLICT`) | DOC GAP | — | — | not in the design body |
-| model-governance-109 | P033 report D2 (acceptance needs an eligible approver) | DOC GAP | — | — | not in the design body |
-| model-governance-110 | P033 report D3 (validations, go-live and rollback per use **and entity**, also for a use of every entity) | DOC GAP | — | — | section 9 implies it but does not say it |
-| model-governance-111 | P033 report D5 (`mg_threshold` replaced in place, not insert only; the evidence is the copy in each record) | DOC GAP | — | — | not in the design body |
-| model-governance-112 | P034 report D8 (no `ModelGovAudit` bean allowed: history tables only, said at startup; no DataSource and no store refused) | DOC GAP | `GSP/ModelGovAutoConfiguration.java` | `GW` `startupRefuses…` | section 10 lists the beans but not this |
+| model-governance-108 | P033 report D1 (forbidden role checked first, so a holder of both gets `MOD_APPROVER_CONFLICT`) | DONE (P040, 3a6f0a6) | — | — | not in the design body |
+| model-governance-109 | P033 report D2 (acceptance needs an eligible approver) | DONE (P040, 3a6f0a6) | — | — | not in the design body |
+| model-governance-110 | P033 report D3 (validations, go-live and rollback per use **and entity**, also for a use of every entity) | DONE (P040, 3a6f0a6) | — | — | section 9 implies it but does not say it |
+| model-governance-111 | P033 report D5 (`mg_threshold` replaced in place, not insert only; the evidence is the copy in each record) | DONE (P040, 3a6f0a6) | — | — | not in the design body |
+| model-governance-112 | P034 report D8 (no `ModelGovAudit` bean allowed: history tables only, said at startup; no DataSource and no store refused) | DONE (P040, 3a6f0a6) | `GSP/ModelGovAutoConfiguration.java` | `GW` `startupRefuses…` | section 10 lists the beans but not this |
 
 ---
 
@@ -392,8 +392,8 @@ All other items match: 31 checked (approver-roles required, review-every default
 | monitoring-57 | Last 50 failures in the bundle | untested | C | Record 60 failures, assert 50 lines | S |
 | monitoring-58 | Schema versions in the bundle | `mg_schema_version` missing | C | Add it to `VERSION_TABLES` and test the list against every module's `VERSION_TABLE` | S |
 | monitoring-69 | `*_SETTINGS_INVALID` as `PlatformCode` enums | missing (incl. `ModelGovConfig.Invalid`, folder thresholds) | B · **FIXED in P037 (2a21e26)** | One small `PlatformCode` enum per Spring module; startup exceptions implement `HasPlatformCode` | M |
-| monitoring-71 | Webhook path is a secret, never shown or called | DOC GAP | C | Add to monitoring.md section 1 | S |
-| monitoring-72 | `FileLocationCheck.Disk` replaceable | DOC GAP | C | Add to monitoring.md section 1 | S |
+| monitoring-71 | Webhook path is a secret, never shown or called | DONE (P040, ca0d211) | C | Add to monitoring.md section 1 | S |
+| monitoring-72 | `FileLocationCheck.Disk` replaceable | DONE (P040, ca0d211) | C | Add to monitoring.md section 1 | S |
 | monitoring-73 | `model-governance` check | DOC GAP | C | Add a row to monitoring.md's table | S |
 | model-governance-19 | Customer pass marks never looser | an entity mark becomes looser when the app tightens its default, and stays in force | B · **FIXED in P039 (eba60f2)** | On a default change, refuse it or treat looser entity marks as replaced by the default (both validation and monitoring marks); test it | S |
 | model-governance-33 | A change of where the model runs goes through the gate | only makes the review due (warning by default) | B · **FIXED in P039 (eba60f2)** | Owner to confirm P034 D2; if the gate must refuse, record `runsWhere` in the validation and compare it in `requireLive` | M |
@@ -403,21 +403,21 @@ All other items match: 31 checked (approver-roles required, review-every default
 | model-governance-100 | Monitoring's database check verifies `mg_` | untested | C | Wiring test with a `ModelGovStore` bean and missing `mg_` tables | S |
 | model-governance-101 | Worker: notices and daily purge | untested | C | Test `runOnce` with a fixed clock: a notice raised, old readings purged once a day | S |
 | model-governance-105 | P034 D4 retention in the database | same as 84 | B · **FIXED in P039 (0b08363 (P037, with model-governance-84))** | See model-governance-84 | — |
-| model-governance-108 | P033 D1 | DOC GAP | C | Add to model-governance.md section 9 | S |
-| model-governance-109 | P033 D2 | DOC GAP | C | Add to section 9 | S |
-| model-governance-110 | P033 D3 | DOC GAP | C | Add to section 9 | S |
-| model-governance-111 | P033 D5 | DOC GAP | C | Add to section 9 | S |
-| model-governance-112 | P034 report D8 | DOC GAP | C | Add to section 10's Spring line | S |
-| install-monitoring-1 | `every` property | does nothing | B | See monitoring-28 | — |
-| install-monitoring-2 | `tick` property | not in the guide | C | Document it (or fold it into `every`) | S |
-| install-monitoring-3 | `channel-mail` | false DOWN / wrong port | B | See monitoring-34 | — |
-| install-monitoring-4 | Checks table | `model-governance` missing | C | Add the row | S |
-| install-monitoring-5 | Bundle table versions | `mg_` missing | C | See monitoring-58 | — |
-| install-monitoring-6 | Folder thresholds | no range; bare exception | C | Give the range in the guide; list the problem with the property name at startup | S |
-| install-model-governance-1 | Startup codes | two codes not listed | C | Add `MG_VERSION_UNKNOWN`, `MG_CHECK_FAILED` | S |
-| install-model-governance-2 | Runtime grants | message and SQL header contradict the guide; narrow grants untested | C | Make the message and header give the narrow grants; schema test with exactly the guide's grants | S |
-| install-model-governance-3 | `enabled` | not in the guide | C | Document it | S |
-| install-model-governance-4 | Setting limits | not in the guide | C | Document 1d–3650d and ≥ 1 minute | S |
+| model-governance-108 | P033 D1 | DONE (P040, 3a6f0a6) | C | Add to model-governance.md section 9 | S |
+| model-governance-109 | P033 D2 | DONE (P040, 3a6f0a6) | C | Add to section 9 | S |
+| model-governance-110 | P033 D3 | DONE (P040, 3a6f0a6) | C | Add to section 9 | S |
+| model-governance-111 | P033 D5 | DONE (P040, 3a6f0a6) | C | Add to section 9 | S |
+| model-governance-112 | P034 report D8 | DONE (P040, 3a6f0a6) | C | Add to section 10's Spring line | S |
+| install-monitoring-1 | `every` property | does nothing | B · **FIXED in P040 (ca0d211)** | See monitoring-28 | — |
+| install-monitoring-2 | `tick` property | not in the guide | C · **FIXED in P040 (ca0d211)** | Document it (or fold it into `every`) | S |
+| install-monitoring-3 | `channel-mail` | false DOWN / wrong port | B · **FIXED in P040 (ca0d211)** | See monitoring-34 | — |
+| install-monitoring-4 | Checks table | `model-governance` missing | C · **FIXED in P040 (ca0d211)** | Add the row | S |
+| install-monitoring-5 | Bundle table versions | `mg_` missing | C · **FIXED in P040 (522a53e)** | See monitoring-58 | — |
+| install-monitoring-6 | Folder thresholds | no range; bare exception | C · **FIXED in P040 (ca0d211)** | Give the range in the guide; list the problem with the property name at startup | S |
+| install-model-governance-1 | Startup codes | two codes not listed | C · **FIXED in P040 (3a6f0a6)** | Add `MG_VERSION_UNKNOWN`, `MG_CHECK_FAILED` | S |
+| install-model-governance-2 | Runtime grants | message and SQL header contradict the guide; narrow grants untested | C · **FIXED in P040 (522a53e)** | Make the message and header give the narrow grants; schema test with exactly the guide's grants | S |
+| install-model-governance-3 | `enabled` | not in the guide | C · **FIXED in P040 (3a6f0a6)** | Document it | S |
+| install-model-governance-4 | Setting limits | not in the guide | C · **FIXED in P040 (3a6f0a6)** | Document 1d–3650d and ≥ 1 minute | S |
 | install-model-governance-5 | `forbidden-roles` | may be empty silently; separation then lost | B · **FIXED in P039 (eba60f2)** | Refuse (or warn loudly at startup) when `forbidden-roles` is empty; say in the guide it must be set | S |
 
 Gap totals: A 0 · B 13 · C 41 (54 rows; four of them point to another row: model-governance-105, install-monitoring-1, -3, -5).

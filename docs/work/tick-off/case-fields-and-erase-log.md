@@ -267,7 +267,7 @@ tick-offs.
 
 | ID | Rule | Status | Code | Test | Note |
 |---|---|---|---|---|---|
-| erase-log-26 | Plain Java, no Spring; the only dependency is platform-fields, optional | DIFFERENT | `platform-erase-log/pom.xml` | | Since P032 the module also depends on `platform-errors` (not optional). The code follows P032; the sentence in the design is out of date |
+| erase-log-26 | Plain Java, no Spring; the only dependency is platform-fields, optional | DONE (P040, bbf2289) | `platform-erase-log/pom.xml` | | Since P032 the module also depends on `platform-errors` (not optional). The code follows P032; the sentence in the design is out of date |
 
 ## erase-log — Entry
 
@@ -277,7 +277,7 @@ tick-offs.
 | erase-log-28 | `erasedAt`, `by` (RULE + rule ID or PERSON + actor ID) and `auditId` are required | DONE | `EraseRequest`, `ErasedBy` | `ET/EraseRequestTest.java` `anEntryWithAValueIsRefused` (`erasedAt` null) | Form of `auditId` and `by` ids is code-only (erase-log-DG-3) |
 | erase-log-29 | `seq` from 1 without gaps, `loggedAt`, `prev`, `hash` added by the log | DONE | `EraseEntry.link`; `FileEraseLogStore.append` | `ET/FileEraseLogStoreTest.java` `entriesAreNumberedChainedAndReadBackAfterReopening`, `severalWritersAtOnceKeepOneChain` | |
 | erase-log-30 | Anything outside those forms is `ERASE_ENTRY_INVALID` | DONE | `EraseRequest.require` | `ET/EraseRequestTest.java` `anEntryWithAValueIsRefused` | |
-| erase-log-31 | An id that looks like a value (e-mail, `pcv1.`/`pci1.`/`pck1.`, fingerprint, key service ciphertext) is `ERASE_ENTRY_VALUE_REFUSED` | PARTLY | `EraseRequest.notAValue` (`VALUE_LIKE`) | `ET/EraseRequestTest.java` `anEntryWithAValueIsRefused` | Refusal is tested, but the test accepts `ERASE_ENTRY_INVALID` or `_VALUE_REFUSED` for each sample, so the specific code is not pinned |
+| erase-log-31 | An id that looks like a value (e-mail, `pcv1.`/`pci1.`/`pck1.`, fingerprint, key service ciphertext) is `ERASE_ENTRY_VALUE_REFUSED` | DONE (P040, bbf2289, 522a53e) | `EraseRequest.notAValue` (`VALUE_LIKE`) | `ET/EraseRequestTest.java` `anEntryWithAValueIsRefused` | Refusal is tested, but the test accepts `ERASE_ENTRY_INVALID` or `_VALUE_REFUSED` for each sample, so the specific code is not pinned |
 | erase-log-32 | Messages name the field, never what was given | DONE | `EraseRequest.require`, `notAValue` | `ET/EraseRequestTest.java` `anEntryWithAValueIsRefused` (`refused` helper) | |
 | erase-log-33 | A person is named by actor ID, not by e-mail or name | DONE | `ErasedBy` (`notAValue`) | `ET/EraseRequestTest.java` `anEntryWithAValueIsRefused` (`ErasedBy.person(v)`) | A name with only letters cannot be told from an ID; spaces and commas are refused by the form |
 | erase-log-34 | `hash` = SHA-256 of `platform-erase-log/1\|<log ID>\|<seq>\|<loggedAt>\|<fields…>\|<prev>`; first `prev` is 64 zeros or the checkpoint's hash | PARTLY | `EraseEntry.hash`, `GENESIS` | `ET/FileEraseLogStoreTest.java` `entriesAreNumberedChained…` (GENESIS, `hashMatches`), `pruningKeepsTheChainVerifiableFromTheCheckpoint` | No fixed test vector: a changed formula still passes the round trip, but would break existing logs |
@@ -347,7 +347,7 @@ tick-offs.
 | erase-log-73 | 3. Verify: every handler checks every kept entry; anything READABLE or a check that fails is `ERASE_VERIFY_FAILED`, and the system stays blocked | DONE (P038, cd56444) | `EraseReplay.Verify` | `ET/RestoreAndReplayTest.java` `somethingStillReadableAfterTheReplayKeepsTheSystemBlocked` (READABLE) | A verify check that throws (`EraseHandlerException` or another exception) is not tested |
 | erase-log-74 | 4. Only then is `replay_required` cleared and the guard lifts | DONE | `locked.verified(now)` | `ET/RestoreAndReplayTest.java` `aRestoredDatabaseTakesNoWork…`, `somethingStillReadable…` (stays required) | |
 | erase-log-75 | Running it twice is safe | DONE | | `ET/RestoreAndReplayTest.java` `aRestoredDatabaseTakesNoWork…` | |
-| erase-log-76 | The report holds counts, codes and entry numbers only | DIFFERENT | `EraseReplay.Report.describe`; `Applying.apply`; `InStep.problem` | `ET/RestoreAndReplayTest.java` `aHandlerFailureStops…` | The report's message also carries the entry's kind, record type and record ID, the log location and the handler's own message text. These are ids, not values, so nothing leaks under the entry rules, but it is more than the design says and the handler's message is app text |
+| erase-log-76 | The report holds counts, codes and entry numbers only | DONE (P040, bbf2289) | `EraseReplay.Report.describe`; `Applying.apply`; `InStep.problem` | `ET/RestoreAndReplayTest.java` `aHandlerFailureStops…` | The report's message also carries the entry's kind, record type and record ID, the log location and the handler's own message text. These are ids, not values, so nothing leaks under the entry rules, but it is more than the design says and the handler's message is app text |
 
 ## erase-log — Built-in handler `fields.CaseFieldsEraseHandler`
 
@@ -392,9 +392,9 @@ tick-offs.
 
 | ID | Decision (report) | Status | Code | Test | Note |
 |---|---|---|---|---|---|
-| erase-log-DG-1 | The everyday erase does not walk the whole chain: it compares the log's last entry with the position. The whole chain is walked at startup, daily, before pruning and by the replay (P021-7) | DOC GAP | `Eraser.erase`; `EraseLog.prune`; `EraseGuard.full` | `ET/RestoreAndReplayTest.java` | The design body states only the guard's side |
-| erase-log-DG-2 | A database belongs to one log; moving to a new location means moving the files, not starting a new log (P021-8) | DOC GAP | `InStep.problem` (`ERASE_LOG_WRONG_LOG`) | `ET/RestoreAndReplayTest.java` `theWrongLogALostLog…` | The install guide says "one location per protected database" but not "move the files" |
-| erase-log-DG-3 | Code-only numbers: `auditId` and `by` ids `[A-Za-z0-9_.:@/-]{1,128}`; `recheck` 5 seconds to 1 hour | DOC GAP | `EraseRequest.ID`; `EraseLogConfig.from` | `EST/EraseLogWiringTest.java` `badSettings…` (`PT1S`) | Not from a report; in neither the design nor the install guide |
+| erase-log-DG-1 | The everyday erase does not walk the whole chain: it compares the log's last entry with the position. The whole chain is walked at startup, daily, before pruning and by the replay (P021-7) | DONE (P040, bbf2289) | `Eraser.erase`; `EraseLog.prune`; `EraseGuard.full` | `ET/RestoreAndReplayTest.java` | The design body states only the guard's side |
+| erase-log-DG-2 | A database belongs to one log; moving to a new location means moving the files, not starting a new log (P021-8) | DONE (P040, bbf2289) | `InStep.problem` (`ERASE_LOG_WRONG_LOG`) | `ET/RestoreAndReplayTest.java` `theWrongLogALostLog…` | The install guide says "one location per protected database" but not "move the files" |
+| erase-log-DG-3 | Code-only numbers: `auditId` and `by` ids `[A-Za-z0-9_.:@/-]{1,128}`; `recheck` 5 seconds to 1 hour | DONE (P040, bbf2289) | `EraseRequest.ID`; `EraseLogConfig.from` | `EST/EraseLogWiringTest.java` `badSettings…` (`PT1S`) | Not from a report; in neither the design nor the install guide |
 
 ---
 
@@ -460,17 +460,17 @@ of applied entries older than retention + 30).
 | erase-log-40 | Escape or missing field refused (`ERASE_LOG_FORMAT`) | Only an extra field tested | B · **FIXED in P038 (23fefb1)** | Add a line with `\"` and a line missing `auditId` to `FileEraseLogStoreTest` | S |
 | erase-log-41 | Windows line ends accepted | Untested | C | Rewrite the log with CRLF in `FileEraseLogStoreTest`, verify intact | S |
 | erase-log-46 | Newest entries read from the end | Untested | C | Test with a large log that `head()` and `after(head-1)` read only the tail (or time-bound) | S |
-| erase-log-31 | Value-like id is `ERASE_ENTRY_VALUE_REFUSED` | The test accepts either code | C | Pin `ERASE_ENTRY_VALUE_REFUSED` for the e-mail, sealed, fingerprint and ciphertext samples | S |
+| erase-log-31 | Value-like id is `ERASE_ENTRY_VALUE_REFUSED` | The test accepts either code | C · **FIXED in P040 (bbf2289, 522a53e)** | Pin `ERASE_ENTRY_VALUE_REFUSED` for the e-mail, sealed, fingerprint and ciphertext samples | S |
 | erase-log-34 | Hash formula | No known-answer vector | C | Add a fixed entry with its expected SHA-256 hex | S |
 | erase-log-35 | Inserted entry breaks the chain | Untested | C | Insert a forged line between two entries → `ERASE_LOG_CHAIN_BROKEN` | S |
 | erase-log-87 | `backup-retention-days` default 35 (Spring) | Default unasserted | C | Assert the health detail 35 with no property set | S |
 | erase-log-88 | `recheck` default 1 minute | Default unasserted | C | Assert `EraseLogConfig.recheck()` is 1 minute with no property set | S |
 | erase-log-89 | `exit-after-replay` default true; false does not exit | Neither tested | C | Wiring test: default runner exits; with `false` it does not | S |
-| erase-log-26 | Only dependency platform-fields, optional | Out of date: platform-errors since P032 | C | Update the design sentence | S |
-| erase-log-76 | Replay report holds counts, codes, entry numbers only | Message also has kind, record type and ID, location, handler text | C | Either say so in the design, or move ids and handler text out of `describe()` | S |
-| erase-log-DG-1 | Everyday erase compares head only; full walk at startup, daily, prune, replay | Not in the design body | C | Add to the design "Guard" section | S |
-| erase-log-DG-2 | One database, one log; move files to move it | Not in the design or install guide | C | Add a line to the design and install section 1 | S |
-| erase-log-DG-3 | `auditId` / `by` id form; `recheck` 5 s – 1 h | Code-only | C | Add both to the design entry table and the install property table | S |
+| erase-log-26 | Only dependency platform-fields, optional | Out of date: platform-errors since P032 | C · **FIXED in P040 (bbf2289)** | Update the design sentence | S |
+| erase-log-76 | Replay report holds counts, codes, entry numbers only | Message also has kind, record type and ID, location, handler text | C · **FIXED in P040 (bbf2289)** | Either say so in the design, or move ids and handler text out of `describe()` | S |
+| erase-log-DG-1 | Everyday erase compares head only; full walk at startup, daily, prune, replay | Not in the design body | C · **FIXED in P040 (bbf2289)** | Add to the design "Guard" section | S |
+| erase-log-DG-2 | One database, one log; move files to move it | Not in the design or install guide | C · **FIXED in P040 (bbf2289)** | Add a line to the design and install section 1 | S |
+| erase-log-DG-3 | `auditId` / `by` id form; `recheck` 5 s – 1 h | Code-only | C · **FIXED in P040 (bbf2289)** | Add both to the design entry table and the install property table | S |
 | case-fields-60 | Record type / ID form refused `VALUES_RECORD_REF_INVALID` | Untested | C | Add bad record type and ID cases to `PostgresValueStoreTest` | S |
 | case-fields-63 | A record without primary values is a record of its own | Untested | B · **FIXED in P038 (6681ae1)** | Claim twice with no primary value under two IDs → two records | S |
 | case-fields-73 | Sealed values bound to field and position | Untested | B · **FIXED in P038 (6681ae1)** | Move a `pci1.` value to another field / position in the table → it does not open | S |
@@ -478,16 +478,16 @@ of applied entries older than retention + 30).
 | case-fields-99 | Switching back on does not make a field primary again | Untested | C | Assert `assertFalse(on.spec().primary())` in `removingSwitchesOffAndNothingIsDeleted` | S |
 | case-fields-105 | Erase retries when the record changed meanwhile | Untested | C | Test store that reports one `VALUES_CHANGED_MEANWHILE`, then succeeds | S |
 | case-fields-113 | `FieldSchema` checks DELETE on `fld_record` | Untested | B · **FIXED in P038 (7678f9b)** | `FieldSchemaTest`: user with all but DELETE on `fld_record` → `FLD_PRIVILEGES_MISSING` naming DELETE | S |
-| case-fields-DG-1 … DG-14 | P017, P019 decisions (keys and capitals, primary one value, search mode, normalisation order, per-type forms, tab and 50 values, extensions, `change()` rules, import all-or-none, delivery rules and 2 MB, limits in messages, no cause in exceptions, no Spring module, `pg_indexes` detection) | In reports only | C | Add a "Decisions from P017–P019" subsection to `docs/design/case-fields.md` | M |
-| install-fields-1 | `f1.` fingerprint texts | Guide names one version only | C | Say `f<version>.` | S |
-| install-fields-2 | Backups hold `pci1.` only | `pck1.` envelope not named | C | Name the envelope column too | S |
-| install-fields-3 | Import conflict "type differs" | Currency and key-capitals conflicts not named | C | List all three conflicts | S |
-| install-fields-4 | Runtime grants | Grants are wider than the check needs | C | Leave the grants as they are; say the check needs fewer | S |
-| install-fields-6 | How the app builds `FieldValues` | Missing | C | Add a short "wiring in the app" paragraph | S |
-| install-erase-log-1 | `recheck` range | Missing | C | Add "5 seconds to 1 hour" | S |
-| install-erase-log-2 | Report entry number | Printed only inside the message | C | Print `stopped at entry N` as its own line in `describe()` | S |
-| install-erase-log-3 | Health details | Not listed | C | List the details (and the pending-entry fields once erase-log-22 is fixed) | S |
-| install-erase-log-4 | Moving a log | Missing | C | See erase-log-DG-2 | S |
+| case-fields-DG-1 … DG-14 | P017, P019 decisions (keys and capitals, primary one value, search mode, normalisation order, per-type forms, tab and 50 values, extensions, `change()` rules, import all-or-none, delivery rules and 2 MB, limits in messages, no cause in exceptions, no Spring module, `pg_indexes` detection) | In reports only | C · **FIXED in P040 (d1c3774)** | Add a "Decisions from P017–P019" subsection to `docs/design/case-fields.md` | M |
+| install-fields-1 | `f1.` fingerprint texts | Guide names one version only | C · **FIXED in P040 (d1c3774)** | Say `f<version>.` | S |
+| install-fields-2 | Backups hold `pci1.` only | `pck1.` envelope not named | C · **FIXED in P040 (d1c3774)** | Name the envelope column too | S |
+| install-fields-3 | Import conflict "type differs" | Currency and key-capitals conflicts not named | C · **FIXED in P040 (d1c3774)** | List all three conflicts | S |
+| install-fields-4 | Runtime grants | Grants are wider than the check needs | C · **FIXED in P040 (d1c3774)** | Leave the grants as they are; say the check needs fewer | S |
+| install-fields-6 | How the app builds `FieldValues` | Missing | C · **FIXED in P040 (d1c3774)** | Add a short "wiring in the app" paragraph | S |
+| install-erase-log-1 | `recheck` range | Missing | C · **FIXED in P040 (bbf2289)** | Add "5 seconds to 1 hour" | S |
+| install-erase-log-2 | Report entry number | Printed only inside the message | C · **FIXED in P040 (bbf2289)** | Print `stopped at entry N` as its own line in `describe()` | S |
+| install-erase-log-3 | Health details | Not listed | C · **FIXED in P040 (bbf2289)** | List the details (and the pending-entry fields once erase-log-22 is fixed) | S |
+| install-erase-log-4 | Moving a log | Missing | C · **FIXED in P040 (bbf2289)** | See erase-log-DG-2 | S |
 | xc-catalogue-1 | `FLD_PARTIAL_SEARCH_UNAVAILABLE` | Not a `PlatformCode` | B · **FIXED in P037 (00560bc)** | Add it to a fields code enum with message, cause, fix; regenerate the catalogue | S |
 | xc-catalogue-2 | `ERASE_HANDLER_ERROR` | Not a `PlatformCode` | B · **FIXED in P037 (59178ca)** | Add it to `EraseLogError` (or a handler code enum) with texts; regenerate the catalogue | S |
 | xc-catalogue-3 | `ERASE_LOG_SETTINGS_INVALID` as message prefix | Exception does not carry the code | B · **FIXED in P037 (2a21e26)** | Make `EraseLogConfigException` implement `HasPlatformCode` (with the P032 question 2 group) | S |

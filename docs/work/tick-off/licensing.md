@@ -33,7 +33,7 @@ Counts:
 | licensing-9 | Slot IDs are pre-issued by us, unique across all customers | DONE | `lic/issue/IdGenerator.java` `next` | `lic-t/issue/IssueLicenceCommandTest.java` `idsAreUniqueAcrossManyCustomers`, `aCollidingIdIsDrawnAgain` | |
 | licensing-10 | The Business Admin activates and names a slot in the app | APP-SIDE | | | App screen over identity's `SlotActivation` / `LicenceSlots` (identity tick-off) |
 | licensing-11 | Adding entities or changing allowances is a new licence version | DONE | `lic/issue/IssueLicenceCommand.java` (`--tenant-id`, version + 1, `--slot ID@…`) | `lic-t/issue/IssueLicenceCommandTest.java` `aNewVersionKeepsTheTenantAndChosenSlotsAndAddsNewOnes` | |
-| licensing-12 | Install licence is short: 30–60 days | DIFFERENT | `lic/issue/IssueLicenceCommand.java` `MAX_INSTALL_DAYS` | `lic-t/issue/IssueLicenceCommandTest.java` `anInstallLicenceRunsAtMostSixtyDays` | Changed by P009 decision 7 (at most 60, no minimum); the code follows the later decision |
+| licensing-12 | Install licence is short: 30–60 days | DONE (P040, dd2dc2c) | `lic/issue/IssueLicenceCommand.java` `MAX_INSTALL_DAYS` | `lic-t/issue/IssueLicenceCommandTest.java` `anInstallLicenceRunsAtMostSixtyDays` | Changed by P009 decision 7 (at most 60, no minimum); the code follows the later decision |
 | licensing-13 | Usage under an install licence is recorded but not billable | DONE | `lic/LicenceKind.java` `usageBillable`, `lic/usage/UsageRecorder.java` `record` | `kit-t/UsageRecorderTest.java` `billableOnlyForProductionUsageNotMarkedFree` | |
 
 ## licensing.md — section 2 Where the licence lives
@@ -74,7 +74,7 @@ Counts:
 
 | ID | Rule | Status | Code | Test | Note |
 |---|---|---|---|---|---|
-| licensing-33 | Builds and signs a licence from an input file | DIFFERENT | `lic/issue/IssueLicenceCommand.java` | `lic-t/issue/IssueLicenceCommandTest.java` `issuesASignedLicenceThatVerifies` | Built from command options (`--customer`, `--slot` …), no input file |
+| licensing-33 | Builds and signs a licence from an input file | DONE (P040, dd2dc2c) | `lic/issue/IssueLicenceCommand.java` | `lic-t/issue/IssueLicenceCommandTest.java` `issuesASignedLicenceThatVerifies` | Built from command options (`--customer`, `--slot` …), no input file |
 | licensing-34 | Generates tenant and slot IDs, random, collision-checked against its own issued records | DONE | `lic/issue/IdGenerator.java`, `lic/issue/IssuedRecords.java` `allIds` | `lic-t/issue/IssueLicenceCommandTest.java` `aCollidingIdIsDrawnAgain`, `aRandomSourceThatOnlyRepeatsEndsWithACollisionCode` | |
 | licensing-35 | Signing key from the secret store; since P011 the key never leaves it (Vault Transit) | DONE | `lic/issue/VaultTransitSigner.java` `sign` | `lic-t/issue/VaultTransitSignerTest.java` `signsInVaultAndTheLicenceVerifiesWithTheExportedPublicKey` | |
 | licensing-36 | A record of every licence issued, with no key material | DONE | `lic/issue/IssuedRecords.java` `append` | `lic-t/issue/IssueLicenceCommandTest.java` `recordsAndRunLogHoldNoKeyMaterialAndNoSignature` | |
@@ -87,7 +87,7 @@ Counts:
 |---|---|---|---|---|---|
 | licensing-39 | Setup reads and stores the licence, creates customer, tenant and slots, loads the sign-in config | DONE | `platform-setup/.../setup/SetupCommand.java` | `platform-setup/.../setup/SetupCommandTest.java` `theDemoFilesSetUpBothProductDatabasesAndARerunChangesNothing` | Detail in the setup tick-off |
 | licensing-40 | Idempotent: never duplicates | DONE | `platform-setup/.../setup/SetupCommand.java` | `SetupCommandTest.java` `theDemoFilesSetUpBothProductDatabasesAndARerunChangesNothing`, `aRerunAfterAMidRunFailureFinishesWhatWasMissing` | |
-| licensing-41 | Setup never deletes | DIFFERENT | `platform-setup` | | Later setup decisions: `--remove-unlisted-grants`, and a removed client-binding line switches the binding off (setup.md); check in the setup tick-off |
+| licensing-41 | Setup never deletes | DONE (P040, dd2dc2c) | `platform-setup` | | Later setup decisions: `--remove-unlisted-grants`, and a removed client-binding line switches the binding off (setup.md); check in the setup tick-off |
 | licensing-42 | No inserts at app startup; the schema step stays separate | DONE | `lic/jdbc/LicensingSchema.java` `verify` (read only) | `spr-t/LicensingWiringTest.java` `missingTablesStopTheStartAndNothingIsCreated`; `lic-t/jdbc/PostgresStoresTest.java` `schemaCheckCodes` ("the check created nothing") | |
 
 ## licensing.md — section 7 Rules that always apply
@@ -139,7 +139,7 @@ Counts:
 | licensing-80 | Q1: a licence without this app's product code stops intake; start-up not refused | DONE | `lic/LicenceService.java` `productLicensed`, `intakeAllowed` | `kit-t/LicenceServiceTest.java` `aLicenceWithoutThisAppsProductStopsIntakeButStarts`; `spr-t/notifications/LicensingNoticesTest.java` `aLicenceWithoutThisProductAlertsTheItAdminAndRecovers` | |
 | licensing-81 | Q2: `platform.licensing.tenant-id` required, message "platform.licensing.tenant-id is missing"; setup writes `platform-tenant.properties` | DONE | `spr/LicensingConfig.java` `from` | `spr-t/LicensingWiringTest.java` `theShippedTrustedKeysFileIsReadAndTheTenantIdIsRequired`; setup: `SetupCommandTest.java` (`--config-out`) | |
 | licensing-82 | Q4: resets stay out of the issued records (run log only) | UNTESTED | `lic/issue/IssueLicenceCommand.java` (reset path does not append a record) | — | `issuesASignedLastSeenResetForAKnownTenant` checks the run log but not that the records file is unchanged |
-| licensing-83 | Q5: wiping both usage tables looks like a new ledger; the next export shows `EXPORT_START_MISMATCH` | UNTESTED | `lic/usage/UsageExport.java`, `lic/usage/ExportAnchor.java` | — | The export anchor is kept by the app (no `lic_` table), so the mismatch shows only if the app's anchor is lost too; no test wipes the tables |
+| licensing-83 | Q5: wiping both usage tables looks like a new ledger; the next export shows `EXPORT_START_MISMATCH` | DONE (P040, dd2dc2c, 241cfa7) | `lic/usage/UsageExport.java`, `lic/usage/ExportAnchor.java` | — | The export anchor is kept by the app (no `lic_` table), so the mismatch shows only if the app's anchor is lost too; no test wipes the tables |
 | licensing-84 | P011: licensing notifications in licensing-spring, platform-notifications optional | DONE | `spr/notifications/LicensingNotificationsAutoConfiguration.java` | `spr-t/notifications/LicensingNotificationsWiringTest.java` `withoutPlatformNotificationsLicensingWorksAndPublishesNothing`, `withANotifierTheCheckIsWiredAndRunning` | |
 | licensing-85 | P011: the app registers the event types and supplies `ActivatedSlots` | DONE | `spr/notifications/LicensingEvents.java` `register`, `LicensingNotificationsAutoConfiguration` | `spr-t/notifications/LicensingNotificationsWiringTest.java` `businessEventsWithoutActivatedSlotsStopTheStartWithAClearMessage` | The app's own `ActivatedSlots` bean |
 | licensing-86 | P011: business events per activated slot; clock and version events technical, per tenant | DONE | `spr/notifications/LicensingNotices.java` `Run` | `spr-t/notifications/LicensingNoticesTest.java` `expiringIsPublishedOncePerBandForTheActivatedSlotOnly`, `usageNearAtAndOverLimitPerActivatedSlot`, `aClockBehindAlertsTheItAdminOnceAndRecovers`, `aVersionNotCoveredByUpdatesIsReportedOnceToTheItAdmin` | |
@@ -203,7 +203,7 @@ Counts:
 | licensing-file-format-29 | Ed25519 is deterministic: same payload and key give the same file | DONE | `lic/Ed25519.java` | `lic-t/LicenceVerifierTest.java` `signingIsDeterministic` | |
 | licensing-file-format-30 | `LICENCE_MISSING`: null, empty, blank | DONE | `lic/SignedDocument.java` `open` | `lic-t/LicenceVerifierTest.java` `missing` | |
 | licensing-file-format-31 | `LICENCE_MALFORMED`: not UTF-8, not JSON, missing / extra envelope fields, signature not 64 bytes of Base64 | DONE (P038, ed1eb0d) | `lic/SignedDocument.java` `open` | `lic-t/LicenceVerifierTest.java` `malformed` | Extra envelope field and a non-64-byte signature not tested |
-| licensing-file-format-32 | Check order: malformed envelope before unsupported format | DIFFERENT | `lic/SignedDocument.java` `open` | | `format` is compared before the envelope's field set: an unknown format with extra fields gives `LICENCE_UNSUPPORTED_FORMAT`, not `MALFORMED`. Harmless; doc or code to agree |
+| licensing-file-format-32 | Check order: malformed envelope before unsupported format | DONE (P040, dd2dc2c) | `lic/SignedDocument.java` `open` | | `format` is compared before the envelope's field set: an unknown format with extra fields gives `LICENCE_UNSUPPORTED_FORMAT`, not `MALFORMED`. Harmless; doc or code to agree |
 | licensing-file-format-33 | `LICENCE_UNSUPPORTED_FORMAT`: format not `platform-licence/1` or algorithm not Ed25519 | DONE | `lic/SignedDocument.java` `open` | `lic-t/LicenceVerifierTest.java` `unsupportedFormatOrAlgorithm` | |
 | licensing-file-format-34 | `LICENCE_UNKNOWN_KEY_ID` | DONE | `lic/SignedDocument.java` `open` | `lic-t/LicenceVerifierTest.java` `unknownKeyId` | |
 | licensing-file-format-35 | `LICENCE_TAMPERED` | DONE | `lic/SignedDocument.java` `open` | `lic-t/LicenceVerifierTest.java` `tamperedWhenTheContentChanges`, `everySingleByteChangeIsRefused` | |
@@ -221,7 +221,7 @@ Counts:
 | licensing-file-format-42 | `platform-licence-keys/1`, `publicKey` Base64 X.509 SubjectPublicKeyInfo | DONE | `lic/TrustedKeys.java` `parse`, `toJson` | `lic-t/LicenceVerifierTest.java` `trustedKeysFileRoundTrips` | |
 | licensing-file-format-43 | A rotation adds a key; old keys stay | DONE | `lic/TrustedKeys.java` | `lic-t/LicenceVerifierTest.java` `keyRotationOldLicencesKeepVerifying` | |
 | licensing-file-format-44 | P031: optional `"development": true` per key; a key so marked is a development key in the app | DONE (P036, dd2d3e8) | `lic/TrustedKeys.java`; `spr/LicensingConfig.java` `from` keeps the file's development IDs (`TrustedKeys.of(keys, development)`); inline keys carry no mark | `lic-t/TrustedKeysDevelopmentTest.java`; `platform-identity-spring` `DevelopmentKeyWiringTest` (development-signed licence + local http issuer allowed, production-signed refused) | was DIFFERENT: the marks were dropped (xc-devkey-1). Fixed in P036 |
-| licensing-file-format-45 | P031-1: the `development` field is not described in section 3 | DOC GAP | | | Only in CLAUDE.md and P031-report |
+| licensing-file-format-45 | P031-1: the `development` field is not described in section 3 | DONE (P040, dd2dc2c) | | | Only in CLAUDE.md and P031-report |
 
 ## licensing-file-format.md — section 4 Issuing command files
 
@@ -229,7 +229,7 @@ Counts:
 |---|---|---|---|---|---|
 | licensing-file-format-46 | Issued records: JSON Lines, append only, the listed fields, no key material, no signature; new IDs checked against every ID in the file | DONE | `lic/issue/IssuedRecords.java` | `lic-t/issue/IssueLicenceCommandTest.java` `recordsAndRunLogHoldNoKeyMaterialAndNoSignature`, `idsAreUniqueAcrossManyCustomers` | Fields asserted: `licenceId`, `slotIds`; the rest by reading |
 | licensing-file-format-47 | Run log: default `<records>.runs.log`, one line per run with the listed fields and outcomes; never a token, key or signature | DONE | `lic/issue/IssueLicenceCommand.java` (run log) | `lic-t/issue/IssueLicenceCommandTest.java` `recordsAndRunLogHoldNoKeyMaterialAndNoSignature`; `lic-t/issue/VaultTransitSignerTest.java` `signsInVaultAndTheLicenceVerifiesWithTheExportedPublicKey` (`signerAuditRefs`), `noTokenPasswordOrSignatureAppearsInAnyOutput` | |
-| licensing-file-format-48 | Run log field list | DIFFERENT | `lic/issue/IssueLicenceCommand.java` | | A reset line also carries `resetId`, `resetTo`, `notAfter`; the doc's list leaves them out |
+| licensing-file-format-48 | Run log field list | DONE (P040, dd2dc2c) | `lic/issue/IssueLicenceCommand.java` | | A reset line also carries `resetId`, `resetTo`, `notAfter`; the doc's list leaves them out |
 | licensing-file-format-49 | Signing through `Signer.sign`; `VaultTransitSigner` posts to `/v1/transit/sign/<name>`, only the signature comes back | DONE | `lic/issue/VaultTransitSigner.java` `sign` | `lic-t/issue/VaultTransitSignerTest.java` `signsInVaultAndTheLicenceVerifiesWithTheExportedPublicKey`, `aResetIsSignedInVaultToo` | |
 | licensing-file-format-50 | Each signature checked against the key's public key before the file is written | DONE (P038, 1aac687) | `lic/issue/VaultTransitSigner.java` `sign` (`ISSUE_SIGNATURE_MISMATCH`) | — | No test returns a wrong signature |
 
@@ -325,7 +325,7 @@ records contents, `ISSUE_VAULT_NO_TOKEN`, `_LOGIN_REFUSED`, `_PERMISSION_DENIED`
 | licensing-82 | Resets stay out of the issued records | Untested | C | Assert the records file is unchanged after `--reset-last-seen` | S |
 | licensing-55 | Reset valid 7 days by default | Untested | C | Issue a reset without `--valid-days`; assert `notAfter` = now + 7 days | S |
 | licensing-76 | `RST-` IDs checked against all issued IDs | Earlier reset IDs are not checked (resets only in the run log) | C | Also read reset IDs from the run log into the taken set, or note that 80 random bits suffice | S |
-| licensing-83 | Q5: wiped usage tables show `EXPORT_START_MISMATCH` | Only when the app's export anchor is lost too; untested | C | State in the design that the anchor is the app's; add a test that a wiped ledger exports with `recordCount` 0 against the kept anchor | S |
+| licensing-83 | Q5: wiped usage tables show `EXPORT_START_MISMATCH` | Only when the app's export anchor is lost too; untested | C · **FIXED in P040 (dd2dc2c, 241cfa7)** | State in the design that the anchor is the app's; add a test that a wiped ledger exports with `recordCount` 0 against the kept anchor | S |
 | licensing-64 / licensing-file-format-8 | Whitespace is not signed | Untested | C | Test: re-format a signed file (compact and other indent), it still verifies | S |
 | licensing-87 | Hourly check | Default 1 h and the 24 h bound untested | C | Wiring test of the default interval and `check-interval=25h` refused | S |
 | licensing-90 | Clock behind repeats every 4 hours | Untested | C | Run the notices test 5 hours and expect one repeat | S |
@@ -333,17 +333,17 @@ records contents, `ISSUE_VAULT_NO_TOKEN`, `_LOGIN_REFUSED`, `_PERMISSION_DENIED`
 | licensing-file-format-9 | Strict date and time forms | Untested | C | Test non-canonical dates/times in a signed payload give `LICENCE_MALFORMED` | S |
 | licensing-file-format-12 | `LIC-` / `TEN-` / `ENT-` ID shape | Reader accepts any ID shape | C | Either state that readers accept any ID shape, or check the prefix pattern on read | S |
 | licensing-file-format-14 | Customer 1–200 printable characters | DEL and other non-printables accepted; untested | C | Refuse `Character.isISOControl` and test | S |
-| licensing-file-format-32 | Check order malformed before unsupported | Format compared before the envelope field set | C | Align the doc's table with the code (format first) | S |
-| licensing-file-format-48 | Run log fields | `resetId`, `resetTo`, `notAfter` not in the doc | C | Add them to format section 4 | S |
-| licensing-12 | Install licence 30–60 days | Superseded by P009-7; code follows | C | Change section 1 to "at most 60 days" | S |
+| licensing-file-format-32 | Check order malformed before unsupported | Format compared before the envelope field set | C · **FIXED in P040 (dd2dc2c)** | Align the doc's table with the code (format first) | S |
+| licensing-file-format-48 | Run log fields | `resetId`, `resetTo`, `notAfter` not in the doc | C · **FIXED in P040 (dd2dc2c)** | Add them to format section 4 | S |
+| licensing-12 | Install licence 30–60 days | Superseded by P009-7; code follows | C · **FIXED in P040 (dd2dc2c)** | Change section 1 to "at most 60 days" | S |
 | licensing-23 | Clock rollback as tampering | Superseded by O1; code follows | C | Strike the old sentence (pointer already there) | S |
-| licensing-33 | Issuing from an input file | Built from options | C | Say "from command options" in section 5 | S |
-| licensing-41 | Setup never deletes | Later setup decisions remove grants / switch bindings off on request | C | Point section 6 to setup.md's rules | S |
+| licensing-33 | Issuing from an input file | Built from options | C · **FIXED in P040 (dd2dc2c)** | Say "from command options" in section 5 | S |
+| licensing-41 | Setup never deletes | Later setup decisions remove grants / switch bindings off on request | C · **FIXED in P040 (dd2dc2c)** | Point section 6 to setup.md's rules | S |
 | licensing-93 … licensing-105 | P010 and P011 decisions (expected tenant, broken row, version rules, reset use, tolerance cap, health codes, `LicensingClock`, notification timing, bands, handover, keys, usage levels, purge / catalogue / release date) | Only in the reports; the design body just points to them | C · **FIXED in P037 (c3fa330)** | Write them into section 8 of licensing.md | M |
-| licensing-file-format-45 | `"development": true` in the trusted-keys format | Not in section 3 | C | Add the optional field to section 3 | S |
-| install-licensing-1 | `product-code` required | Guide does not say required | C | Mark it required in the guide | S |
-| install-licensing-2 | `clock-tolerance` at most 1 day | Not in the guide | C | Add the limit | S |
-| install-licensing-3 | Licence command options | `--tenant-id`, `--product-code`, `--clock-tolerance` missing; first store accepts any tenant | C | List the options and advise `--tenant-id` on the first store | S |
-| install-licence-signing-1 | `ISSUE_VAULT_SEALED` covers standby | Standby gives `ISSUE_VAULT_ERROR` | C | Reword the guide row (sealed: 503; standby: use the active node) | S |
-| install-licence-signing-2 | Vault mount options | `--vault-mount`, `--vault-login-mount` not in the guide | C | Add them with defaults | S |
-| install-licence-signing-3 | Vault TLS / sealed / error codes | Untested | C | Tests with a stub Vault: untrusted certificate, 503, 500 | S |
+| licensing-file-format-45 | `"development": true` in the trusted-keys format | Not in section 3 | C · **FIXED in P040 (dd2dc2c)** | Add the optional field to section 3 | S |
+| install-licensing-1 | `product-code` required | Guide does not say required | C · **FIXED in P040 (dd2dc2c)** | Mark it required in the guide | S |
+| install-licensing-2 | `clock-tolerance` at most 1 day | Not in the guide | C · **FIXED in P040 (dd2dc2c)** | Add the limit | S |
+| install-licensing-3 | Licence command options | `--tenant-id`, `--product-code`, `--clock-tolerance` missing; first store accepts any tenant | C · **FIXED in P040 (dd2dc2c)** | List the options and advise `--tenant-id` on the first store | S |
+| install-licence-signing-1 | `ISSUE_VAULT_SEALED` covers standby | Standby gives `ISSUE_VAULT_ERROR` | C · **FIXED in P040 (dd2dc2c, e556f84)** | Reword the guide row (sealed: 503; standby: use the active node) | S |
+| install-licence-signing-2 | Vault mount options | `--vault-mount`, `--vault-login-mount` not in the guide | C · **FIXED in P040 (dd2dc2c)** | Add them with defaults | S |
+| install-licence-signing-3 | Vault TLS / sealed / error codes | Untested | C · **FIXED in P040 (934c35a)** | Tests with a stub Vault: untrusted certificate, 503, 500 | S |
