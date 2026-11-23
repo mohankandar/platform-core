@@ -106,10 +106,12 @@ public final class SetupCommand {
     }
 
     /**
+     * Test seam (package-private): the tests in this package pass their own key service connector.
+     *
      * @param env          the environment (the database and key service settings are read from it, nothing else)
      * @param keyConnector how to reach the key service (the default: Vault, settings from {@code env})
      */
-    public SetupCommand(Map<String, String> env, Clock clock, SetupKeys.Connector keyConnector) {
+    SetupCommand(Map<String, String> env, Clock clock, SetupKeys.Connector keyConnector) {
         this.env = Map.copyOf(Objects.requireNonNull(env, "env"));
         this.clock = Objects.requireNonNull(clock, "clock");
         this.keyConnector = Objects.requireNonNull(keyConnector, "keyConnector");

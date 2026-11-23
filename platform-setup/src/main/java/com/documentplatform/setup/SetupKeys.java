@@ -27,7 +27,7 @@ import java.util.Objects;
  * PLATFORM_SETUP_VAULT_KEY_PREFIX     default customer- (the same as the app's)
  * </pre>
  */
-public final class SetupKeys {
+final class SetupKeys {
 
     public static final String VAULT_ADDR = "PLATFORM_SETUP_VAULT_ADDR";
     public static final String VAULT_NAMESPACE = "PLATFORM_SETUP_VAULT_NAMESPACE";

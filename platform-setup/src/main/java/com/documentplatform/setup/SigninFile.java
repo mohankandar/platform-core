@@ -50,7 +50,7 @@ import java.util.TreeMap;
  * names: setup stores one only where none is stored yet, and never changes a zone already set (for example in the
  * app). A name that is not an IANA name refuses the file ({@code SETUP_TIME_ZONE_INVALID}).
  */
-public record SigninFile(String tenantId, String mode, String loginType, URI issuer, String providerId,
+record SigninFile(String tenantId, String mode, String loginType, URI issuer, String providerId,
                          Map<String, Product> products, ZoneId timeZone, Map<String, ZoneId> entityTimeZones) {
 
     public static final String FORMAT = "platform-signin/1";

@@ -41,7 +41,7 @@ import java.util.regex.Pattern;
  * customer's keys, so {@code --no-customer-keys} is refused (SETUP_CUSTOMER_KEYS_REQUIRED); {@code "optional"} (the
  * default when missing) allows it. Files without these fields load as before.
  */
-public final class ProductRoles implements EntityRoleCatalog {
+final class ProductRoles implements EntityRoleCatalog {
 
     public static final String FORMAT = "platform-product-roles/1";
     private static final Pattern ROLE = Pattern.compile("[A-Za-z][A-Za-z0-9_.-]{0,99}");
