@@ -252,10 +252,16 @@ public final class WatchedFolder {
                 for (String f : List.of(WatchSource.PROCESSING, WatchSource.ARCHIVE, WatchSource.PROBLEM,
                         WatchSource.QUARANTINE)) {
                     Path p = root.resolve(f);
-                    if (!files.isDirectory(p)) files.createDirectory(p);
+                    if (files.isDirectory(p)) continue;
+                    try {
+                        files.createDirectory(p);
+                    } catch (FileAlreadyExistsException e) {
+                        // Another instance made it a moment ago; a file of that name is a problem.
+                        if (!files.isDirectory(p)) {
+                            throw new Stop(Outcome.NOT_CONFIGURED, IntegrationCode.INT_WATCH_NO_PERMISSION);
+                        }
+                    }
                 }
-            } catch (FileAlreadyExistsException e) {
-                throw new Stop(Outcome.NOT_CONFIGURED, IntegrationCode.INT_WATCH_NO_PERMISSION); // a file of that name
             } catch (IOException e) {
                 throw failure(e);
             }
@@ -461,6 +467,12 @@ public final class WatchedFolder {
                 claimsLost++;
                 return false;
             } catch (IOException e) {
+                // Windows answers a rename that lost the race with "access denied": what was to be moved is gone.
+                Path source = w.layout() == WatchSource.Layout.SUBFOLDER ? d.folder() : root.resolve(triggerName);
+                if (files.reachable(root) && !files.exists(source)) {
+                    claimsLost++;
+                    return false;
+                }
                 Stop s = failure(e);
                 if (s.code == IntegrationCode.INT_WATCH_SHARE_UNREACHABLE) throw s;
                 // Most often a file still held open by the writer: the drop is tried again at the next pass.
