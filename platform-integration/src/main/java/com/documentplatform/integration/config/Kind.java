@@ -1,9 +1,9 @@
 package com.documentplatform.integration.config;
 
 /**
- * What the integration does. The call engine runs {@link #API_PUSH}; the others are part of the model so their
- * configurations can be stored and versioned now, and are built in later tasks (folder export P025, callbacks P026,
- * intake P027).
+ * What the integration does: {@link #API_PUSH} and {@link #CALLBACK} run by the call engine, {@link #FOLDER_EXPORT}
+ * by {@code folder.FolderExport} (P025), {@link #API_POLL} by {@code engine.PollEngine} and {@link #WATCHED_FOLDER}
+ * by {@code watch.WatchedFolder} (P027).
  */
 public enum Kind {
     /** Outbound: configured HTTP calls to a destination's API. */

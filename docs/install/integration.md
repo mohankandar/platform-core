@@ -4,8 +4,9 @@ The app sends documents to your other systems through integrations. It sends the
 writes them into a folder or network share with a manifest file (folder export). Each integration is set up in the
 app's integration screens, and every change is kept as a new version. This page lists what the installation itself
 needs: the settings below (module `platform-integration-spring`), the outbound proxy, your private certificate
-authority, the profile files, the rights on an export share, client certificates, and signed callbacks to your own
-systems. It ends with every code you can see, and what to do about it.
+authority, the profile files, the rights on an export share, client certificates, signed callbacks to your own
+systems, and the intake side: polling an API, a watched folder or share, and the virus scanner. It ends with every
+code you can see, and what to do about it.
 
 Secrets never go into these settings or into an integration's configuration. Only a **reference** goes there: the
 name under which the secret is kept in your secret store, for example `integration/proxy-password`. The app reads the
@@ -40,6 +41,8 @@ secret at the moment it is needed, so a changed password works without a restart
 | `platform.integration.callbacks.keep-finished` | `30d` | callbacks sent or given up are deleted after this |
 | `platform.integration.worker.enabled` | `true` | the background work: callbacks that are due, and certificate switches at their set time |
 | `platform.integration.worker.every` | `15s` | how often the background work runs |
+| `platform.integration.scanner.*` | none | the virus scanner for incoming files (section 13) |
+| `platform.integration.intake.work-folder` | the system's temporary folder | where polled documents are kept while the app takes them (section 11) |
 
 The limits are defaults: each integration keeps its own copy, which the integration screens can change.
 
@@ -123,7 +126,7 @@ ships no profiles. When you receive one:
    `SETUP_PROFILE_TAG_MISSING`, with the place in the file.
 
 The integration screens read the file each time IT sets up an integration from it, so a replaced file is used without
-a restart. A file with problems is refused with `INT_PROFILE_*` codes (section 11).
+a restart. A file with problems is refused with `INT_PROFILE_*` codes (section 14).
 
 ## 6. Folder export: the share and the service account
 
@@ -152,7 +155,8 @@ name that is already there is never overwritten (`INT_FOLDER_EXISTS_DIFFERENT`).
 ## 7. Health checks
 
 With Spring Boot Actuator, `/actuator/health/integrations` has one entry per integration that is switched on, named
-by its ID. Each entry shows only the `outcome` and the `code`. An integration that is up or busy is `UP`; any other
+by its ID (sources too: a polled API, a watched folder), and a `scanner` entry when a virus scanner is set. Each entry
+shows only the `outcome` and the `code`. An integration that is up or busy is `UP`; any other
 result is `DOWN`. A result is kept for `health.cache-for`.
 
 A system that is down makes this entry `DOWN`. If your orchestrator restarts the app or stops sending it traffic on
@@ -242,7 +246,98 @@ the status, and the app asks again on its own schedule. It asks at the time the 
 after the configured wait. A status of done counts as delivered. A status of failed is shown with the system's own
 code (`INT_STATUS_FAILED`). Nothing is needed from IT for this beyond the integration's settings.
 
-## 11. Codes you can see, and what to do
+## 11. Polling an API (intake)
+
+An integration can also **fetch** documents: it asks a system's API for the documents waiting there, downloads each
+one and, once the app has stored it, tells the system it was received (the "acknowledge"). The app runs one round
+(a "pass") at the times it sets; each pass reads at most the configured number of pages.
+
+- The calls use everything sections 2 to 5 and 8 describe: the proxy, your CA, the address check, sign-in and client
+  certificates. The integration screens (or a profile file from the API's owner) set the list call, how the next
+  page is asked for, the download call and the acknowledge call.
+- Each document is streamed to a temporary file while the app takes it, and removed right after. By default that is
+  the system's temporary folder. To use another one, set `platform.integration.intake.work-folder` to a folder only
+  the app's service account can read, with room for the largest document.
+- A document is acknowledged **only after the app has it**. If anything fails part of the way (the system is busy or
+  down, the app's own store is down), the app starts the next pass after the last page it finished. Documents it
+  already has are recognised and not taken twice.
+- A document the system refuses to hand over, or one over the size limit, is shown in the app with its code and left
+  where it is. It is not acknowledged.
+
+## 12. Setting up a watched folder or share (intake)
+
+The app watches a folder into which your systems (a scanner station, a document system, a file transfer job) put
+**drops**, one drop for each set of documents that belong together:
+
+- **one subfolder per drop**: `\fileserver\inbox\LOAN-17\` with the documents and the trigger file in it; or
+- **files grouped by name** in the folder itself: `LOAN-17.pdf`, `LOAN-17.p2.pdf` and `LOAN-17.json` are one drop,
+  `LOAN-17` (the name up to its first dot).
+
+**The trigger file must be written last.** It is the sign that the drop is complete: a JSON or XML file listing the
+drop (`manifest.json`, `<name>.xml`), or an empty marker file (`<name>.done`, `ready.lck`). Your process must:
+
+1. write every document of the drop completely, and close it;
+2. then write the trigger file.
+
+Even with the trigger there, the app waits until every file has stopped changing (sizes and times the same for the
+configured time, 30 seconds by default). A drop that has files but no trigger after the waiting time (60 minutes by
+default) is reported once in the app as incomplete (`INT_WATCH_INCOMPLETE`). It is not moved: check whether your
+process stopped before it wrote the trigger.
+
+**What the app does with a drop.** It never changes a file. It moves the drop between four folders it keeps in the
+watched folder (it creates them the first time):
+
+| Folder | What is in it |
+|---|---|
+| `_processing\<drop>-<claim>` | a drop the app is taking right now. Several app instances can watch the same folder: the first one to move a drop here takes it, and the others leave it alone. If an instance stops in the middle, the drop goes back to the watched folder after the claim time (30 minutes by default) and is taken again |
+| `_archive\<drop>-<claim>` | a drop the app has taken. Delete old ones by your own retention rules |
+| `_problem\<drop>-<claim>` | a drop the app could not take, with a small `problem.json`: the code, the time and, when the app refused it, the app's own code. It never holds a document's content. Fix the cause, then move the drop back into the watched folder |
+| `_quarantine\<drop>-<claim>` | a drop with a file the virus scanner found infected (section 13), with `problem.json` naming the file and what was found. Nothing in it was processed |
+
+Names starting with `_` or `.` are never taken as drops. Links (symbolic links, Windows junctions) are never followed;
+a drop that holds one goes to `_problem`.
+
+**Paths.** As for folder export (section 6): on Windows the share path as it is, or a local path; on Linux the mount
+path. The path must be absolute. Watched folders are not available on the hosted service.
+
+**Rights for the app's service account** on the watched folder: list it, read files, create folders, create and write
+files (`problem.json`, the claim marker and the health probe), rename files and folders, and delete files and folders.
+On a Windows share, give the account **Modify**, in both the share permissions and the NTFS permissions. The health
+check writes and removes one small file in `_processing`.
+
+**Trigger files.** For a JSON or XML trigger the integration can name values to read from it, by fixed paths (for
+example `/loan/number` in JSON, `/drop/loan/@number` in XML). The app decides what they mean. XML triggers must not
+have a DTD (`<!DOCTYPE`); entities, external files and includes are refused. A trigger that cannot be read
+(malformed, too large, too deeply nested) sends the drop to `_problem` with `INT_WATCH_TRIGGER_UNREADABLE`. When the
+trigger lists the drop's files, the app is told about files that are not on the list and names on the list without a
+file; what that means is the app's decision.
+
+## 13. The virus scanner (optional)
+
+When your installation has a virus scanner, the app can use it for every incoming file, from polling and from a
+watched folder: each file is scanned **before** the app processes it. Without one, scanning is off.
+
+| Property | Default | |
+|---|---|---|
+| `platform.integration.scanner.type` | `NONE` | `CLAMD` (a ClamAV daemon, `INSTREAM`) or `ICAP` (an ICAP server, `RESPMOD`) |
+| `platform.integration.scanner.host` | — | the scanner's host name or address (an internal address needs `allow-internal-addresses`) |
+| `platform.integration.scanner.port` | `3310` / `1344` | clamd's or the ICAP server's port |
+| `platform.integration.scanner.icap-service` | `avscan` | ICAP only: the service name on the server (for example `srv_clamav`, `avscan`) |
+| `platform.integration.scanner.timeout` | `60s` | to connect and to get each answer: 1 second to 10 minutes |
+
+- **Infected**: the file is never processed. A polled document is not acknowledged; a drop goes to `_quarantine`.
+  The app raises an alert for IT.
+- **The scanner cannot scan** (down, too slow, an error): the file is held and scanned again at the next pass. It is
+  never let through unscanned. Check the scanner; nothing else is needed.
+- **Size.** clamd refuses streams over its `StreamMaxLength` (25 MB by default). Set it at least as high as the
+  integration's largest file, or the file is held with `INT_SCAN_FAILED`.
+- The connection is plain TCP inside your network. The scanner gets the file's content and nothing else.
+- `/actuator/health/integrations` has a `scanner` entry when a scanner is set (clamd `PING`, ICAP `OPTIONS`).
+
+To test the set-up, put the standard EICAR test file (from eicar.org) into a test drop: it must end up in
+`_quarantine` with `INT_SCAN_INFECTED`.
+
+## 14. Codes you can see, and what to do
 
 The app's screens, audit and logs show these codes. They never show a password, a token, a document's content or a
 value.
@@ -325,6 +420,41 @@ value.
 | `INT_FOLDER_WRITE_FAILED` | Writing failed for another reason | Check the file server's logs; the next attempt starts over |
 | `INT_INTEGRITY_MISMATCH` | A file read back differs from what was sent (or the destination reports another checksum) | Check the disk or share; nothing final was written |
 
+**Polling an API** (section 11)
+
+| Code | What happened | What to do |
+|---|---|---|
+| `INT_POLL_ITEMS_MISSING` | The list answer has no list of items where the integration expects it | Check with the system's owner whether the API changed |
+| `INT_POLL_ITEM_ID_MISSING` | An item without a usable ID; it is left where it is | Check the item ID setting against the API |
+| `INT_POLL_NEXT_PAGE_INVALID` | The next page points to another server, or its cursor is not a value | Check the paging settings against the API |
+| `INT_POLL_STORAGE_FAILED` | A downloaded document could not be kept in the work folder | Check `intake.work-folder`: free space and the service account's rights |
+| `INT_POLL_HANDLER_FAILED` | The app could not store a document (its own problem); nothing was acknowledged | Check the app's log; the next pass tries again |
+| `INT_FILE_TOO_LARGE` | A document is over the integration's largest file; it is left where it is | Raise the limit, or ask the sender for smaller files |
+
+**Watched folder or share** (section 12)
+
+| Code | What happened | What to do |
+|---|---|---|
+| `INT_WATCH_ROOT_NOT_FOUND` | The watched folder does not exist | Create it, or correct the path; on Linux mount the share |
+| `INT_WATCH_NO_PERMISSION` | The service account may not work in the watched folder | Section 12: rights for the service account |
+| `INT_WATCH_SHARE_UNREACHABLE` | The share cannot be reached (also in the middle of a round) | Check the file server, the share and the network; claimed drops go back by themselves after the claim time |
+| `INT_WATCH_TRIGGER_UNREADABLE` | The trigger file is malformed, too large, too deep, or XML with a DTD; the drop is in `_problem` | Fix the trigger file, then move the drop back |
+| `INT_WATCH_DROP_INVALID` | A drop with a link or a folder in it, too many files, a file too large, or two trigger files; in `_problem` | Fix the drop, then move it back |
+| `INT_WATCH_FILE_CHANGED` | A file changed after the app took the drop; in `_problem` | Your process must finish every file before it writes the trigger |
+| `INT_WATCH_INCOMPLETE` | Files without a trigger after the waiting time; nothing was moved | Check whether your process stopped before writing the trigger |
+| `INT_WATCH_MOVE_FAILED` | A drop could not be moved inside the watched folder | Check the rename and delete rights, and that no program holds the files open |
+| `INT_WATCH_REFUSED` | The app refused the drop; `problem.json` has the app's own code | Look up the app's code; fix the drop and move it back |
+| `INT_WATCH_HANDLER_FAILED` | The app could not store the drop (its own problem); the drop was put back | Check the app's log; the next round tries again |
+| `INT_WATCH_CLAIM_LOST` | Another app instance took the drop first | Nothing |
+
+**Virus scanner** (section 13)
+
+| Code | What happened | What to do |
+|---|---|---|
+| `INT_SCAN_INFECTED` | The scanner found a virus; the file was quarantined, not processed | Tell the sender; delete the quarantined copy after checking it |
+| `INT_SCAN_FAILED` | The scanner answered with an error (for example a file over its stream limit); the file is held | Check the scanner's log and its size limit |
+| `INT_SCAN_UNREACHABLE` | The scanner cannot be reached or did not answer in time; files are held | Check the scanner's host, port and firewall; raise `scanner.timeout` for large files |
+
 **The destination's answer**
 
 | Code | What happened | What to do |
@@ -345,7 +475,9 @@ value.
 | `INT_KIND_NOT_SUPPORTED` | This kind of integration is not available in this release |
 | `INT_CONFIG_INVALID`, `INT_CONFIG_*` | The configuration has a problem; the screen names the field |
 | `INT_CONFIG_FOLDER_INVALID` | The folder path is not absolute, or a folder or file name setting is not one valid name |
-| `INT_CONFIG_FOLDER_HOSTED` | Folder export is not available on the hosted service |
+| `INT_CONFIG_FOLDER_HOSTED` | Folder export and watched folders are not available on the hosted service |
+| `INT_CONFIG_POLL_INVALID` | The polling settings are not valid (calls, pointers, paging); the screen names the field |
+| `INT_CONFIG_WATCH_INVALID` | The watched folder settings are not valid (path, trigger name, times, value paths); the screen names the field |
 | `INT_CONFIG_OMIT_PLACE` | "Leave out when missing" (`{name?}`) is used anywhere but as a whole member of a JSON body |
 | `INT_VALUE_MISSING`, `INT_VALUE_NOT_ALLOWED` | A value the integration needs is missing, or cannot be used there (for example a name Windows does not allow) |
 | `INT_FILE_TOO_LARGE`, `INT_TOO_MANY_DOCUMENTS`, `INT_PACKAGE_TOO_LARGE` | Over the integration's limits |
