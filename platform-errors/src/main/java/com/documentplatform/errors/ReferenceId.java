@@ -20,12 +20,35 @@ public final class ReferenceId {
     private ReferenceId() {
     }
 
-    /** A new reference. */
+    private static final int RANDOM_BITS = 25;
+    private static long lastTenths = -1;
+    private static long lastRandom;
+
+    /**
+     * A new reference, never the same twice in this process: within the same tenth of a second the random part
+     * steps on by a random amount (so references stay time-ordered and hard to guess); when it would overflow, the
+     * time part moves on by one tenth.
+     */
     public static String next() {
         long tenths = Math.max(0, (clock.millis() - EPOCH) / 100);
+        long random;
+        synchronized (ReferenceId.class) {
+            if (tenths <= lastTenths) { // same tenth, or the clock went back: stay after the last one
+                tenths = lastTenths;
+                random = lastRandom + 1 + RANDOM.nextInt(1 << 10);
+                if (random >= 1L << RANDOM_BITS) {
+                    tenths++;
+                    random = RANDOM.nextInt(1 << (RANDOM_BITS - 1));
+                }
+            } else {
+                random = RANDOM.nextInt(1 << (RANDOM_BITS - 1));
+            }
+            lastTenths = tenths;
+            lastRandom = random;
+        }
         StringBuilder sb = new StringBuilder("R-");
         append(sb, tenths, 7);
-        append(sb, RANDOM.nextInt(1 << 25), 5);
+        append(sb, random, 5);
         return sb.toString();
     }
 

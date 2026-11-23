@@ -93,13 +93,31 @@ class ErrorsTest {
     }
 
     @Test
+    void referencesNeverRepeatWithinOneTenth() {
+        try {
+            ReferenceId.useClock(Clock.fixed(Instant.parse("2098-01-01T10:00:00Z"), ZoneOffset.UTC));
+            String before = ReferenceId.next();
+            Set<String> seen = new HashSet<>();
+            for (int i = 0; i < 100_000; i++) {
+                String r = ReferenceId.next();
+                assertTrue(ReferenceId.isReference(r), r);
+                assertTrue(before.compareTo(r) < 0, before + " before " + r);
+                assertTrue(seen.add(r), "unique");
+                before = r;
+            }
+        } finally {
+            ReferenceId.useClock(Clock.systemUTC());
+        }
+    }
+
+    @Test
     void referencesAreShortTimeOrderedAndUnguessable() {
         Set<String> seen = new HashSet<>();
         for (int i = 0; i < 2000; i++) assertTrue(seen.add(ReferenceId.next()), "unique");
         try {
-            ReferenceId.useClock(Clock.fixed(Instant.parse("2026-11-22T10:00:00Z"), ZoneOffset.UTC));
+            ReferenceId.useClock(Clock.fixed(Instant.parse("2099-01-01T10:00:00Z"), ZoneOffset.UTC));
             String a = ReferenceId.next();
-            ReferenceId.useClock(Clock.fixed(Instant.parse("2026-11-22T10:00:01Z"), ZoneOffset.UTC));
+            ReferenceId.useClock(Clock.fixed(Instant.parse("2099-01-01T10:00:01Z"), ZoneOffset.UTC));
             String b = ReferenceId.next();
             assertTrue(a.compareTo(b) < 0, a + " before " + b);
             assertEquals(14, a.length());
