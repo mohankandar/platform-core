@@ -7,6 +7,7 @@ import com.documentplatform.identity.jdbc.PostgresGroupGrantStore;
 import com.documentplatform.identity.jdbc.PostgresLoginConnectionStore;
 import com.documentplatform.identity.jdbc.PostgresMachineBindingStore;
 import com.documentplatform.identity.mapping.ClientBindingsFile;
+import com.documentplatform.identity.push.PushCaller;
 import com.documentplatform.identity.mapping.Grant;
 import com.documentplatform.identity.mapping.MappingError;
 import com.documentplatform.identity.mapping.MappingPlan;
@@ -480,6 +481,12 @@ final class SetupRun {
 
         List<ClientBindingsFile.Problem> problems = new ArrayList<>();
         for (ClientBindingsFile.Row r : rows) {
+            if (r.clientId().startsWith(PushCaller.CERT_PREFIX) && !PushCaller.isFingerprint(r.clientId())) {
+                problems.add(new ClientBindingsFile.Problem(r.line(), ClientBindingsFile.Code.CLIENT_ID_INVALID,
+                        "a client certificate's client ID is cert-sha256: followed by the certificate's SHA-256 "
+                                + "fingerprint as 64 lowercase hex digits"));
+                continue;
+            }
             if (!licensed.contains(r.slotId())) {
                 problems.add(new ClientBindingsFile.Problem(r.line(), ClientBindingsFile.Code.SLOT_UNKNOWN,
                         "entity slot " + r.slotId() + " is not a slot of this customer's licence"));
@@ -499,7 +506,8 @@ final class SetupRun {
         for (ClientBindingsFile.Row r : rows) {
             inFile.add(r.clientId());
             MachineBinding b = stored.get(r.clientId());
-            String label = "client binding " + product + ": client \"" + r.clientId() + "\" -> " + r.slotId()
+            String label = "client binding " + product + ": client \"" + r.clientId() + "\""
+                    + (PushCaller.isFingerprint(r.clientId()) ? " (client certificate)" : "") + " -> " + r.slotId()
                     + ", source " + r.source();
             if (b == null) {
                 p.bindingsToInsert.add(MachineBinding.create(tenant, product, r.clientId(), r.slotId(), r.source(),
