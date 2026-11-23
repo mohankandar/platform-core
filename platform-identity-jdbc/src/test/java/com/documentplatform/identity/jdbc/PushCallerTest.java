@@ -291,6 +291,28 @@ class PushCallerTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"memory", "postgres"})
+    void aCertificateCallerStillNeedsTheCustomersActiveConnection(String kind) {
+        World w = world(kind);
+        PushCaller pc = caller(w);
+        String one = PushCaller.fingerprint(CERT_ONE);
+        bind(w, one, S2, "sender-b");
+        assertTrue(pc.check(PushCallerInput.certificate(CERT_ONE)).allowed(), "bound, connection ACTIVE");
+
+        // The app disables the customer's connection: no ACTIVE connection is left for the customer and product.
+        LoginConnection c = w.connections().active(TENANT, "PRODUCT_A").orElseThrow();
+        w.connections().update(new LoginConnection(c.connectionId(), c.tenantId(), c.productCode(), c.providerId(),
+                c.providerType(), c.issuer(), c.browserClientId(), c.apiAudience(), c.secretReference(),
+                IdentityConnectionStatus.DISABLED, c.configurationVersion()), c.configurationVersion(),
+                ChangeSource.APP, "it-admin").orElseThrow();
+        assertTrue(w.connections().active(TENANT, "PRODUCT_A").isEmpty());
+
+        PushCallerResult r = pc.check(PushCallerInput.certificate(CERT_ONE));
+        assertEquals(PushRefusal.IDN_PUSH_NO_CONNECTION, refusal(r), "the binding and entity are fine, still refused");
+        assertEquals(one, r.fingerprint());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"memory", "postgres"})
     void tokenAndCertificateBothRequiredTheSameOrDifferent(String kind) {
         World w = world(kind);
         String one = PushCaller.fingerprint(CERT_ONE);
