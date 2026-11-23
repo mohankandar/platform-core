@@ -21,6 +21,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.net.URI;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -161,6 +162,34 @@ class AcceptedLaterTest {
         AttemptResult r = engine.attempt(Fx.stored(byLocation().withSteps(List.of(send))), Fx.delivery(1));
         assertEquals(Outcome.UNCLEAR, r.outcome());
         assertEquals(IntegrationCode.INT_STATUS_REFERENCE_MISSING, r.code());
+    }
+
+    @Test
+    void aLocationOnAnotherServerIsNeverFollowed() {
+        // integration-module-120: the status reference stays on the base origin (scheme, host and port).
+        try (MockDestination other = MockDestination.start()) {
+            other.expectNone().acceptLater("POST", "/never", 0, "DONE", null);
+            mock.acceptLater("POST", "/api/notice", 0, "DONE", null);
+            for (URI elsewhere : List.of(other.address(), URI.create("http://status.example"),
+                    URI.create("https://127.0.0.1:" + mock.port()))) {
+                mock.acceptLaterLocation(elsewhere);
+                AttemptResult r = engine.attempt(Fx.stored(byLocation()), Fx.delivery(1));
+                assertEquals(Outcome.UNCLEAR, r.outcome(), elsewhere + " " + r);
+                assertEquals(IntegrationCode.INT_STATUS_REFERENCE_MISSING, r.code());
+                assertNull(r.pending(), "nothing to check later at another server");
+            }
+            // A stored pending status whose reference was changed to another server: no call is made there.
+            mock.acceptLaterLocation(null);
+            PendingStatus p = engine.attempt(Fx.stored(byLocation()), Fx.delivery(1)).pending();
+            PendingStatus moved = new PendingStatus(p.integrationId(), p.configVersion(), p.step(),
+                    other.address() + p.reference(), p.nextCheckAt(), p.correlationId(), p.values());
+            int before = mock.calls().size();
+            AttemptResult r = engine.checkStatus(Fx.stored(byLocation()), moved);
+            assertEquals(Outcome.UNCLEAR, r.outcome(), r.toString());
+            assertEquals(IntegrationCode.INT_STATUS_REFERENCE_MISSING, r.code());
+            assertEquals(before, mock.calls().size());
+            assertTrue(other.received().isEmpty(), "no call was made to the other server");
+        }
     }
 
     @Test
