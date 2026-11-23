@@ -7,8 +7,8 @@ import com.documentplatform.notifications.Message;
 import com.documentplatform.notifications.OutgoingMessage;
 import com.documentplatform.notifications.SendResult;
 import com.documentplatform.notifications.secret.SecretResolver;
-import com.documentplatform.notifications.webhook.Json;
-import com.documentplatform.notifications.webhook.WebhookClient;
+import com.documentplatform.notifications.webhook.internal.Json;
+import com.documentplatform.notifications.webhook.internal.WebhookClient;
 import com.documentplatform.notifications.webhook.WebhookDirectory;
 import com.documentplatform.notifications.webhook.WebhookOptions;
 
@@ -52,10 +52,10 @@ public final class TeamsChannel implements Channel, AutoCloseable {
     }
 
     /**
-     * Refuses Office 365 connector addresses, retired by Microsoft; Workflows addresses are on other hosts. Apps can
-     * call it to check an address when the IT Admin enters it.
+     * Refuses Office 365 connector addresses, retired by Microsoft; Workflows addresses are on other hosts. Checked by
+     * {@link #send} before anything is sent.
      */
-    public static Optional<FailureCode> retiredConnector(URI uri) {
+    static Optional<FailureCode> retiredConnector(URI uri) {
         String host = uri.getHost().toLowerCase(Locale.ROOT);
         boolean retired = host.equals("webhook.office.com") || host.endsWith(".webhook.office.com")
                 || ((host.equals("outlook.office.com") || host.equals("outlook.office365.com"))
@@ -64,7 +64,7 @@ public final class TeamsChannel implements Channel, AutoCloseable {
     }
 
     /** The Workflows webhook payload: a message carrying one Adaptive Card built from the message only. */
-    public static String payload(Message m) {
+    static String payload(Message m) {
         List<Object> body = new ArrayList<>();
         body.add(map("type", "TextBlock", "text", m.subject(), "weight", "Bolder", "size", "Medium", "wrap", true));
         for (String line : m.lines()) {

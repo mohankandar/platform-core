@@ -154,17 +154,6 @@ class WebhookChannelsTest {
     }
 
     @Test
-    void retryAfterAsAnHttpDateIsPassedOn() {
-        Instant now = Instant.parse("2026-11-20T10:00:00Z");
-        WebhookClient client = new WebhookClient(ChannelKind.SLACK, WebhookDirectory.of(Map.of()), resolver, LOCAL,
-                Clock.fixed(now, ZoneOffset.UTC));
-        String date = DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.ofInstant(now.plusSeconds(90), ZoneOffset.UTC));
-        assertEquals(Duration.ofSeconds(90), client.result(503, date).retryAfter());
-        assertNull(client.result(429, "soon").retryAfter(), "unreadable: the normal backoff applies");
-        assertNull(client.result(429, null).retryAfter());
-    }
-
-    @Test
     void slowReceiverIsATimeout() {
         server.always(new Reply(200, Map.of(), 3000));
         WebhookOptions quick = LOCAL.withTimeouts(Duration.ofSeconds(2), Duration.ofMillis(300));
@@ -195,12 +184,7 @@ class WebhookChannelsTest {
             assertFalse(r.failure().retryable());
         }
         assertTrue(server.requests().isEmpty());
-        // Workflows addresses (Logic Apps / Power Platform hosts) are accepted.
-        for (String workflows : List.of(
-                "https://prod-12.westeurope.logic.azure.com:443/workflows/x/triggers/manual/paths/invoke?sig=s",
-                "https://default1.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/x")) {
-            assertEquals(Optional.empty(), TeamsChannel.retiredConnector(URI.create(workflows)));
-        }
+        // Workflows addresses (Logic Apps / Power Platform hosts) are accepted: teams.TeamsChannelTest.
     }
 
     @Test
@@ -262,21 +246,16 @@ class WebhookChannelsTest {
         });
     }
 
-    @Test
-    void longSlackMessagesAreSplitWithinSlackLimits() {
-        List<String> lines = new java.util.ArrayList<>();
-        for (int i = 0; i < 400; i++) {
-            lines.add("  - item-" + i + ", 2026-11-20 10:05 Z https://app.customer.example/items/item-" + i);
-        }
-        String json = SlackChannel.payload(new Message(MessageKind.SUMMARY, "Summary: " + "x".repeat(200), lines, null));
-        assertTrue(json.contains("\"text\":\"Summary: " + "x".repeat(138) + "...\""), "header cut to 150");
-        int sections = json.split("\"type\":\"section\"", -1).length - 1;
-        assertTrue(sections > 1 && sections <= 45, "sections: " + sections);
-    }
+    // Retry-After as an HTTP date and the JSON escaping: webhook.internal.WebhookClientTest; long Slack messages:
+    // slack.SlackChannelTest (P041: the helpers they test are not public).
 
+    /** P041 (xc-public-api-15): apps cannot switch plain http on; the switch is package-private. */
     @Test
-    void jsonEscapesEverythingThatCouldBreakOut() {
-        assertEquals("\"a\\\"b\\\\c\\n\\u003cscript\\u003e \\u0026 \\u2028\"", Json.write("a\"b\\c\n<script> & \u2028"));
-        assertEquals("{\"k\":[1,true,null]}", Json.write(Map.of("k", java.util.Arrays.asList(1, true, null))));
+    void theTestSwitchIsNotPublic() throws Exception {
+        assertFalse(java.lang.reflect.Modifier.isPublic(
+                WebhookOptions.class.getDeclaredMethod("allowingPlainHttpForTests").getModifiers()));
+        for (var c : WebhookOptions.class.getConstructors()) {
+            assertEquals(2, c.getParameterCount(), "only the timeouts");
+        }
     }
 }
