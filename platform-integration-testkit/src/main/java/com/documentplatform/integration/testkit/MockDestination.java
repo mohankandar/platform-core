@@ -205,6 +205,7 @@ public final class MockDestination implements AutoCloseable {
     private volatile int acceptWorkingPolls;
     private volatile String acceptFinalState;
     private volatile Duration acceptRetryAfter;
+    private volatile URI acceptLocationBase;
     private final Map<String, AtomicInteger> statusPolls = new ConcurrentHashMap<>();
 
     // records
@@ -623,9 +624,19 @@ public final class MockDestination implements AutoCloseable {
         return this;
     }
 
+    /**
+     * The 202 answers' {@code Location} points at {@code base} (absolute: {@code <base>/api/status/st-<n>}), for tests
+     * of the same-origin rule with another server; null: the mock's own path again.
+     */
+    public MockDestination acceptLaterLocation(URI base) {
+        acceptLocationBase = base;
+        return this;
+    }
+
     /** Stops answering 202. */
     public MockDestination acceptNow() {
         acceptPath = null;
+        acceptLocationBase = null;
         return this;
     }
 
@@ -658,7 +669,8 @@ public final class MockDestination implements AutoCloseable {
         if (ex.getRequestMethod().equalsIgnoreCase(acceptMethod) && p.matcher(path).matches()) {
             String id = "st-" + counter.incrementAndGet();
             statusPolls.put(id, new AtomicInteger());
-            ex.getResponseHeaders().add("Location", STATUS_PATH + id);
+            URI base = acceptLocationBase;
+            ex.getResponseHeaders().add("Location", (base == null ? "" : base.toString()) + STATUS_PATH + id);
             send(ex, 202, "{\"statusId\":\"" + id + "\"}", acceptRetryAfter);
             return true;
         }
@@ -680,6 +692,7 @@ public final class MockDestination implements AutoCloseable {
         recordValues = false;
         replayBody = "{\"alreadyReceived\":true}";
         acceptPath = null;
+        acceptLocationBase = null;
         return clearRecords();
     }
 
