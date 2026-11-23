@@ -44,6 +44,13 @@ class NoSecretsInLogsTest {
     private static final String VALUE = "VALUE-planted-1b1b";
 
     private final List<String> lines = new ArrayList<>();
+
+    /** A copy of the log lines so far, taken under the lock (the mocks' threads may still be logging). */
+    private List<String> logged() {
+        synchronized (lines) {
+            return List.copyOf(lines);
+        }
+    }
     private final Handler capture = new Handler() {
         private final SimpleFormatter f = new SimpleFormatter();
 
@@ -138,7 +145,7 @@ class NoSecretsInLogsTest {
         synchronized (lines) {
             all.addAll(lines);
         }
-        assertFalse(lines.isEmpty(), "the engine logs");
+        assertFalse(logged().isEmpty(), "the engine logs");
         String keyBase64 = cred.keyBase64().substring(0, 40);
         for (String line : all) {
             for (String planted : List.of(PASSWORD, API_KEY, BEARER, CLIENT_SECRET, TEXT, VALUE, keyBase64,
@@ -236,7 +243,7 @@ class NoSecretsInLogsTest {
         synchronized (lines) {
             all.addAll(lines);
         }
-        assertTrue(lines.stream().anyMatch(l -> l.contains("INT_FOLDER_NO_PERMISSION")), "folder export logs codes");
+        assertTrue(logged().stream().anyMatch(l -> l.contains("INT_FOLDER_NO_PERMISSION")), "folder export logs codes");
         for (String line : all) {
             for (String planted : List.of(proxyPassword, BEARER, TEXT, VALUE, sensitive, pathPart, "c3ZjOl")) {
                 assertFalse(line.contains(planted), "found " + planted + " in: " + line);
@@ -332,8 +339,8 @@ class NoSecretsInLogsTest {
         synchronized (lines) {
             all.addAll(lines);
         }
-        assertTrue(lines.stream().anyMatch(l -> l.contains("poll:")), "the poll passes log");
-        assertTrue(lines.stream().anyMatch(l -> l.contains("watch:")), "the watch passes log");
+        assertTrue(logged().stream().anyMatch(l -> l.contains("poll:")), "the poll passes log");
+        assertTrue(logged().stream().anyMatch(l -> l.contains("watch:")), "the watch passes log");
         for (String line : all) {
             for (String p : List.of(BEARER, TEXT, VALUE)) {
                 assertFalse(line.contains(p), "found " + p + " in: " + line);
@@ -423,7 +430,7 @@ class NoSecretsInLogsTest {
         synchronized (lines) {
             all.addAll(lines);
         }
-        assertTrue(lines.stream().anyMatch(l -> l.contains("client certificate change")), "certificate changes log");
+        assertTrue(logged().stream().anyMatch(l -> l.contains("client certificate change")), "certificate changes log");
         List<String> planted = new ArrayList<>(List.of(p12Password, keystorePassword, signingSecret, "wrong-planted",
                 TEXT, VALUE));
         for (TestCertificates.Credential c : List.of(good, next, other)) planted.add(c.keyBase64().substring(0, 40));
