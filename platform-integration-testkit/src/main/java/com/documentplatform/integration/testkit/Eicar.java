@@ -13,7 +13,7 @@ import java.nio.file.Path;
 public final class Eicar {
 
     /** The 68 characters, reversed: so this class does not hold the signature itself. */
-    private static final String REVERSED = "*H+H$!ELIF-TSET-SURIVITNA-DRADNATS-RACIE$}7CC)7^)P(45XZP\\4[PA@%P!O5X";
+    private static final String REVERSED = "*H+H$!ELIF-TSET-SURIVITNA-DRADNATS-RACIE$}7)CC7)^P(45XZP\\4[PA@%P!O5X";
 
     private Eicar() {
     }
