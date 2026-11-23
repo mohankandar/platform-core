@@ -186,4 +186,77 @@ class LicenceCommandTest {
         assertEquals(2, run("store"));
         assertTrue(err().contains("store needs --file"), err());
     }
+
+    /** Runs the command with this JDBC URL and password variable (not the test's usual ones). */
+    private int runWith(String jdbcUrl, String password, String... args) {
+        out.reset();
+        err.reset();
+        List<String> all = new ArrayList<>(List.of(args));
+        all.addAll(List.of("--jdbc-url", jdbcUrl, "--db-user", db.appUserName(), "--keys", keys.toString()));
+        return new LicenceCommand(o -> LicenceCommand.jdbc(o, Map.of(LicenceCommand.PASSWORD_VARIABLE, password), clock))
+                .run(all, new PrintStream(out, true, StandardCharsets.UTF_8), new PrintStream(err, true, StandardCharsets.UTF_8));
+    }
+
+    /**
+     * A wrong password, a password in the JDBC URL's query and one in its user-info: the command says the tables
+     * could not be checked (SQL state only) and never prints or logs the password, from the variable or the URL.
+     */
+    @Test
+    void noPasswordInAnyOutput() throws Exception {
+        String wrong = "Wrong-Pw-6d2e-NEVER-PRINTED";
+        String inQuery = "Url-Query-Pw-81af-NEVER-PRINTED";
+        String inUserInfo = "Url-UserInfo-Pw-c3b7-NEVER-PRINTED";
+        List<String> outputs = new ArrayList<>();
+        List<String> lines = java.util.Collections.synchronizedList(new ArrayList<>());
+        java.util.logging.Handler capture = new java.util.logging.Handler() {
+            private final java.util.logging.SimpleFormatter format = new java.util.logging.SimpleFormatter();
+
+            @Override
+            public void publish(java.util.logging.LogRecord r) {
+                lines.add(format.format(r));
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        capture.setLevel(java.util.logging.Level.ALL);
+        java.util.logging.Logger root = java.util.logging.Logger.getLogger("");
+        java.util.logging.Logger platform = java.util.logging.Logger.getLogger("com.documentplatform");
+        java.util.logging.Level before = platform.getLevel();
+        root.addHandler(capture); // what any logger prints at its usual level
+        platform.setLevel(java.util.logging.Level.ALL); // and everything the platform logs
+        try {
+            assertEquals(1, runWith(db.jdbcUrl(), wrong, "status"));
+            assertTrue(err().startsWith("Licensing tables could not be checked: the database refused the check "
+                    + "(SQL state 28P01)."), err());
+            outputs.add(out() + err());
+
+            assertEquals(1, runWith(db.jdbcUrl() + "&password=" + inQuery, "", "status"));
+            assertTrue(err().startsWith("Licensing tables could not be checked"), err());
+            outputs.add(out() + err());
+
+            assertEquals(1, runWith("jdbc:postgresql://127.0.0.1:1/nodb?password=" + inQuery, wrong, "status"));
+            assertTrue(err().startsWith("Licensing tables could not be checked"), err());
+            outputs.add(out() + err());
+
+            assertEquals(1, runWith("jdbc:postgresql://planted_user:" + inUserInfo + "@127.0.0.1:1/nodb", wrong,
+                    "status"));
+            assertTrue(err().startsWith("Licensing tables could not be checked"), err());
+            outputs.add(out() + err());
+        } finally {
+            root.removeHandler(capture);
+            platform.setLevel(before);
+        }
+        outputs.addAll(lines);
+        for (String text : outputs) {
+            for (String secret : List.of(wrong, inQuery, inUserInfo, "NEVER-PRINTED")) {
+                assertFalse(text.contains(secret), "a password was printed: " + text);
+            }
+        }
+    }
 }
