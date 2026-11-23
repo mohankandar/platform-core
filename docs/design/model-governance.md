@@ -151,7 +151,7 @@ Package `com.documentplatform.modelgov`, plain Java, depends only on platform-er
   `review-every.high|medium|low`, `measure-retention`, `worker.enabled|every`), every problem listed at startup;
   `ModelGovSchema.verify` on the app's DataSource before the Postgres store (or the app's `ModelGovStore`); beans
   `ModelGovernance`, `ModelGate`, `ModelMeasures`, `ModelReviews`, `ModelPack`, `ModelGovWorker`; the monitoring check
-  `model-governance` (`ModelGovCheck`, when platform-monitoring is present). platform-monitoring-spring's database
+  `model-governance` (when platform-monitoring is present). platform-monitoring-spring's database
   check also verifies the `mg_` tables when the store is in use. **The app may leave out the `ModelGovAudit`
   bean** (P034 decision 8): register changes are then kept in the history tables only, and a line at startup says
   so. A missing DataSource
