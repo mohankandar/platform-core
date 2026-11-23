@@ -132,8 +132,10 @@ apps; each app's real catalogue lives in that app.
 - **B4. Flyway: in the app's schema step, never at app startup.** The answer first said: a separate Flyway run with
   its own history table `notif_schema_history`. The code follows a later choice: the module names **no history table
   of its own**. `NotificationSchema` gives the location `db/platform/notifications` (or the files in order through
-  `scripts()` / `script(name)`), and the app's own schema step runs it with whatever tool and history table the app
-  uses. This works because the startup check reads the version from `notif_schema_version`, which the SQL files keep
+  `scripts()` / `script(name)`), and the app's schema step runs it. Because its files start at V1 like every other
+  location, the install guide advises its own Flyway run with its own history table (for example
+  `notif_schema_history`), never one run shared with the app's files (P040: Flyway refuses two files with the same
+  version). This works because the startup check reads the version from `notif_schema_version`, which the SQL files keep
   up to date, never from a history table (P005 decision 3). The install guide (`docs/install/notifications.md`
   section 4) says the same. The later modules (licensing, identity, fields, integration and the others) do name their
   own history table (`lic_schema_history`, `idn_schema_history`, …); notifications is the one that does not.
