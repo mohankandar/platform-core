@@ -57,15 +57,6 @@ public record LastSeenReset(String resetId, String tenantId, Instant resetTo, In
         return m;
     }
 
-    public String sign(PrivateKey key) {
-        return SignedDocument.sign(FORMAT, "reset", payload(), key);
-    }
-
-    /** Signs through a signing service that keeps the private key ({@link SignedDocument.MessageSigner}). */
-    public String sign(SignedDocument.MessageSigner signer) {
-        return SignedDocument.sign(FORMAT, "reset", payload(), signer);
-    }
-
     /**
      * Checks the signature and the tenant. Validity in time is checked when applying ({@link ClockGuard#apply}).
      *

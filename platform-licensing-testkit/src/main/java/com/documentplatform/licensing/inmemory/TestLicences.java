@@ -7,7 +7,6 @@ import com.documentplatform.licensing.Ed25519;
 import com.documentplatform.licensing.EntitySlot;
 import com.documentplatform.licensing.Licence;
 import com.documentplatform.licensing.LicenceKind;
-import com.documentplatform.licensing.LicenceSigner;
 import com.documentplatform.licensing.LicenceType;
 import com.documentplatform.licensing.TrustedKeys;
 
@@ -28,7 +27,7 @@ public final class TestLicences {
     public static final String SLOT = "ENT-TEST-0001";
     public static final String PRODUCT = "PRODUCT_A";
 
-    private final KeyPair keys = Ed25519.generate();
+    private final KeyPair keys = com.documentplatform.licensing.issue.SigningKeys.generate();
     private final String keyId;
 
     public TestLicences() {
@@ -73,6 +72,6 @@ public final class TestLicences {
 
     /** The signed file of {@code licence}, with this instance's private key. */
     public String sign(Licence licence) {
-        return LicenceSigner.sign(licence, keys.getPrivate());
+        return com.documentplatform.licensing.issue.LicenceSigner.sign(licence, keys.getPrivate());
     }
 }

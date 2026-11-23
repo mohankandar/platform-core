@@ -42,8 +42,8 @@ class SignatureMismatchTest {
     @TempDir
     Path dir;
 
-    private final KeyPair published = Ed25519.generate();
-    private final KeyPair signing = Ed25519.generate();
+    private final KeyPair published = com.documentplatform.licensing.issue.SigningKeys.generate();
+    private final KeyPair signing = com.documentplatform.licensing.issue.SigningKeys.generate();
     private HttpServer vault;
 
     @BeforeEach
@@ -59,7 +59,7 @@ class SignatureMismatchTest {
             String input = body.replaceAll("(?s).*\"input\"\\s*:\\s*\"([^\"]*)\".*", "$1");
             byte[] signature;
             try {
-                signature = Ed25519.sign(signing.getPrivate(), Base64.getDecoder().decode(input));
+                signature = com.documentplatform.licensing.issue.SigningKeys.sign(signing.getPrivate(), Base64.getDecoder().decode(input));
             } catch (java.security.InvalidKeyException e) {
                 throw new IllegalStateException(e);
             }

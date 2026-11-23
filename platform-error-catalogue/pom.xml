@@ -23,6 +23,7 @@
         <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-notifications</artifactId><version>${project.version}</version><scope>test</scope></dependency>
         <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-notifications-spring</artifactId><version>${project.version}</version><scope>test</scope></dependency>
         <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-licensing</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+        <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-licensing-issue</artifactId><version>${project.version}</version><scope>test</scope></dependency>
         <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-licensing-spring</artifactId><version>${project.version}</version><scope>test</scope></dependency>
         <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-setup</artifactId><version>${project.version}</version><scope>test</scope></dependency>
         <dependency><groupId>com.documentplatform.platform</groupId><artifactId>platform-fields</artifactId><version>${project.version}</version><scope>test</scope></dependency>

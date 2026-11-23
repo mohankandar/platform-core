@@ -1,6 +1,6 @@
 # Licensing file formats (platform-licensing, P009)
 
-The formats the `platform-licensing` module reads and writes. The Platform Console must produce **the same bytes**
+The formats the `platform-licensing` module reads, and `platform-licensing-issue` (our own issuing tool, since 0.6.0) writes. The Platform Console must produce **the same bytes**
 when it issues licences later. The rules in `licensing.md` apply; this file only describes formats. No prices
 appear in any of them.
 
