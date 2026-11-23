@@ -11,6 +11,10 @@ import java.util.Optional;
  * the latest time seen (it only moves forward). A server clock behind is reported through {@link ClockReading}, never
  * refused. If a wrong future clock ever poisoned the latest time seen, our side issues a signed
  * {@link LastSeenReset}, applied with {@link #apply}.
+ *
+ * <p><b>Not for apps to call.</b> It stays public because the {@link LicenceService} constructor takes it: the licensing
+ * auto-configuration, the setup command and the licence command build one. Apps read the effective time through
+ * {@link LicenceService#status()} ({@link LicenceStatus#clock()}), never from a {@code ClockGuard} of their own.
  */
 public final class ClockGuard {
 

@@ -11,6 +11,8 @@ import java.util.Optional;
  * and hash) kept apart and updated with every append. The Postgres one is {@code jdbc.PostgresUsageLedger}; the
  * testkit has an in-memory one. Implementations build every record with {@link UsageChain#link(ChainHead, UsageEntry)}
  * from the stored head, under a lock or transaction, so two appends never share a sequence number.
+ *
+ * <p>SPI: implemented by stores; apps call {@link UsageRecorder}.
  */
 public interface UsageLedger {
 

@@ -168,7 +168,7 @@ class UsageExportTest {
 
     @Test
     void aBrokenLedgerIsStatedInTheExportNotHidden() {
-        ledger.overwriteForTest(2, ledger.records().get(1).withAmount(0));
+        ledger.editAmountForTest(2, 0);
         UsageExport f = export(M9, M11, ExportAnchor.first());
         assertTrue(UsageExportVerifier.verify(f.text(), null).ok(), "the file itself is intact");
         @SuppressWarnings("unchecked")

@@ -11,6 +11,8 @@ import java.util.UUID;
  *
  * <p>A claim is a lease: one sender has a callback at a time, also when several app instances share the outbox; if it
  * stops before it records the outcome, the lease runs out and the callback is claimed again (it survives restarts).
+ *
+ * <p>SPI: implemented by stores; apps call {@link Callbacks}.
  */
 public interface CallbackOutbox {
 
