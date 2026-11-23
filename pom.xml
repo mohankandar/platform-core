@@ -35,6 +35,9 @@
         <module>platform-integration</module>
         <module>platform-integration-testkit</module>
         <module>platform-integration-spring</module>
+        <module>platform-monitoring</module>
+        <module>platform-monitoring-testkit</module>
+        <module>platform-monitoring-spring</module>
         <module>platform-error-catalogue</module>
     </modules>
     <properties>

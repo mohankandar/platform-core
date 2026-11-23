@@ -33,7 +33,9 @@ public final class FailureLog {
 
     /** Logs the failure and returns it (with its reference). */
     public static PlatformError recordError(PlatformCode code, Map<String, ?> safeDetails) {
-        PlatformError e = new PlatformError(code, safeDetails, ReferenceId.next(), clock.instant());
+        String current = ReferenceId.current();
+        PlatformError e = new PlatformError(code, safeDetails, current != null ? current : ReferenceId.next(),
+                clock.instant());
         System.Logger.Level level = switch (code.kind()) {
             case FAILED -> System.Logger.Level.ERROR;
             case REFUSED, NEEDS_PERSON -> System.Logger.Level.WARNING;

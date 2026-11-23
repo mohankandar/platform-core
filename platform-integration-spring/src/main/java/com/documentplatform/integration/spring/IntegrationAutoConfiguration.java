@@ -313,6 +313,9 @@ public class IntegrationAutoConfiguration {
 
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(name = "org.springframework.boot.actuate.health.HealthContributor")
+    // Replaced by entries in platform-monitoring-spring's "dependencies" contributor when that module is there (P032).
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnMissingClass(
+            "com.documentplatform.monitoring.spring.MonitoringAutoConfiguration")
     @ConditionalOnProperty(prefix = IntegrationProperties.PREFIX, name = "health.enabled", havingValue = "true",
             matchIfMissing = true)
     static class Health {

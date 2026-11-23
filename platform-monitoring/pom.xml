@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.documentplatform.platform</groupId>
+        <artifactId>platform-core</artifactId>
+        <version>0.4.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>platform-monitoring</artifactId>
+    <description>Dependency self-checks (plain Java, no Spring; package com.documentplatform.monitoring):
+        DependencyCheck and CheckResult (WORKING, HAVING_PROBLEMS, DOWN, with a PlatformCode, the exact cause and the
+        fix), built-in checks (database and platform schemas, key service, secret store, login system, licence, mail
+        and webhook channels, file locations, HTTP services, integrations), StartupChecks (the app refuses to start),
+        DependencyStatus (scheduled, latest results, state-change events), the diagnostic bundle. The modules a check
+        uses are optional dependencies.</description>
+    <dependencies>
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-errors</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- Optional: only the checks an app uses need their module. -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-crypto</artifactId>
+            <version>${project.version}</version>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-licensing</artifactId>
+            <version>${project.version}</version>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-notifications</artifactId>
+            <version>${project.version}</version>
+            <optional>true</optional>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.eclipse.angus</groupId>
+                    <artifactId>angus-mail</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-identity-core</artifactId>
+            <version>${project.version}</version>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-integration</artifactId>
+            <version>${project.version}</version>
+            <optional>true</optional>
+        </dependency>
+
+    </dependencies>
+</project>
