@@ -41,12 +41,16 @@ class NoSecretInLogsTest {
     @Test
     void secretsNeverLeave() throws Exception {
         List<String> seen = Collections.synchronizedList(new ArrayList<>());
+        List<LogRecord> ours = Collections.synchronizedList(new ArrayList<>());
         Handler capture = new Handler() {
             private final SimpleFormatter f = new SimpleFormatter();
 
             @Override
             public void publish(LogRecord r) {
                 seen.add(f.format(r));
+                if (r.getLoggerName() != null && r.getLoggerName().startsWith("com.documentplatform.crypto")) {
+                    ours.add(r);
+                }
             }
 
             @Override
@@ -187,5 +191,17 @@ class NoSecretInLogsTest {
             }
         }
         assertTrue(texts.size() > 20, "the paths ran");
+
+        // the library's own log lines are only the documented ones (design section on logging): the AppRole login
+        // at DEBUG, and a WARNING when a login token cannot be revoked
+        assertFalse(ours.isEmpty(), "the AppRole login was logged");
+        for (LogRecord r : ours) {
+            boolean appRoleLogin = r.getLevel().intValue() < Level.INFO.intValue()
+                    && "Logged in to {0} with AppRole at {1}".equals(r.getMessage());
+            boolean notRevoked = Level.WARNING.equals(r.getLevel()) && r.getMessage() != null
+                    && r.getMessage().startsWith("The Vault login token was not revoked (");
+            assertTrue(appRoleLogin || notRevoked, "an undocumented log line: " + r.getLevel() + " "
+                    + r.getLoggerName() + " " + r.getMessage());
+        }
     }
 }
