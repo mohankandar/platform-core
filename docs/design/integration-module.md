@@ -212,3 +212,20 @@ P026 accepted (1085 tests on CI, 0 skipped). Its decisions stand, including:
 **Spring.** `platform.integration.scanner.*` (type NONE / CLAMD / ICAP, host, port, ICAP service, timeout) and `intake.work-folder`, checked at startup; beans `FileScanner`, `Scanning` (with the app's `ScanEvents`), `PollEngine`, `WatchedFolder` (the app may give `WatchFiles`); the `integrations` health contributor covers sources and has a `scanner` entry.
 
 **P026 follow-ups.** `INT_PROXY_SIGN_IN_DISABLED_BY_JVM`, `safety.JvmProxySignIn` and the `Outbound(..., JvmProxySignIn)` constructor are removed. A held OAuth 2.0 token is bound to the fingerprint of the client certificate in use when it was fetched: after a switch (by the admin, at its set time, or on another instance) it is never used again and a new token is fetched.
+
+## Decisions on the P027 report (shared-capabilities thread, 2026-11-22)
+
+P027 accepted (1141 tests on CI, 0 skipped). Its decisions stand, including:
+- a refused download or an item without an ID is reported and the pass goes on, while everything else stops the pass with the cursor kept;
+- a failing handler puts the drop back;
+- the stability rule has two ways to pass (the files' times, or the same sizes and times seen before);
+- the trigger is scanned too;
+- ICAP treats "unsure" as infected;
+- the token is bound to the certificate in use.
+
+1. **Scanning on the hosted service:** startup on `HOSTED` refuses a missing scanner. This goes in the hosted go-live work, not now.
+2. **ICAP over TLS:** built when a customer's scanner needs it.
+3. **Incomplete drops** are reported once per app instance; the app de-duplicates by drop ID before an IT notice (passed to the app threads).
+4. **Refused downloads** are in `PollResult.problems` for the app to show IT. A source that wants retries gets a rule mapping its status to OUTAGE.
+
+**Note (board LV-16, 2026-11-22):** the outbound safety code becomes its own module, `platform-outbound`, in P028, so identity's test sign-in uses the same rules without `platform-integration`. Integration depends on it; its behaviour and result codes don't change.
