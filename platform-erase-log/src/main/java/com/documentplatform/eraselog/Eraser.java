@@ -74,16 +74,22 @@ public final class Eraser {
             InStep.problem(log, p, position.otherLogs(log.logId()), head).ifPresent(e -> {
                 throw e;
             });
+            // SEC-4: a database below the highest position ever applied with this log was restored, even while the
+            // app kept running. Recorded, so every instance stops until the replay; nothing is erased here.
+            if (p.appliedSeq() < log.appliedHighWater()) {
+                locked.markRestoreDetected(java.time.Instant.now());
+                throw InStep.restore(p.appliedSeq(), head.seq());
+            }
             int caughtUp = 0;
             if (p.appliedSeq() < head.seq()) {
-                List<EraseEntry> pending = log.after(p.appliedSeq());
-                for (EraseEntry e : pending) {
-                    Applying.apply(handlers, locked, e, guard);
+                // An earlier erase that stopped half-way: its entries are checked (chain, seal, MACs) before acting.
+                for (EraseEntry e : log.pending(p.applied())) {
+                    Applying.apply(log, handlers, locked, e, guard);
                     caughtUp++;
                 }
             }
             EraseEntry entry = log.record(request);
-            return new Erased(entry, Applying.apply(handlers, locked, entry, guard), caughtUp);
+            return new Erased(entry, Applying.apply(log, handlers, locked, entry, guard), caughtUp);
         });
     }
 }

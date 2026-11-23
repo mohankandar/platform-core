@@ -104,6 +104,12 @@ public final class PostgresValueStore implements ValueStore {
 
     @Override
     public StoredRecord replace(StoredRecord next) {
+        if (next.values().isEmpty()) {
+            // P044, SEC-5: taking every value of a record away (and with it the envelope) is an erasure in all but
+            // name; it is done only through the erase log (delete with an EraseTicket), never by a replace.
+            throw new FieldValuesException(FieldValuesError.VALUES_ERASE_OUTSIDE_LOG, "Record " + next.ref() + " was "
+                    + "not changed: removing every value of a record is an erasure, done only through the erase log");
+        }
         return inTransaction("change a record's values", c -> {
             try (PreparedStatement ps = c.prepareStatement("""
                     update fld_record set identity = ?, envelope = ?, version = version + 1, updated_at = ?

@@ -143,7 +143,9 @@ public final class EraseGuard {
                 if (problem.isPresent()) {
                     return blocked(problem.get().code(), problem.get().reason(), head, p.appliedSeq(), now, true);
                 }
-                if (p.replayRequired() || (startup && p.appliedSeq() < head.seq())) {
+                // SEC-4: below the highest position ever applied with this log is a restore, running or not.
+                if (p.replayRequired() || p.appliedSeq() < log.appliedHighWater()
+                        || (startup && p.appliedSeq() < head.seq())) {
                     if (!p.replayRequired()) {
                         locked.markRestoreDetected(now);
                     }
@@ -173,6 +175,22 @@ public final class EraseGuard {
             if (p.replayRequired()) {
                 EraseLogException e = InStep.restore(applied, head.seq());
                 return set(blocked(e.code(), e.reason(), head, applied, now, false));
+            }
+            if (applied < log.appliedHighWater()) {
+                // SEC-4: the database went back below what was applied with this log while the app kept running.
+                // Checked again holding the lock, then recorded so that every instance stops until the replay.
+                long[] seen = {applied};
+                boolean restored = position.withLock(id, locked -> {
+                    ErasePosition.Position q = locked.position();
+                    seen[0] = q.appliedSeq();
+                    if (q.replayRequired() || q.appliedSeq() >= log.appliedHighWater()) return q.replayRequired();
+                    locked.markRestoreDetected(now);
+                    return true;
+                });
+                if (restored) {
+                    EraseLogException e = InStep.restore(seen[0], head.seq());
+                    return set(blocked(e.code(), e.reason(), head, seen[0], now, false));
+                }
             }
             Optional<EraseLogException> problem = InStep.problem(log, p, others, head);
             if (problem.isPresent()) {

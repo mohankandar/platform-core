@@ -52,5 +52,14 @@ public interface EraseHandler {
     interface Context {
         /** The transaction that also moves the applied position, when the position is in a database. */
         Optional<Connection> connection();
+
+        /**
+         * Whether {@code ctx} is the context the erase log itself handed over for applying {@code entry}
+         * ({@link Eraser} or {@link EraseReplay}), not one made by the caller. A handler that must never erase outside
+         * the log (the built-in case-fields handler) refuses any other (P044, SEC-5).
+         */
+        static boolean issuedFor(Context ctx, EraseEntry entry) {
+            return ctx instanceof Applying.Issued i && i.isFor(entry);
+        }
     }
 }

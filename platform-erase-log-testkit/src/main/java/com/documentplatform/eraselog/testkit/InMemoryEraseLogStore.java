@@ -1,29 +1,35 @@
 package com.documentplatform.eraselog.testkit;
 
+import com.documentplatform.eraselog.ChainKey;
 import com.documentplatform.eraselog.ChainPoint;
 import com.documentplatform.eraselog.EraseEntry;
 import com.documentplatform.eraselog.EraseLogError;
 import com.documentplatform.eraselog.EraseLogException;
 import com.documentplatform.eraselog.EraseLogStore;
 import com.documentplatform.eraselog.EraseRequest;
+import com.documentplatform.eraselog.Seal;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 
 /**
- * An erase log in memory, with the file store's rules (numbers, chain, checkpoint after pruning). A test can make it
- * unreachable ({@link #down(boolean)}) or tamper with it ({@link #replace}, {@link #remove}) to see the chain check
- * fail. Test scope only.
+ * An erase log in memory, with the file store's rules (numbers, chain, checkpoint after pruning, keyed entries, the
+ * seal, the applied high-water mark). A test can make it unreachable ({@link #down(boolean)}) or tamper with it
+ * ({@link #replace}, {@link #remove}, {@link #forge}, {@link #dropSeal}, {@link #lowerAppliedHighWater}) to see the
+ * checks fail. Test scope only.
  */
 public final class InMemoryEraseLogStore implements EraseLogStore {
 
     private final UUID logId;
     private final List<EraseEntry> entries = new ArrayList<>();
     private ChainPoint checkpoint = ChainPoint.START;
+    private Seal seal;
+    private long appliedHighWater;
     private volatile boolean down;
 
     public InMemoryEraseLogStore() {
@@ -51,9 +57,29 @@ public final class InMemoryEraseLogStore implements EraseLogStore {
         throw new IllegalArgumentException("no entry " + seq);
     }
 
+    /**
+     * Tampering by someone who can write the log but has no use of its key: appends a correctly hash-chained entry
+     * without a MAC (or with the MAC of {@code otherKey}, when given).
+     */
+    public synchronized EraseEntry forge(EraseRequest request, Instant loggedAt, ChainKey otherKey) {
+        EraseEntry e = EraseEntry.link(logId, headPoint(), loggedAt, request, otherKey);
+        entries.add(e);
+        return e;
+    }
+
     /** Removes entry {@code seq} (tampering). */
     public synchronized void remove(long seq) {
         entries.removeIf(e -> e.seq() == seq);
+    }
+
+    /** Removes the seal (tampering). */
+    public synchronized void dropSeal() {
+        seal = null;
+    }
+
+    /** Sets the applied high-water mark back (tampering). */
+    public synchronized void lowerAppliedHighWater(long seq) {
+        appliedHighWater = seq;
     }
 
     /** How many entries are kept. */
@@ -68,10 +94,40 @@ public final class InMemoryEraseLogStore implements EraseLogStore {
 
     @Override
     public synchronized EraseEntry append(EraseRequest request, Instant loggedAt) {
+        return append(request, loggedAt, null);
+    }
+
+    @Override
+    public synchronized EraseEntry append(EraseRequest request, Instant loggedAt, ChainKey key) {
         gate();
-        EraseEntry e = EraseEntry.link(logId, headPoint(), loggedAt, request);
+        EraseEntry e = EraseEntry.link(logId, headPoint(), loggedAt, request, key);
         entries.add(e);
         return e;
+    }
+
+    @Override
+    public synchronized Optional<Seal> seal() {
+        gate();
+        return Optional.ofNullable(seal);
+    }
+
+    @Override
+    public synchronized Seal sealAtHead(ChainKey key) {
+        gate();
+        if (seal == null) seal = Seal.make(key, logId, headPoint());
+        return seal;
+    }
+
+    @Override
+    public synchronized long appliedHighWater() {
+        gate();
+        return appliedHighWater;
+    }
+
+    @Override
+    public synchronized void recordApplied(long seq) {
+        gate();
+        appliedHighWater = Math.max(appliedHighWater, seq);
     }
 
     @Override

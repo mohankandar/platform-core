@@ -450,7 +450,7 @@ class EraseLogWiringTest {
                 .run(ctx -> assertTrue(String.valueOf(rootCause(ctx.getStartupFailure()).getMessage())
                         .startsWith("ERL_TABLES_MISSING"), String.valueOf(ctx.getStartupFailure())));
 
-        exec(owner, EraseLogSchema.script("V1__erase_log.sql"));
+        for (String script : EraseLogSchema.scripts()) exec(owner, EraseLogSchema.script(script));
         exec(admin, "grant select, insert, update on " + schema + ".erl_position to " + schema + "_app",
                 "grant select on " + schema + ".erl_schema_version to " + schema + "_app");
         RecordingEraseHandler documents = new RecordingEraseHandler("document").store("d1");

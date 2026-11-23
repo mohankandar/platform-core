@@ -33,6 +33,13 @@ public enum EraseLogError implements com.documentplatform.errors.PlatformCode {
     ERASE_LOG_WRONG_LOG,
     /** The database is older than the log's oldest kept entry (pruned): the erasures in between cannot be replayed. */
     ERASE_LOG_GAP,
+    /**
+     * The erase log is to be keyed (a key is configured) but has no valid seal yet: an existing log is sealed once by
+     * the explicit migration ({@code --erase-log-seal}); until then the system takes no work.
+     */
+    ERASE_LOG_NOT_SEALED,
+    /** The key that seals the erase log and makes its entries' MACs cannot be used (the key service did not answer). */
+    ERASE_LOG_KEY_UNAVAILABLE,
     /** The applied position in the app's database cannot be read or written. */
     ERASE_POSITION_FAILED,
     /** No handler is registered for an entry's kind. */

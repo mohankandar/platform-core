@@ -212,3 +212,48 @@ Built-in handler `fields.CaseFieldsEraseHandler` (`case-fields`):
     details hold no values: `mayTakeWork`, `code`, `message`, `logId`, `location`, `logHead`, `applied` and
     `pending` (once the position was read), `backupRetentionDays`, `logRetentionDays`, `checkedAt`, and
     `lastFailure` while a logged entry could not be applied on this instance.
+
+## Fix (P044): keyed chain, restore while running, erasure only through the log
+
+From the independent security review (`docs/work/security-findings.md` SEC-3, SEC-4, SEC-5, SEC-49).
+
+- **Keyed chain (SEC-3).**
+  - A log built with a `ChainKey` is keyed. The built key is `crypto.KeyServiceChainKey`: the customer's fingerprint
+    key in the key service, used with the erase log's own domain prefix, so no field fingerprint is ever a valid
+    erase-log MAC.
+  - Every new entry (format `platform-erase-log/2`) carries `kv` and `mac` = HMAC-SHA256 of
+    `platform-erase-log/mac/1` NUL log ID NUL seq NUL hash. The hash already covers every field and `prev`.
+  - `erase-log.seal` (`Seal`) says from which entry on MACs are required, and fixes the hash just before it, so older,
+    unkeyed entries are fixed through the hash chain.
+  - A new log is sealed at its first entry. An existing one is sealed once by the explicit migration
+    (`EraseLog.seal()`, `--erase-log-seal`), which rewrites no entry.
+  - The chain check (`EraseLog.verify`) and the entries the eraser and the replay act on (`EraseLog.pending`) require
+    the seal and every MAC from it on. The message names the first bad entry.
+  - A keyed log without a valid seal takes no work (`ERASE_LOG_NOT_SEALED`). A key service that does not answer is
+    `ERASE_LOG_KEY_UNAVAILABLE`.
+  - **What stays out of reach:** someone who can write both the log's location and the database can still cut the
+    log's tail together with a database restore. The key stops forging, not deleting. Keep the location's rights to the
+    service account only, and its own backups.
+- **Restore while running (SEC-4).**
+  - Each applied entry raises a high-water mark kept with the log (`erase-log.applied`, `EraseLogStore.appliedHighWater`),
+    outside the database.
+  - A database position below it was restored. `Eraser.erase` (every erase-log write) and `EraseGuard.refresh` /
+    `fullCheck` (the scheduled recheck) record the restore (`markRestoreDetected`), so every instance stops until the
+    replay.
+  - A handler failure or a crash between the log write and the erase leaves the position at the mark: still an erase
+    in progress, finished by the next erase.
+- **Erasure only through the log (SEC-5).**
+  - The erase log hands handlers an issued context bound to the entry (`EraseHandler.Context.issuedFor`). The built-in
+    `CaseFieldsEraseHandler` refuses any other (`VALUES_ERASE_OUTSIDE_LOG`).
+  - `ValueStore.replace` and `FieldValues.update` refuse to leave a record with no value at all, because that is an
+    erasure.
+  - A build test (`EraseOnlyThroughTheLogTest`) fails on a new public method that may erase without being reviewed,
+    and on a "may erase" token that could be made from outside.
+  - Code that holds the `ValueStore` (the app's own database access) can still change rows. That is the same as holding
+    the database login, and is outside what a library can prevent.
+- **Hardening (SEC-49).**
+  - The file store's scan takes the lock.
+  - A location the store makes is owner-only where the system allows it.
+  - A pooled connection whose advisory unlock failed is ended, not returned.
+  - Schema V2 refuses clearing `replay_required` without a newer `verified_at`.
+  - Record IDs must not be personal data (install guide).

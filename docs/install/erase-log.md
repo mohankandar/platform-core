@@ -16,10 +16,14 @@ app takes any work. The **erase log** makes this possible: one line per erasure 
   keeps entries (backup retention + 30 days; 65 days by default).
 - Every app instance of one installation uses **the same** location (a shared volume, for example NFS or an Azure
   Files / EFS share mounted on every instance). The app locks a file there while writing.
-- The app's operating system user needs read and write access to it. Nobody else needs write access.
+- The app's operating system user needs read and write access to it. **Nobody else needs, or should have, write
+  access** (P044): a location the app makes is made owner-only where the system allows it (Linux, macOS); on Windows
+  or a share, set its rights to the service account only. The app never follows a link there
+  (`ERASE_LOG_LINK_REFUSED`).
 - One location per protected database. Do not point two products' databases at one location.
 - A database belongs to one log for good: pointed at another log, the app refuses work (`ERASE_LOG_WRONG_LOG`).
-  **To move the log** to a new location, stop every instance, move the files (`erase-log.jsonl`, `erase-log.id`, and
+  **To move the log** to a new location, stop every instance, move the files (`erase-log.jsonl`, `erase-log.id`,
+  `erase-log.seal` and `erase-log.applied`, and
   `erase-log.checkpoint` when there is one) to the new directory, change `platform.erase-log.location`, and start
   again. Never start a new, empty log for a database that already used one.
 
@@ -27,8 +31,27 @@ Why: if the log were in the database or in its backups, restoring the database w
 the erasures made after the backup would come back.
 
 The app creates the directory and its files on first start: `erase-log.jsonl` (the entries), `erase-log.id`,
-`erase-log.lock`, and later `erase-log.checkpoint`. Do not edit them: every entry is chained to the one before it, so
-any change is detected and blocks the app.
+`erase-log.lock`, `erase-log.seal` (with the key service), `erase-log.applied`, and later `erase-log.checkpoint`. Do
+not edit them: every entry is chained to the one before it, so any change is detected and blocks the app. When you
+move the log, move all of these files.
+
+**The keyed log (P044).** When the app has the key service (platform-crypto, `docs/install/crypto.md`), the log is
+keyed: every entry carries a MAC made with the customer's key, which never leaves the key service, and
+`erase-log.seal` says from which entry on. Someone who can write the location but cannot use the key cannot add an
+erasure the app would act on: the app refuses the forged entry (`ERASE_LOG_CHAIN_BROKEN`, naming the first bad entry)
+and erases nothing. The app's runtime policy already has the right it needs (`transit/hmac` on `customer-*`).
+
+**Sealing an existing log (once, when upgrading from 0.6 or earlier).** A log written before 0.7 has no seal; with the
+key service configured, the app then takes no work (`ERASE_LOG_NOT_SEALED`) until you seal it:
+
+1. Make sure the log is backed up and the database is in step (health `eraseLog` UP before the upgrade).
+2. Start the app once with `--erase-log-seal` (for example `java -jar app.jar --erase-log-seal`). It checks the whole
+   chain, then writes `erase-log.seal`; it rewrites no entry. It prints `Erase log sealed: …` and exits 0, or `NOT
+   sealed: <code>` and exits 1 (a broken chain is never sealed: restore the log from its own backup first).
+3. Start the app normally. Running the seal again is safe.
+
+**Record IDs.** An entry holds IDs only. The app's record IDs must not be personal data (not a name, an e-mail address,
+a tax ID or a phone number): the log refuses the obvious forms (`ERASE_ENTRY_VALUE_REFUSED`) but cannot know every one.
 
 ## 2. The database table
 
@@ -38,6 +61,9 @@ tables:
 - Flyway location `classpath:db/platform/erase-log`, history table `erl_schema_history`, run as the schema owner.
 - Grant the app's everyday database user: `SELECT, INSERT, UPDATE` on `erl_position`, `SELECT` on
   `erl_schema_version`. No DELETE, no DDL.
+
+Schema version 2 (P044) adds a trigger only: a recorded restore (`replay_required`) is cleared only together with a
+newer `verified_at`, as the verified replay writes it; no new rights.
 
 The app checks the table at startup and stops with a specific message (`ERL_TABLES_MISSING`, `ERL_PRIVILEGES_MISSING`,
 …) if it is missing or not usable. It never creates it.
@@ -50,6 +76,7 @@ The app checks the table at startup and stops with a specific message (`ERL_TABL
 | `platform.erase-log.backup-retention-days` | `35` | the installation's backup retention, 30 to 90, as agreed by contract; the log keeps entries 30 days longer |
 | `platform.erase-log.recheck` | `1m` | how often a blocked app looks again whether it may start work; 5 seconds to 1 hour |
 | `platform.erase-log.exit-after-replay` | `true` | with `--erase-replay`, the app exits after the replay |
+| `platform.erase-log.keyed` | (automatic) | keyed whenever the app has the key service; `true` refuses to start without it; `false` keeps the log unkeyed (not recommended) |
 | `platform.erase-log.enabled` | `true` | |
 
 A wrong or missing setting stops the app at startup with a list of every problem.
@@ -82,7 +109,11 @@ value. It goes away once that entry is applied (the next erasure or the replay a
 After restoring the app's database from a backup:
 
 1. **Do not let users in yet.** The app would refuse work anyway: on start it sees that the database is behind the
-   erase log and shows "Restored from backup: run the erase replay before starting work".
+   erase log and shows "Restored from backup: run the erase replay before starting work". Since 0.7 (P044) it sees
+   this also when the database is restored **while the app keeps running** (an in-place or managed restore without a
+   restart): at the next erase, and at the next recheck (`platform.erase-log.recheck`), every instance stops taking
+   work. The log keeps the highest position a database ever applied (`erase-log.applied`), and a database below it was
+   restored.
 2. **Check the log location is mounted** and is the same as before (the log itself is never restored from the database
    backup; if the log's own storage was lost too, restore the log from its own backup first).
 3. **Run the replay**, once, with the app's normal settings and database login:

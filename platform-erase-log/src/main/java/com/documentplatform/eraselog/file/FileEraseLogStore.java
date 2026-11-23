@@ -1,11 +1,13 @@
 package com.documentplatform.eraselog.file;
 
+import com.documentplatform.eraselog.ChainKey;
 import com.documentplatform.eraselog.ChainPoint;
 import com.documentplatform.eraselog.EraseEntry;
 import com.documentplatform.eraselog.EraseLogError;
 import com.documentplatform.eraselog.EraseLogException;
 import com.documentplatform.eraselog.EraseLogStore;
 import com.documentplatform.eraselog.EraseRequest;
+import com.documentplatform.eraselog.Seal;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -27,6 +29,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
@@ -61,6 +64,10 @@ public final class FileEraseLogStore implements EraseLogStore {
     public static final String ID_FILE = "erase-log.id";
     public static final String CHECKPOINT_FILE = "erase-log.checkpoint";
     public static final String LOCK_FILE = "erase-log.lock";
+    /** The log's seal (P044, SEC-3): from which entry on MACs are required, made with the log's key. */
+    public static final String SEAL_FILE = "erase-log.seal";
+    /** The highest entry a database applied with this log (P044, SEC-4): a restored database is below it. */
+    public static final String APPLIED_FILE = "erase-log.applied";
 
     private static final ConcurrentHashMap<Path, ReentrantLock> LOCKS = new ConcurrentHashMap<>();
     private static final Pattern SEQ = Pattern.compile("^\\{\"seq\":([0-9]{1,18}),");
@@ -83,11 +90,87 @@ public final class FileEraseLogStore implements EraseLogStore {
                     + " is a file, not a directory");
         }
         try {
+            boolean made = !Files.exists(dir);
             Files.createDirectories(dir);
+            if (made) ownerOnly(dir);
         } catch (IOException e) {
             throw unreachable("created", e);
         }
         this.logId = locked(this::readOrCreateId);
+    }
+
+    /** SEC-49: a location made here is readable and writable by the service account only (where the system can say). */
+    private static void ownerOnly(Path p) {
+        try {
+            Files.setPosixFilePermissions(p, java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"));
+        } catch (UnsupportedOperationException | IOException e) {
+            // Windows: the folder takes its parent's rights; the install guide says how to restrict them.
+        }
+    }
+
+    @Override
+    public EraseEntry append(EraseRequest request, Instant loggedAt) {
+        return append(request, loggedAt, null);
+    }
+
+    @Override
+    public Optional<Seal> seal() {
+        Path f = dir.resolve(SEAL_FILE);
+        try {
+            if (!Files.exists(f, LinkOption.NOFOLLOW_LINKS)) return Optional.empty();
+            return Optional.of(Lines.seal(Files.readString(f, StandardCharsets.UTF_8)));
+        } catch (IOException e) {
+            throw unreachable("read", e);
+        }
+    }
+
+    @Override
+    public Seal sealAtHead(ChainKey key) {
+        return locked(() -> {
+            Optional<Seal> existing = seal();
+            if (existing.isPresent()) return existing.get();
+            Seal s = Seal.make(key, logId, head());
+            Path tmp = dir.resolve(SEAL_FILE + ".new");
+            try {
+                fresh(tmp, Lines.seal(s, Instant.now()) + "\n");
+                force(tmp);
+                Files.move(tmp, dir.resolve(SEAL_FILE), StandardCopyOption.ATOMIC_MOVE);
+                forceDirectory();
+            } catch (IOException e) {
+                deleteQuietly(tmp);
+                throw unreachable("sealed", e);
+            }
+            return s;
+        });
+    }
+
+    @Override
+    public long appliedHighWater() {
+        Path f = dir.resolve(APPLIED_FILE);
+        try {
+            if (!Files.exists(f, LinkOption.NOFOLLOW_LINKS)) return 0;
+            return Lines.applied(logId, Files.readString(f, StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            throw unreachable("read", e);
+        }
+    }
+
+    @Override
+    public void recordApplied(long seq) {
+        locked(() -> {
+            if (seq <= appliedHighWater()) return null;
+            Path tmp = dir.resolve(APPLIED_FILE + ".new");
+            try {
+                fresh(tmp, Lines.applied(logId, seq) + "\n");
+                force(tmp);
+                Files.move(tmp, dir.resolve(APPLIED_FILE), StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException e) {
+                deleteQuietly(tmp);
+                throw unreachable("written", e);
+            }
+            return null;
+        });
     }
 
     @Override
@@ -101,7 +184,7 @@ public final class FileEraseLogStore implements EraseLogStore {
     }
 
     @Override
-    public EraseEntry append(EraseRequest request, Instant loggedAt) {
+    public EraseEntry append(EraseRequest request, Instant loggedAt, ChainKey key) {
         return locked(() -> {
             try (FileChannel ch = FileChannel.open(logFile, StandardOpenOption.CREATE, StandardOpenOption.READ,
                     StandardOpenOption.WRITE)) {
@@ -119,7 +202,7 @@ public final class FileEraseLogStore implements EraseLogStore {
                         head = e.point();
                     }
                 }
-                EraseEntry entry = EraseEntry.link(logId, head, loggedAt, request);
+                EraseEntry entry = EraseEntry.link(logId, head, loggedAt, request, key);
                 ByteBuffer bytes = ByteBuffer.wrap((Lines.entry(entry) + "\n").getBytes(StandardCharsets.UTF_8));
                 ch.position(valid);
                 while (bytes.hasRemaining()) {
@@ -190,7 +273,14 @@ public final class FileEraseLogStore implements EraseLogStore {
 
     @Override
     public void scan(Consumer<EraseEntry> each) {
-        noLinks();
+        // SEC-49: under the lock, so another instance's prune cannot swap the file while it is read (Windows, SMB).
+        locked(() -> {
+            scanUnlocked(each);
+            return null;
+        });
+    }
+
+    private void scanUnlocked(Consumer<EraseEntry> each) {
         long after = checkpoint().seq();
         try (FileChannel ch = FileChannel.open(logFile, StandardOpenOption.READ)) {
             long valid = validLength(ch);
@@ -303,7 +393,8 @@ public final class FileEraseLogStore implements EraseLogStore {
 
     /** The log's own files, temporary ones included: never a link, so nothing outside the location is written. */
     private static final List<String> OWN_FILES = List.of(LOG_FILE, LOG_FILE + ".pruning", CHECKPOINT_FILE,
-            CHECKPOINT_FILE + ".new", ID_FILE, ID_FILE + ".new", LOCK_FILE);
+            CHECKPOINT_FILE + ".new", ID_FILE, ID_FILE + ".new", LOCK_FILE, SEAL_FILE, SEAL_FILE + ".new", APPLIED_FILE,
+            APPLIED_FILE + ".new");
 
     /**
      * Refuses when one of the log's own files is a symbolic link, a Windows junction or another reparse point: the log
@@ -336,6 +427,9 @@ public final class FileEraseLogStore implements EraseLogStore {
     /** Runs {@code work} holding this location's lock: in this JVM, and across processes by a file lock. */
     private <T> T locked(Supplier<T> work) {
         ReentrantLock jvm = LOCKS.computeIfAbsent(dir, d -> new ReentrantLock());
+        if (jvm.isHeldByCurrentThread()) {
+            return work.get(); // already inside a locked operation (a scan within a prune): both locks are held
+        }
         jvm.lock();
         try {
             noLinks();

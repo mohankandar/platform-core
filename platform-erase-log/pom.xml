@@ -28,6 +28,13 @@
             <version>${project.version}</version>
             <optional>true</optional>
         </dependency>
+        <!-- The keyed chain's built-in key (crypto.KeyServiceChainKey); only when the app uses platform-crypto. -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-crypto</artifactId>
+            <version>${project.version}</version>
+            <optional>true</optional>
+        </dependency>
 
         <dependency>
             <groupId>com.documentplatform.platform</groupId>
