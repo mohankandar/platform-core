@@ -110,7 +110,7 @@ public class SampleApp {
     EventCatalogue catalogue() {
         return LicensingEvents.register(EventCatalogue.builder(IT_ADMIN)
                 .register(EventType.builder(HELLO, "Sample message", EventKind.TECHNICAL).schedule(Schedule.immediately())
-                        .recipients(IT_ADMIN).build()), BUSINESS_ADMIN, IT_ADMIN).build();
+                        .recipients(IT_ADMIN).build()), IT_ADMIN, BUSINESS_ADMIN).build();
     }
 
     @Bean
