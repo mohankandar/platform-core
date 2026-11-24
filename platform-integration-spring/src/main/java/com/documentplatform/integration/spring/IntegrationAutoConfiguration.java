@@ -89,6 +89,23 @@ public class IntegrationAutoConfiguration {
     public record AppBeans(SecretResolver secrets, IntegrationAudit audit) {
     }
 
+    /**
+     * The rules for callbacks the app receives (P044, SEC-8): {@code v2} signatures only, unless
+     * {@code platform.integration.callbacks.accept-v1-signatures=true}. The app's receiver calls
+     * {@link com.documentplatform.integration.callback.CallbackVerifier.Policy#verify}.
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    com.documentplatform.integration.callback.CallbackVerifier.Policy callbackVerifierPolicy(
+            IntegrationProperties properties) {
+        boolean v1 = properties.getCallbacks().isAcceptV1Signatures();
+        if (v1) {
+            LOG.log(Level.WARNING, "Integrations: callbacks signed with v1 (without the callback ID) are accepted; "
+                    + "turn platform.integration.callbacks.accept-v1-signatures off once every sender signs v2");
+        }
+        return new com.documentplatform.integration.callback.CallbackVerifier.Policy(v1, null);
+    }
+
     @Bean
     @ConditionalOnMissingBean
     IntegrationSettings integrationSettings(IntegrationProperties properties,

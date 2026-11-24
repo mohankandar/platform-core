@@ -81,6 +81,19 @@ public class IntegrationProperties {
         private Duration maxDelay = Duration.ofHours(6);
         private Duration giveUpAfter = Duration.ofHours(24);
         private Duration keepFinished = Duration.ofDays(30);
+        /**
+         * Callbacks in (P044, SEC-8): whether the earlier {@code v1} signature, which does not cover the callback's ID,
+         * is still accepted. Off by default; on only for a sender that cannot sign {@code v2} yet.
+         */
+        private boolean acceptV1Signatures;
+
+        public boolean isAcceptV1Signatures() {
+            return acceptV1Signatures;
+        }
+
+        public void setAcceptV1Signatures(boolean acceptV1Signatures) {
+            this.acceptV1Signatures = acceptV1Signatures;
+        }
 
         public Duration getFirstDelay() {
             return firstDelay;
