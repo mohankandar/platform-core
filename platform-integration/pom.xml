@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.documentplatform.platform</groupId>
         <artifactId>platform-core</artifactId>
-        <version>0.7.0</version>
+        <version>0.8.0-SNAPSHOT</version>
     </parent>
     <artifactId>platform-integration</artifactId>
     <description>Shared, configurable integrations (plain Java, no Spring): versioned configuration of destinations and
