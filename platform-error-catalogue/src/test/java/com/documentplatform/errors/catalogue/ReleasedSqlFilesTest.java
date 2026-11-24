@@ -46,6 +46,9 @@ class ReleasedSqlFilesTest {
                     "49d57dcdc82f3cb8ff51d44c0d716ff6b0b7410379ef6056382d643bb619557d"),
             Map.entry("platform-licensing/src/main/resources/db/platform/licensing/V1__licensing.sql",
                     "b3372f147ba7e696d38192461d6d8e8c23e4762a9e316c8faec803b13ed5219a"),
+            // New in 0.7.0 (P044, SEC-49); pinned now so it is never edited after it ships.
+            Map.entry("platform-erase-log/src/main/resources/db/platform/erase-log/V2__erase_log_replay_guard.sql",
+                    "cdd7e0a922579ad13b55e60433f6a5590ef766cca9789fad96659d737978d1ff"),
             Map.entry("platform-model-governance/src/main/resources/db/platform/modelgov/V1__modelgov.sql",
                     "c9750adf9f1262d0dc09e0a0235a1b3f8472e57cd632784655ac8e4064184496"),
             Map.entry("platform-model-governance/src/main/resources/db/platform/modelgov/V2__modelgov_monitoring.sql",
