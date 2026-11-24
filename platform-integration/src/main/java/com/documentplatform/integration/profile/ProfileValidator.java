@@ -143,9 +143,10 @@ public final class ProfileValidator {
         if (profile.fields() != null) {
             profile.fields().expected().forEach(f -> mapping.put(f.name(), "profile_check_field"));
         }
-        IntegrationConfig check = profile.complete(new IntegrationProfile.Completion(UUID.randomUUID(), "PROFILE_CHECK",
+        UUID checkEntity = UUID.randomUUID();
+        IntegrationConfig check = profile.complete(new IntegrationProfile.Completion(checkEntity, "PROFILE_CHECK",
                 "profile check", new Endpoint(URI.create("https://installation.invalid"), true),
-                placeholderSignIn(signIn.get(0), apiKeyHeader), mapping, Set.of(), Map.of()));
+                placeholderSignIn(checkEntity, signIn.get(0), apiKeyHeader), mapping, Set.of(), Map.of()));
         for (ConfigProblem p : ConfigCheck.check(check, Installation.onPremises().withSignInNone(true)).errors()) {
             problems.add(new ProfileProblem(map(p.code()), pointer(p.where(), m.containsKey("packaging")), p.code().name()));
         }
@@ -398,8 +399,8 @@ public final class ProfileValidator {
         }
     }
 
-    private static SignIn placeholderSignIn(String type, String apiKeyHeader) {
-        SecretRef ref = SecretRef.of("profile/check");
+    private static SignIn placeholderSignIn(UUID entity, String type, String apiKeyHeader) {
+        SecretRef ref = com.documentplatform.integration.config.SecretScope.of(entity, "profile-check");
         return switch (type) {
             case "NONE" -> new SignIn.None();
             case "BASIC" -> new SignIn.Basic("profile-check", ref);

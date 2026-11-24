@@ -1,5 +1,6 @@
 package com.documentplatform.integration.folder;
 
+import com.documentplatform.integration.internal.SlotIds;
 import com.documentplatform.integration.IntegrationCode;
 import com.documentplatform.integration.config.ConfigCheck;
 import com.documentplatform.integration.config.FolderTarget;

@@ -28,7 +28,7 @@ class PackagingTest {
     @BeforeEach
     void setUp() {
         fx = new Fx();
-        fx.secrets.put(SecretRef.of("int/t"), "tok-1");
+        fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t"), "tok-1");
         fx.mock.expectBearer("tok-1");
     }
 
@@ -39,7 +39,7 @@ class PackagingTest {
 
     private IntegrationConfig config(List<CallStep> steps) {
         return IntegrationConfig.apiPush(Fx.ENTITY, Fx.PRODUCT, "x", new Endpoint(fx.mock.address(), true),
-                new SignIn.BearerFixed(SecretRef.of("int/t"))).withSteps(steps).withErrorCodePointer("/code");
+                new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t"))).withSteps(steps).withErrorCodePointer("/code");
     }
 
     @Test

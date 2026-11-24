@@ -37,9 +37,9 @@ class CallEngineTest {
     @BeforeEach
     void setUp() {
         fx = new Fx();
-        fx.secrets.put(SecretRef.of("int/bearer"), "tok-1");
+        fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/bearer"), "tok-1");
         fx.mock.expectBearer("tok-1");
-        integration = Fx.stored(Fx.twoStep(fx.mock.address(), new SignIn.BearerFixed(SecretRef.of("int/bearer"))));
+        integration = Fx.stored(Fx.twoStep(fx.mock.address(), new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/bearer"))));
     }
 
     @AfterEach

@@ -130,7 +130,7 @@ public final class IntegrationCredentials implements CertificateSource {
     public CredentialView useKeystore(StoredIntegration integration, KeystoreRef keystore, Instant switchAt,
                                       String by) {
         checkBy(by);
-        ClientCertificate c = readKeystore(keystore);
+        ClientCertificate c = readKeystore(integration.config().entity(), keystore);
         refuseExpired(c.info());
         return add(integration.config(), UUID.randomUUID(), CredentialSource.KEYSTORE, c.info(), null, keystore,
                 switchAt, CredentialChange.Kind.KEYSTORE_SET, by);
@@ -279,7 +279,7 @@ public final class IntegrationCredentials implements CertificateSource {
 
     /** A keystore read for a call; a certificate the customer replaced in the file is recorded (KEYSTORE_RENEWED). */
     private ClientCertificate readKeystoreForCall(StoredCredential s) {
-        ClientCertificate c = readKeystore(s.keystore());
+        ClientCertificate c = readKeystore(s.entity(), s.keystore());
         if (!c.fingerprint().equals(s.info().sha256())) {
             try {
                 StoredCredential renewed = s.withInfo(c.info());
@@ -296,7 +296,10 @@ public final class IntegrationCredentials implements CertificateSource {
 
     // ---- inside ----
 
-    private ClientCertificate readKeystore(KeystoreRef k) {
+    private ClientCertificate readKeystore(UUID entity, KeystoreRef k) {
+        if (!com.documentplatform.integration.config.SecretScope.allows(entity, k.password())) {
+            throw new Refused(IntegrationCode.INT_CONFIG_SECRET_SCOPE); // P044, SEC-10: checked before the store is asked
+        }
         Optional<Secret> password;
         try {
             password = secrets.resolve(k.password());

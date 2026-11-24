@@ -38,6 +38,15 @@ public final class ConfigCheck {
         public boolean ok() {
             return errors.isEmpty();
         }
+
+        /**
+         * The code a run stops with when the saved configuration fails this check now: the secret-scope code when a
+         * reference is out of scope (P044, SEC-10), else {@code INT_CONFIG_INVALID}.
+         */
+        public IntegrationCode runCode() {
+            return errors.stream().anyMatch(p -> p.code() == IntegrationCode.INT_CONFIG_SECRET_SCOPE)
+                    ? IntegrationCode.INT_CONFIG_SECRET_SCOPE : IntegrationCode.INT_CONFIG_INVALID;
+        }
     }
 
     /** Set only by the HTTP layer or the sign-in bundle. */
@@ -64,6 +73,10 @@ public final class ConfigCheck {
     public static Report check(IntegrationConfig c, Installation installation, FieldLists fieldLists) {
         List<ConfigProblem> errors = new ArrayList<>();
         List<ConfigProblem> warnings = new ArrayList<>();
+        // P044, SEC-10: every secret reference is under the integration's own entity (SecretScope).
+        for (String field : SecretScope.outOfScope(c)) {
+            errors.add(new ConfigProblem(IntegrationCode.INT_CONFIG_SECRET_SCOPE, field, null));
+        }
         boolean api = c.kind() == Kind.API_PUSH || c.kind() == Kind.API_POLL || c.kind() == Kind.CALLBACK;
 
         if (api && c.endpoint() == null) {

@@ -78,8 +78,8 @@ class NoSecretsInLogsTest {
         root.setLevel(Level.ALL);
         Logger.getLogger("com.documentplatform").setLevel(Level.ALL);
         fx = new Fx();
-        fx.secrets.put(SecretRef.of("int/pw"), PASSWORD).put(SecretRef.of("int/key"), API_KEY)
-                .put(SecretRef.of("int/bearer"), BEARER).put(SecretRef.of("int/client"), CLIENT_SECRET);
+        fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/pw"), PASSWORD).put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/key"), API_KEY)
+                .put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/bearer"), BEARER).put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), CLIENT_SECRET);
     }
 
     @AfterEach
@@ -91,19 +91,19 @@ class NoSecretsInLogsTest {
     @Test
     void nothingSecretOrContentAnywhere(@TempDir Path dir) throws Exception {
         TestCertificates.Credential cred = TestCertificates.credential(dir, "cert", -1, 30);
-        fx.secrets.put(SecretRef.of("int/cert"), cred.pem());
+        fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/cert"), cred.pem());
         List<String> outputs = new ArrayList<>();
         MockDestination m = fx.mock;
         m.registerClient("app", CLIENT_SECRET).registerCertificateClient("app-cert", cred.certificate());
 
         List<SignIn> signIns = List.of(
-                new SignIn.Basic("user", SecretRef.of("int/pw")),
-                new SignIn.ApiKey("X-Api-Key", SecretRef.of("int/key")),
-                new SignIn.BearerFixed(SecretRef.of("int/bearer")),
-                OAuth2ClientCredentials.secret(m.tokenAddress(), "app", SecretRef.of("int/client"), "s"),
-                OAuth2ClientCredentials.secret(m.tokenAddress(), "app", SecretRef.of("int/client"), "s")
+                new SignIn.Basic("user", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/pw")),
+                new SignIn.ApiKey("X-Api-Key", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/key")),
+                new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/bearer")),
+                OAuth2ClientCredentials.secret(m.tokenAddress(), "app", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), "s"),
+                OAuth2ClientCredentials.secret(m.tokenAddress(), "app", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), "s")
                         .withClientAuth(OAuth2ClientCredentials.ClientAuth.BASIC),
-                OAuth2ClientCredentials.certificate(m.tokenAddress(), "app-cert", SecretRef.of("int/cert"), null));
+                OAuth2ClientCredentials.certificate(m.tokenAddress(), "app-cert", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/cert"), null));
         Delivery d = Delivery.of("pkg-1", List.of(Delivery.Document.of("doc-1", "a.pdf", "application/pdf",
                 (TEXT + " more text").getBytes())), java.util.Map.of("loanId", VALUE));
 
@@ -135,7 +135,7 @@ class NoSecretsInLogsTest {
         // Refused configurations and store problems.
         IntegrationConfigs configs = new IntegrationConfigs(new InMemoryIntegrationStore(), IntegrationAudit.NONE,
                 fx.installation, Clock.systemUTC());
-        IntegrationConfig bad = Fx.oneStep(m.address(), new SignIn.BearerFixed(SecretRef.of("int/bearer")))
+        IntegrationConfig bad = Fx.oneStep(m.address(), new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/bearer")))
                 .withSteps(List.of(com.documentplatform.integration.config.CallStep.of("x",
                         com.documentplatform.integration.config.HttpMethod.POST, "/a?k={value.key}")));
         outputs.add(assertThrows(IntegrationConfigs.Refused.class, () -> configs.create(bad, "admin")).getMessage());
@@ -177,20 +177,20 @@ class NoSecretsInLogsTest {
                      com.documentplatform.integration.testkit.MockProxy.start().requireBasic("svc", proxyPassword)) {
             com.documentplatform.notifications.inmemory.InMemorySecretResolver s =
                     new com.documentplatform.notifications.inmemory.InMemorySecretResolver()
-                            .put(SecretRef.of("int/bearer"), BEARER).put(SecretRef.of("int/proxy"), proxyPassword);
+                            .put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/bearer"), BEARER).put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/proxy"), proxyPassword);
             com.documentplatform.outbound.Installation inst = fx.installation.withProxy(
                     com.documentplatform.outbound.ProxySettings.of(proxy.host(), proxy.port())
-                            .withSignIn("svc", SecretRef.of("int/proxy")));
+                            .withSignIn("svc", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/proxy")));
             outputs.add(inst.toString());
             try (com.documentplatform.integration.engine.CallEngine engine =
                          new com.documentplatform.integration.engine.CallEngine(
                                  new com.documentplatform.outbound.Outbound(inst, s), s, Clock.systemUTC())) {
-                IntegrationConfig c = Fx.twoStep(fx.mock.addressByName(), new SignIn.BearerFixed(SecretRef.of("int/bearer")));
+                IntegrationConfig c = Fx.twoStep(fx.mock.addressByName(), new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/bearer")));
                 fx.mock.reset();
                 Delivery d = Delivery.of("pkg-p", List.of(Delivery.Document.of("doc-1", "a.pdf", "application/pdf",
                         (TEXT + " proxied").getBytes())), java.util.Map.of("loanId", VALUE));
                 outputs.add(engine.attempt(Fx.stored(c), d).toString());
-                s.put(SecretRef.of("int/proxy"), proxyPassword + "-wrong");
+                s.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/proxy"), proxyPassword + "-wrong");
                 outputs.add(engine.attempt(Fx.stored(c), d).toString());
                 outputs.add(engine.health(Fx.stored(c)).toString());
                 IntegrationConfig https = c.withEndpoint(new com.documentplatform.integration.config.Endpoint(
@@ -289,7 +289,7 @@ class NoSecretsInLogsTest {
             source.expectBearer(BEARER);
             IntegrationConfig c = IntegrationConfig.apiPoll(Fx.ENTITY, Fx.PRODUCT, "Source",
                     new com.documentplatform.integration.config.Endpoint(source.address(), true),
-                    new SignIn.BearerFixed(SecretRef.of("int/bearer")), src).withErrorCodePointer("/code");
+                    new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/bearer")), src).withErrorCodePointer("/code");
             com.documentplatform.integration.store.StoredIntegration s = Fx.stored(c);
             PollingTest.App app = new PollingTest.App();
             com.documentplatform.integration.scan.Scanning scanning = new com.documentplatform.integration.scan.Scanning(
@@ -408,7 +408,7 @@ class NoSecretsInLogsTest {
             source.expectBearer(BEARER);
             IntegrationConfig c = IntegrationConfig.apiPoll(Fx.ENTITY, Fx.PRODUCT, "Source",
                     new com.documentplatform.integration.config.Endpoint(source.address(), true),
-                    new SignIn.BearerFixed(SecretRef.of("int/bearer")), src);
+                    new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/bearer")), src);
             com.documentplatform.integration.intake.PollResult r =
                     new com.documentplatform.integration.engine.PollEngine(calls, scanning, dir)
                             .pass(Fx.stored(c), com.documentplatform.integration.intake.CursorState.START,
@@ -453,7 +453,7 @@ class NoSecretsInLogsTest {
                 new com.documentplatform.crypto.testkit.InMemoryKeyService().createKeysOnDemand();
         com.documentplatform.integration.testkit.InMemoryCredentialStore store =
                 new com.documentplatform.integration.testkit.InMemoryCredentialStore();
-        fx.secrets.put(SecretRef.of("int/ks"), keystorePassword).put(SecretRef.of("int/sign"), signingSecret);
+        fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/ks"), keystorePassword).put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/sign"), signingSecret);
         com.documentplatform.integration.credential.IntegrationCredentials credentials =
                 new com.documentplatform.integration.credential.IntegrationCredentials(store,
                         new com.documentplatform.crypto.envelope.ValueCipher(keys),
@@ -488,7 +488,7 @@ class NoSecretsInLogsTest {
             com.documentplatform.integration.store.StoredIntegration s2 = Fx.stored(Fx.twoStep(mtls.addressByName(),
                     SignIn.MutualTls.alone()));
             outputs.add(credentials.useKeystore(s2, new com.documentplatform.integration.credential.KeystoreRef(
-                    ks.toString(), SecretRef.of("int/ks"), "client"), null, "admin").toString());
+                    ks.toString(), SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/ks"), "client"), null, "admin").toString());
             outputs.add(engine.attempt(s2, Fx.delivery(1, TEXT)).toString());
             outputs.add(credentials.list(s.id()).toString() + credentials.history(s.id()) + store.rows());
             outputs.add(new com.documentplatform.integration.credential.CredentialExpiry(store)
@@ -501,7 +501,7 @@ class NoSecretsInLogsTest {
         // Callbacks: sent, refused, given up; the verifier's results.
         IntegrationConfig cb = IntegrationConfig.callback(Fx.ENTITY, Fx.PRODUCT, "Hooks",
                 new com.documentplatform.integration.config.Endpoint(fx.mock.address(), false), new SignIn.None(),
-                SecretRef.of("int/sign"));
+                SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/sign"));
         com.documentplatform.integration.store.StoredIntegration stored = Fx.stored(cb);
         fx.mock.reset();
         fx.mock.expectNone();

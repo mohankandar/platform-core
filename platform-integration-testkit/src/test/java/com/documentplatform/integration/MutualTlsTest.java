@@ -69,7 +69,7 @@ class MutualTlsTest {
 
     static final CustomerId CUSTOMER = CustomerId.fromTenantId("TEN-TEST-1");
     static final String P12_PASSWORD = "p12-pass-1";
-    static final SecretRef KEYSTORE_PASSWORD = SecretRef.of("int/keystore-password");
+    static final SecretRef KEYSTORE_PASSWORD = SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/keystore-password");
 
     @TempDir
     static Path dir;
@@ -334,9 +334,9 @@ class MutualTlsTest {
 
         // Refusals: wrong password, unknown alias, no file, no password in the secret store.
         StoredIntegration s2 = Fx.stored(config(SignIn.MutualTls.alone()));
-        secrets.put(SecretRef.of("int/wrong"), "wrong");
+        secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/wrong"), "wrong");
         assertEquals(IntegrationCode.INT_CREDENTIAL_PASSWORD_WRONG, assertThrows(IntegrationCredentials.Refused.class,
-                () -> credentials.useKeystore(s2, new KeystoreRef(file.toString(), SecretRef.of("int/wrong"),
+                () -> credentials.useKeystore(s2, new KeystoreRef(file.toString(), SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/wrong"),
                         "integration-client"), null, "a")).code());
         assertEquals(IntegrationCode.INT_CREDENTIAL_ALIAS_NOT_FOUND, assertThrows(IntegrationCredentials.Refused.class,
                 () -> credentials.useKeystore(s2, new KeystoreRef(file.toString(), KEYSTORE_PASSWORD, "nope"), null,
@@ -345,7 +345,7 @@ class MutualTlsTest {
                 IntegrationCredentials.Refused.class, () -> credentials.useKeystore(s2, new KeystoreRef(
                         dir.resolve("missing.p12").toString(), KEYSTORE_PASSWORD, "x"), null, "a")).code());
         assertEquals(IntegrationCode.INT_SECRET_NOT_FOUND, assertThrows(IntegrationCredentials.Refused.class,
-                () -> credentials.useKeystore(s2, new KeystoreRef(file.toString(), SecretRef.of("int/none"),
+                () -> credentials.useKeystore(s2, new KeystoreRef(file.toString(), SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/none"),
                         "integration-client"), null, "a")).code());
     }
 
@@ -400,9 +400,9 @@ class MutualTlsTest {
     void withOAuthTheTokenRequestCanPresentTheCertificate() throws Exception {
         upload(good);
         mock.expectOAuth2().registerClient("app", "client-secret");
-        secrets.put(SecretRef.of("int/client"), "client-secret");
+        secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), "client-secret");
         SignIn.OAuth2ClientCredentials oauth = SignIn.OAuth2ClientCredentials.secret(mock.tokenAddressByName(), "app",
-                SecretRef.of("int/client"), null);
+                SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), null);
         // The mock requires the certificate on every connection, also the token request's.
         StoredIntegration presenting = Fx.stored(config(new SignIn.MutualTls(oauth, true)));
         StoredIntegration notPresenting = Fx.stored(config(new SignIn.MutualTls(oauth, false)));
@@ -422,9 +422,9 @@ class MutualTlsTest {
     @Test
     void switchingTheCertificateDropsTheHeldTokenAtOnce() throws Exception {
         mock.expectOAuth2().registerClient("app", "client-secret");
-        secrets.put(SecretRef.of("int/client"), "client-secret");
+        secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), "client-secret");
         SignIn.OAuth2ClientCredentials oauth = SignIn.OAuth2ClientCredentials.secret(mock.tokenAddressByName(), "app",
-                SecretRef.of("int/client"), null);
+                SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), null);
         StoredIntegration s = Fx.stored(config(new SignIn.MutualTls(oauth, true)));
         credentials.upload(s, TestCertificates.pkcs12(good, P12_PASSWORD), P12_PASSWORD.toCharArray(), null, "a");
         credentials.upload(s, TestCertificates.pkcs12(next, P12_PASSWORD), P12_PASSWORD.toCharArray(), null, "a");
@@ -468,7 +468,7 @@ class MutualTlsTest {
     void theConfiguration() {
         Installation inst = installation();
         SignIn.OAuth2ClientCredentials oauth = SignIn.OAuth2ClientCredentials.secret(
-                java.net.URI.create("https://login.example/token"), "app", SecretRef.of("int/client"), "s");
+                java.net.URI.create("https://login.example/token"), "app", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), "s");
         IntegrationConfig c = config(new SignIn.MutualTls(oauth, true));
         assertTrue(ConfigCheck.check(c, inst).ok(), ConfigCheck.check(c, inst).errors().toString());
         assertEquals(c, ConfigJson.read(ConfigJson.write(c)));

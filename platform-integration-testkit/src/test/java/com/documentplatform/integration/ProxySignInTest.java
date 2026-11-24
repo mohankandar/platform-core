@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class ProxySignInTest {
 
-    static final SecretRef PROXY_PASSWORD = SecretRef.of("int/proxy-password");
+    static final SecretRef PROXY_PASSWORD = SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/proxy-password");
 
     private MockDestination mock;
     private MockProxy proxy;
@@ -43,8 +43,8 @@ class ProxySignInTest {
     void start() {
         mock = MockDestination.start();
         proxy = MockProxy.start().requireBasic("svc-proxy", "proxy-pass-1");
-        secrets.put(PROXY_PASSWORD, "proxy-pass-1").put(SecretRef.of("int/t"), "tok-1")
-                .put(SecretRef.of("int/client"), "client-secret");
+        secrets.put(PROXY_PASSWORD, "proxy-pass-1").put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t"), "tok-1")
+                .put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), "client-secret");
     }
 
     @AfterEach
@@ -67,7 +67,7 @@ class ProxySignInTest {
     }
 
     private IntegrationConfig config(URI base) {
-        return Fx.twoStep(base, new SignIn.BearerFixed(SecretRef.of("int/t"))).withEndpoint(new Endpoint(base, true));
+        return Fx.twoStep(base, new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t"))).withEndpoint(new Endpoint(base, true));
     }
 
     @Test
@@ -87,7 +87,7 @@ class ProxySignInTest {
     void tokenRequestsThroughTheProxySignInToo() {
         mock.expectOAuth2().registerClient("app", "client-secret");
         IntegrationConfig c = config(mock.addressByName()).withSignIn(OAuth2ClientCredentials.secret(
-                mock.tokenAddressByName(), "app", SecretRef.of("int/client"), null));
+                mock.tokenAddressByName(), "app", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), null));
         try (CallEngine engine = engine(withSignIn())) {
             assertEquals(Outcome.SENT, engine.attempt(Fx.stored(c), Fx.delivery(1)).outcome());
         }
@@ -113,7 +113,7 @@ class ProxySignInTest {
         // The token request gets the same code (not "token unreachable").
         mock.expectOAuth2().registerClient("app", "client-secret");
         IntegrationConfig oauth = config(mock.addressByName()).withSignIn(OAuth2ClientCredentials.secret(
-                mock.tokenAddressByName(), "app", SecretRef.of("int/client"), null));
+                mock.tokenAddressByName(), "app", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), null));
         try (CallEngine engine = engine(withSignIn())) {
             AttemptResult r = engine.attempt(Fx.stored(oauth), Fx.delivery(1));
             assertEquals(Outcome.CANT_CONNECT, r.outcome());
@@ -139,7 +139,7 @@ class ProxySignInTest {
 
     @Test
     void thePasswordComesFromTheSecretStoreAtEveryCall() {
-        InMemorySecretResolver empty = new InMemorySecretResolver().put(SecretRef.of("int/t"), "tok-1");
+        InMemorySecretResolver empty = new InMemorySecretResolver().put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t"), "tok-1");
         try (CallEngine engine = engine(withSignIn(), empty)) {
             AttemptResult r = engine.attempt(Fx.stored(config(mock.addressByName())), Fx.delivery(1));
             assertEquals(Outcome.NOT_CONFIGURED, r.outcome());
@@ -152,6 +152,6 @@ class ProxySignInTest {
         assertThrows(IllegalArgumentException.class, () -> new Outbound(i));
         assertThrows(IllegalArgumentException.class, () -> ProxySettings.of("p", 1).withSignIn("a:b", PROXY_PASSWORD));
         assertThrows(IllegalArgumentException.class, () -> new ProxySettings("p", 1, null, "user", null));
-        assertFalse(withSignIn().toString().contains("int/proxy-password"));
+        assertFalse(withSignIn().toString().contains("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/proxy-password"));
     }
 }

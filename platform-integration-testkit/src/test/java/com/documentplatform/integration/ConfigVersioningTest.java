@@ -47,7 +47,7 @@ class ConfigVersioningTest {
             Installation.onPremises(), Clock.systemUTC());
 
     private static IntegrationConfig base() {
-        return Fx.twoStep(URI.create("https://api.example"), new SignIn.BearerFixed(SecretRef.of("int/t1")));
+        return Fx.twoStep(URI.create("https://api.example"), new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t1")));
     }
 
     @Test
@@ -57,7 +57,7 @@ class ConfigVersioningTest {
         assertEquals(1, v1.version());
         assertEquals("alice", v1.changedBy());
 
-        StoredIntegration v2 = configs.update(c.withSignIn(new SignIn.BearerFixed(SecretRef.of("int/t2")))
+        StoredIntegration v2 = configs.update(c.withSignIn(new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t2")))
                 .withName("Renamed"), 1, "bob");
         assertEquals(2, v2.version());
         StoredIntegration v3 = configs.setEnabled(c.id(), false, 2, "carol");
@@ -72,11 +72,11 @@ class ConfigVersioningTest {
         assertTrue(history.get(0).changedFields().contains("steps[1].path"));
         assertEquals(history, audit.changes, "the app's audit gets one entry per change");
         // Field names only: the audit never sees a reference's value or any other value.
-        assertFalse(audit.changes.toString().contains("int/t2"));
+        assertFalse(audit.changes.toString().contains("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t2"));
         assertFalse(audit.changes.toString().contains("Renamed"));
 
         // Older versions stay readable.
-        assertEquals("int/t1", ((SignIn.BearerFixed) configs.version(c.id(), 1).orElseThrow().config().signIn())
+        assertEquals("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t1", ((SignIn.BearerFixed) configs.version(c.id(), 1).orElseThrow().config().signIn())
                 .token().value());
         assertEquals(3, configs.current(c.id()).orElseThrow().version());
         assertEquals(1, configs.list(Fx.ENTITY, Fx.PRODUCT).size());
@@ -154,14 +154,14 @@ class ConfigVersioningTest {
                 CallStep.of("s", HttpMethod.POST, "/x").withFileBody()), "a")).get(0));
         // The API key's own header cannot be set by a template either.
         IntegrationConfig apiKey = step(CallStep.of("s", HttpMethod.GET, "/x").withHeader("X-Key", "{value.k}"))
-                .withSignIn(new SignIn.ApiKey("X-Key", SecretRef.of("int/k")));
+                .withSignIn(new SignIn.ApiKey("X-Key", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/k")));
         assertEquals(IntegrationCode.INT_CONFIG_HEADER_RESERVED, codes(() -> configs.create(apiKey, "a")).get(0));
         assertTrue(audit.changes.isEmpty(), "refused configurations are not saved");
     }
 
     private static IntegrationConfig step(CallStep s) {
         return IntegrationConfig.apiPush(Fx.ENTITY, Fx.PRODUCT, "x", new Endpoint(URI.create("https://api.example"),
-                true), new SignIn.BearerFixed(SecretRef.of("int/t1"))).withSteps(List.of(s));
+                true), new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t1"))).withSteps(List.of(s));
     }
 
     private static List<IntegrationCode> codes(Runnable r) {

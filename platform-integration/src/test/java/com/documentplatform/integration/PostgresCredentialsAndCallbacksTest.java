@@ -174,7 +174,7 @@ class PostgresCredentialsAndCallbacksTest {
         DataSource app = db.appUser();
         IntegrationConfig cb = IntegrationConfig.callback(JsonAndConfigTest.sample(new SignIn.None()).entity(),
                 "DEMO", "Hooks", Endpoint.of("https://hooks.example/cases"), new SignIn.None(),
-                SecretRef.of("int/cb"));
+                SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/cb"));
         StoredIntegration s = integration(app, cb);
         Instant t0 = Instant.parse("2026-11-22T10:00:00Z");
         PostgresCallbackOutbox outbox = new PostgresCallbackOutbox(app);
@@ -215,8 +215,8 @@ class PostgresCredentialsAndCallbacksTest {
     void concurrentSendersNeverClaimTheSameCallback() throws Exception {
         Pg db = Pg.migrated();
         DataSource app = db.appUser();
-        IntegrationConfig cb = IntegrationConfig.callback(UUID.randomUUID(), "DEMO", "Hooks",
-                Endpoint.of("https://hooks.example/cases"), new SignIn.None(), SecretRef.of("int/cb"));
+        IntegrationConfig cb = IntegrationConfig.callback(UUID.fromString("5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f"), "DEMO", "Hooks",
+                Endpoint.of("https://hooks.example/cases"), new SignIn.None(), SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/cb"));
         StoredIntegration s = integration(app, cb);
         Instant t0 = Instant.parse("2026-11-22T10:00:00Z");
         PostgresCallbackOutbox outbox = new PostgresCallbackOutbox(app);

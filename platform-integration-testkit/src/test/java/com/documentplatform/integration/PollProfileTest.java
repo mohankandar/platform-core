@@ -51,15 +51,15 @@ class PollProfileTest {
                 source.add("pk-" + i, ("%PDF-1.4 pickup " + i).getBytes(), Map.of("fileName", "pickup-" + i + ".pdf",
                         "sender", "S-" + i));
             }
-            IntegrationConfig c = p.complete(new IntegrationProfile.Completion(UUID.randomUUID(), "DEMO", "Pickups",
-                    new Endpoint(source.address(), true), new SignIn.ApiKey("X-Api-Key", SecretRef.of("int/key")),
+            IntegrationConfig c = p.complete(new IntegrationProfile.Completion(Fx.ENTITY, "DEMO", "Pickups",
+                    new Endpoint(source.address(), true), new SignIn.ApiKey("X-Api-Key", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/key")),
                     Map.of(), null, Map.of()));
             assertEquals(Kind.API_POLL, c.kind());
             assertEquals(PICKUP, c.profile());
             assertEquals(p.poll(), c.poll());
             Installation onPremises = Installation.onPremises().withInternalAddresses(true);
             assertEquals(List.of(), ConfigCheck.check(c, onPremises).errors());
-            InMemorySecretResolver secrets = new InMemorySecretResolver().put(SecretRef.of("int/key"), "k-1");
+            InMemorySecretResolver secrets = new InMemorySecretResolver().put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/key"), "k-1");
             try (CallEngine calls = new CallEngine(new Outbound(onPremises), secrets, Clock.systemUTC())) {
                 PollingTest.App app = new PollingTest.App();
                 PollResult r = new PollEngine(calls, Scanning.OFF, work).pass(Fx.stored(c), CursorState.START, app);

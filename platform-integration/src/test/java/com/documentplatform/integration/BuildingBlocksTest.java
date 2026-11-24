@@ -115,9 +115,9 @@ class BuildingBlocksTest {
     }
 
     private static IntegrationConfig with(List<CallStep> steps) {
-        return IntegrationConfig.apiPush(UUID.randomUUID(), "DEMO", "x", new Endpoint(URI.create("https://api.example"),
+        return IntegrationConfig.apiPush(UUID.fromString("5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f"), "DEMO", "x", new Endpoint(URI.create("https://api.example"),
                 true), SignIn.OAuth2ClientCredentials.secret(URI.create("https://login.example/token"), "c",
-                SecretRef.of("int/c"), null)).withSteps(steps);
+                SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/c"), null)).withSteps(steps);
     }
 
     private static List<IntegrationCode> problems(IntegrationConfig c, FieldLists lists) {
@@ -158,7 +158,7 @@ class BuildingBlocksTest {
         CallStep docOutsideEach = CallStep.of("s", HttpMethod.POST, "/x").withJsonBody("{\"n\":\"{doc.fileName}\"}");
         assertEquals(List.of(IntegrationCode.INT_CONFIG_PLACEHOLDER_PLACE), problems(with(List.of(docOutsideEach)), lists));
         IntegrationConfig claimsWithoutOAuth = with(List.of(CallStep.of("s", HttpMethod.GET, "/x")))
-                .withSignIn(new SignIn.BearerFixed(SecretRef.of("int/t")))
+                .withSignIn(new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t")))
                 .withSetting(IntegrationConfig.REQUIRED_TOKEN_CLAIMS, "a");
         assertEquals(List.of(IntegrationCode.INT_CONFIG_SETTING_INVALID), problems(claimsWithoutOAuth, lists));
     }

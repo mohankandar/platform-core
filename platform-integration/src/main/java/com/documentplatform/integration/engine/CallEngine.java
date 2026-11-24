@@ -5,6 +5,7 @@ import com.documentplatform.integration.callback.CallbackSignature;
 import com.documentplatform.integration.config.CallStep;
 import com.documentplatform.integration.config.internal.Classification;
 import com.documentplatform.integration.config.ConfigCheck;
+import com.documentplatform.integration.config.SecretScope;
 import com.documentplatform.integration.config.HealthCheck;
 import com.documentplatform.integration.config.IntegrationConfig;
 import com.documentplatform.integration.config.Kind;
@@ -156,6 +157,10 @@ public final class CallEngine implements AutoCloseable {
         if (h == null || c.endpoint() == null) {
             return health(c, integration.version(), Outcome.NOT_CONFIGURED, IntegrationCode.INT_CONFIG_INVALID, null,
                     0, null);
+        }
+        if (!SecretScope.outOfScope(c).isEmpty()) { // P044, SEC-10: never ask the secret store for another's secret
+            return health(c, integration.version(), Outcome.NOT_CONFIGURED, IntegrationCode.INT_CONFIG_SECRET_SCOPE,
+                    null, 0, null);
         }
         Cert cert = certificate(c, which);
         if (cert.failure() != null) {
@@ -315,9 +320,10 @@ public final class CallEngine implements AutoCloseable {
             if (c.kind() != Kind.API_PUSH) {
                 return stop(Outcome.NOT_CONFIGURED, IntegrationCode.INT_KIND_NOT_SUPPORTED, null, 0, null, null, null);
             }
-            if (!ConfigCheck.check(c, outbound.installation()).ok()) {
-                // Saved under other installation rules (for example it is now hosted): not run.
-                return stop(Outcome.NOT_CONFIGURED, IntegrationCode.INT_CONFIG_INVALID, null, 0, null, null, null);
+            ConfigCheck.Report check = ConfigCheck.check(c, outbound.installation());
+            if (!check.ok()) {
+                // Saved under other installation rules (for example it is now hosted), or a secret out of scope: not run.
+                return stop(Outcome.NOT_CONFIGURED, check.runCode(), null, 0, null, null, null);
             }
             if (d.documents().size() > c.limits().maxDocuments()) {
                 return stop(Outcome.REFUSED, IntegrationCode.INT_TOO_MANY_DOCUMENTS, null, 0, null, null, null);
@@ -719,9 +725,10 @@ public final class CallEngine implements AutoCloseable {
             if (!c.id().equals(pending.integrationId())) throw new IllegalArgumentException("Another integration");
             if (!c.enabled()) return result(Outcome.NOT_CONFIGURED, IntegrationCode.INT_DISABLED, null, 0, null, null);
             CallStep s = c.steps().stream().filter(x -> x.name().equals(pending.step())).findFirst().orElse(null);
-            if (c.kind() != Kind.API_PUSH || s == null || s.accepted() == null
-                    || !ConfigCheck.check(c, outbound.installation()).ok()) {
-                return result(Outcome.NOT_CONFIGURED, IntegrationCode.INT_CONFIG_INVALID, null, 0, null, null);
+            ConfigCheck.Report check = ConfigCheck.check(c, outbound.installation());
+            if (c.kind() != Kind.API_PUSH || s == null || s.accepted() == null || !check.ok()) {
+                return result(Outcome.NOT_CONFIGURED, check.ok() ? IntegrationCode.INT_CONFIG_INVALID : check.runCode(),
+                        null, 0, null, null);
             }
             CallStep.Accepted acc = s.accepted();
             Cert cert = certificate(c, CredentialState.CURRENT);
@@ -867,8 +874,9 @@ public final class CallEngine implements AutoCloseable {
             return callbackResult(c, version, Outcome.NOT_CONFIGURED, IntegrationCode.INT_KIND_NOT_SUPPORTED, 0, null,
                     null);
         }
-        if (!ConfigCheck.check(c, outbound.installation()).ok()) {
-            return callbackResult(c, version, Outcome.NOT_CONFIGURED, IntegrationCode.INT_CONFIG_INVALID, 0, null,
+        ConfigCheck.Report check = ConfigCheck.check(c, outbound.installation());
+        if (!check.ok()) {
+            return callbackResult(c, version, Outcome.NOT_CONFIGURED, check.runCode(), 0, null,
                     null);
         }
         Optional<Secret> secret;

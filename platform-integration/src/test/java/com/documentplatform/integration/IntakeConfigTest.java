@@ -41,7 +41,7 @@ class IntakeConfigTest {
 
     static IntegrationConfig poll() {
         return IntegrationConfig.apiPoll(ENTITY, "DEMO", "Source", Endpoint.of("https://source.example"),
-                new SignIn.BearerFixed(SecretRef.of("int/src")), pollSource());
+                new SignIn.BearerFixed(SecretRef.of("int/0b6c3f52-1e2d-4a5b-9c8d-7e6f5a4b3c2d/src")), pollSource());
     }
 
     static IntegrationConfig watch() {

@@ -78,6 +78,23 @@ the schema step once (it adds the version 2 tables) and grant the new rights.
 `DEBUG`. That is the HTTP library's own trace, and it would write every request header, sign-in included, to the log.
 The app's own logs never hold a secret.
 
+### Secret references (P044)
+
+An integration's settings never hold a secret, only a **reference** to it in your secret store (the app's
+`SecretResolver`). Every secret an integration names (a password, API key, fixed token or client credential, a
+callback's signing secret, a keystore's password) is kept under **its own entity**:
+
+```
+int/<entity>/<name>        for example  int/ENT-0001/api-client-secret
+```
+
+`<entity>` is the entity's licence slot ID (`ENT-…`) or its entity UUID. A reference under another entity, or under no
+entity (`int/api-secret`), is refused when the integration is saved (`INT_CONFIG_SECRET_SCOPE`, naming the field) and
+again at every use, before the secret store is asked. So one entity's integration can never name, or send, another
+entity's secret. Keep each entity's secrets under its own path in the secret store, and give each entity's admins rights
+on that path only. (The outbound proxy's password, `platform.outbound.proxy.password-secret`, belongs to the
+installation, not to an integration, and is not under this rule.)
+
 ## 2. The outbound proxy
 
 ```properties
@@ -427,6 +444,7 @@ value.
 | `INT_CALLBACK_BODY_INVALID` | The app tried to send a body that is not one JSON object, or over 64 KB | An app fault: check the app's log |
 | `INT_CALLBACK_NOT_FOUND` | No given-up callback with that ID to send again | Reload the list |
 | `INT_CONFIG_CALLBACK_INVALID` | A callback without a signing secret | Put the secret in the secret store and set its reference |
+| `INT_CONFIG_SECRET_SCOPE` | A secret reference is not under the integration's own entity (`int/<entity>/<name>`); nothing was asked of the secret store | Section 1, "Secret references": keep the secret under the entity, for example `int/ENT-0001/api-client-secret`, and name that |
 
 **Accepted, check later** (section 10)
 

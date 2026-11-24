@@ -152,8 +152,9 @@ public final class PollEngine {
             if (c.kind() != Kind.API_POLL || src == null) {
                 return stop(Outcome.NOT_CONFIGURED, IntegrationCode.INT_KIND_NOT_SUPPORTED, null, 0, null, null, null);
             }
-            if (!ConfigCheck.check(c, calls.outbound().installation()).ok()) {
-                return stop(Outcome.NOT_CONFIGURED, IntegrationCode.INT_CONFIG_INVALID, null, 0, null, null, null);
+            ConfigCheck.Report check = ConfigCheck.check(c, calls.outbound().installation());
+            if (!check.ok()) {
+                return stop(Outcome.NOT_CONFIGURED, check.runCode(), null, 0, null, null, null);
             }
             ready = calls.ready(c);
             if (!ready.ok()) return stop(ready.failure(), ready.code(), null, 0, null, PollSource.LIST, null);

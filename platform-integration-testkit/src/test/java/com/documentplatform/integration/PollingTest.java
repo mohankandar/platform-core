@@ -59,7 +59,7 @@ class PollingTest {
     @TempDir
     Path work;
 
-    private final InMemorySecretResolver secrets = new InMemorySecretResolver().put(SecretRef.of("int/src"), "tok-1");
+    private final InMemorySecretResolver secrets = new InMemorySecretResolver().put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/src"), "tok-1");
     private final Installation installation = Installation.onPremises().withInternalAddresses(true);
     private final CallEngine calls = new CallEngine(new Outbound(installation), secrets, Clock.systemUTC());
     private MockSource source;
@@ -118,7 +118,7 @@ class PollingTest {
                     Map.of("fileName", "file-" + i + ".pdf", "kind", "contract"));
         }
         IntegrationConfig c = IntegrationConfig.apiPoll(Fx.ENTITY, Fx.PRODUCT, "Source",
-                        new Endpoint(source.address(), true), new SignIn.BearerFixed(SecretRef.of("int/src")), s)
+                        new Endpoint(source.address(), true), new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/src")), s)
                 .withErrorCodePointer("/code")
                 .withHealth(HealthCheck.get(MockSource.HEALTH_PATH, false))
                 .withLimits(Limits.DEFAULT.withReadTimeout(Duration.ofSeconds(2)));

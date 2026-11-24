@@ -34,7 +34,9 @@ public final class ProfileMock implements AutoCloseable, MockDestination.SpecBeh
 
     public static final String CLIENT_ID = "profile-mock-client";
     public static final String SECRET = "profile-mock-secret-value";
-    public static final SecretRef SECRET_REF = SecretRef.of("profile-mock/credential");
+    /** The secret reference of {@link #signIn()}: under {@link ProfileContract#ENTITY} (P044, SEC-10). */
+    public static final SecretRef SECRET_REF = com.documentplatform.integration.config.SecretScope.of(
+            ProfileContract.ENTITY, "profile-mock-credential");
     public static final Duration RETRY_AFTER = Duration.ofSeconds(5);
 
     private final IntegrationProfile profile;
