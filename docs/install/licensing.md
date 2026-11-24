@@ -26,6 +26,8 @@ usage ledger and its chain head, and the schema version.
    - location `classpath:db/platform/licensing` (files `V1__licensing.sql`, …)
    - history table `lic_schema_history`
    - run it as the schema owner, in the same schema the app connects to.
+   - the schema usually holds other tables already: set `baselineOnMigrate=true` and `baselineVersion=0` for this run
+     (Flyway command line: `-baselineOnMigrate=true -baselineVersion=0`), or Flyway refuses a schema it has no history for.
 2. **Grant the app's database user:**
    - SELECT, INSERT, UPDATE and DELETE on `lic_licence`, `lic_usage`, `lic_chain_head` and `lic_notice_sent`;
    - SELECT, INSERT and UPDATE on `lic_last_seen` (the database lets the time move forward only);

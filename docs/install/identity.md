@@ -43,6 +43,8 @@ The identity tables all start with `idn_`:
      and the app refuses to start with `IDN_VERSION_OLDER` until then)
    - history table `idn_schema_history`
    - run it as the schema owner, in the same schema the app connects to.
+   - the schema usually holds other tables already: set `baselineOnMigrate=true` and `baselineVersion=0` for this run
+     (Flyway command line: `-baselineOnMigrate=true -baselineVersion=0`), or Flyway refuses a schema it has no history for.
 2. **Grant the app's database user** SELECT, INSERT, UPDATE and DELETE on the `idn_` tables, and SELECT on
    `idn_schema_version`. Nothing more is needed (the history tables' ID columns need no sequence grant). On the
    history tables `idn_grant_history`, `idn_login_connection_history` and `idn_machine_binding_history`, SELECT and

@@ -158,7 +158,8 @@ version in one run). The app checks the version in the table `notif_schema_versi
 never in a history table, so the name of that history table is yours to choose (P040).
 
 1. **Before the first start, and after every upgrade,** run the app's schema step. Run it as a database user that may
-   create tables in the app's schema, for example the schema owner.
+   create tables in the app's schema, for example the schema owner. When the schema already holds other tables, set
+   `baselineOnMigrate=true` and `baselineVersion=0` for the run; Flyway refuses a schema it has no history for otherwise.
 2. **The app's runtime user needs no rights to create or change tables.** Grant it only:
 
    ```sql
