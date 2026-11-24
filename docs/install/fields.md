@@ -78,6 +78,10 @@ and so on after a fingerprint key rotation). Neither
 can be read or matched without the customer's keys in the key service, which are never exported. Restoring a backup
 needs the same key service (or its own backup) to read sensitive values again.
 
+**Back up the whole database**, not one schema only: a dump of a single schema (`pg_dump -n`) leaves out the extension
+`pg_trgm`, and restoring it stops at the index `fld_value_partial`. If you must restore such a dump, first run
+`create extension pg_trgm schema <the app's schema>;` in the target database.
+
 ## 5. Wiring in the app
 
 There is no `platform-fields-spring` module (P019): the app builds the field objects itself, on its own `DataSource`
