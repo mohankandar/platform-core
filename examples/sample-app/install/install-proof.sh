@@ -14,7 +14,7 @@ rm -rf "$work"; mkdir -p "$work/erase-log" "$work/export" "$work/vault-data"; cd
 # Paths as Java and Vault on Windows read them.
 native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else echo "$1"; fi; }
 step() { echo; echo "=== $*"; }
-fail() { echo "PROOF FAILED: $*" >&2; tail -60 app.log 2>/dev/null || true; exit 1; }
+fail() { echo "PROOF FAILED: $*" >&2; grep -vE '^[[:space:]]*(at |...)' app.log 2>/dev/null | tail -40 | cut -c1-600 || true; exit 1; }
 random() { od -An -N16 -tx1 /dev/urandom | tr -d ' \n'; }
 
 pids=""
@@ -195,7 +195,7 @@ stop_app
 step "11. Start-up refusals"
 refused() { # code
   if timeout 180 java -jar "$(native "$APP_JAR")" > refused.log 2>&1; then fail "the app started; $1 expected"; fi
-  grep -n "$1" refused.log | head -3 || { tail -60 refused.log; fail "no $1 in the refusal"; }
+  grep -n "$1" refused.log | head -3 || { grep -vE '^[[:space:]]*(at |...)' refused.log | tail -40 | cut -c1-600; fail "no $1 in the refusal"; }
 }
 hex="$(vault list -format=json transit/keys | jq -r '.[]' | grep -v -- '-fp$' | head -1)"
 eval "$DB_STOP"; refused "${DB_DOWN_CODE:-MON_DB_UNREACHABLE}"; eval "$DB_START"
