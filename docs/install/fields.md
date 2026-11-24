@@ -1,5 +1,7 @@
 # Case fields — install guide for IT
 
+**Needs:** Spring Boot 4.2 and Java 21 in the app (`docs/design/platform-baseline.md`).
+
 The app keeps its case field definitions (the business's own fields such as contract number, borrower name, property
 address) and the field **values** of its records in tables of its own database, prefixed `fld_`. This page says how
 they are created and what the app's database user needs. Sensitive values (names, addresses, and whatever the Business

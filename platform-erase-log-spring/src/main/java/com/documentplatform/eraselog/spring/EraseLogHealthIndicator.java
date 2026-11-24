@@ -3,9 +3,9 @@ package com.documentplatform.eraselog.spring;
 import com.documentplatform.eraselog.EraseGuard;
 import com.documentplatform.eraselog.EraseLogError;
 import com.documentplatform.eraselog.EraseRetention;
-import org.springframework.boot.actuate.health.AbstractHealthIndicator;
-import org.springframework.boot.actuate.health.Health;
-import org.springframework.boot.actuate.health.Status;
+import org.springframework.boot.health.contributor.AbstractHealthIndicator;
+import org.springframework.boot.health.contributor.Health;
+import org.springframework.boot.health.contributor.Status;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

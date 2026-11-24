@@ -1,5 +1,7 @@
 # Notifications — install guide for IT
 
+**Needs:** Spring Boot 4.2 and Java 21 in the app (`docs/design/platform-baseline.md`).
+
 This page tells your IT team what to set up so the app can send notifications by e-mail, Microsoft Teams and Slack.
 It also covers the database. The app's own install guide says where its install config file is. The settings below
 all start with `platform.notifications`.

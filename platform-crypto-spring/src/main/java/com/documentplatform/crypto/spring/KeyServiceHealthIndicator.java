@@ -1,8 +1,8 @@
 package com.documentplatform.crypto.spring;
 
 import com.documentplatform.crypto.KeyService;
-import org.springframework.boot.actuate.health.Health;
-import org.springframework.boot.actuate.health.HealthIndicator;
+import org.springframework.boot.health.contributor.Health;
+import org.springframework.boot.health.contributor.HealthIndicator;
 
 /**
  * Actuator health of the key service ({@code /actuator/health/keyService}): UP or DOWN, the key service kind, and on

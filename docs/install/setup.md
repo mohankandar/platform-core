@@ -1,5 +1,7 @@
 # Setup command — install guide for IT
 
+**Needs:** Spring Boot 4.2 and Java 21 in the app (`docs/design/platform-baseline.md`).
+
 The setup command loads your licence, your customer and entity records, your login system and your group-to-role
 mapping into one product's database. Run it once per product database (or schema), with the same input files. It
 checks everything first, shows you a plan, and changes nothing until you run `apply`. Running it again is safe: what

@@ -123,7 +123,7 @@ public class CryptoAutoConfiguration {
     }
 
     @Configuration(proxyBeanMethods = false)
-    @ConditionalOnClass(name = "org.springframework.boot.actuate.health.HealthIndicator")
+    @ConditionalOnClass(name = "org.springframework.boot.health.contributor.HealthIndicator")
     static class HealthConfiguration {
         @Bean
         @ConditionalOnMissingBean

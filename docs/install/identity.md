@@ -1,5 +1,7 @@
 # Identity storage — install guide for IT
 
+**Needs:** Spring Boot 4.2 and Java 21 in the app (`docs/design/platform-baseline.md`).
+
 This page tells your IT team how to set up the identity tables: your customer record, your entities, your login
 system and which groups get which roles. The setup command fills them from your licence and input files; the app's
 own screens change them afterwards. The app's own install guide says how its schema step is started.

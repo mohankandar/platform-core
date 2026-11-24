@@ -25,7 +25,7 @@ import java.time.Clock;
  * decides on its own: the app's controller calls {@link PushCaller#check} (with {@link PushCallerRequests}) and maps a
  * refusal to its own error answer. Backs off for app-defined beans.
  */
-@AutoConfiguration(afterName = "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration")
+@AutoConfiguration(afterName = "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration")
 @ConditionalOnProperty(prefix = PushCallerProperties.PREFIX, name = "product-code")
 @EnableConfigurationProperties(PushCallerProperties.class)
 public class IdentityPushCallerAutoConfiguration {

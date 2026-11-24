@@ -32,7 +32,7 @@
         <!-- Health indicator only when the app uses Actuator. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-actuator</artifactId>
+            <artifactId>spring-boot-health</artifactId>
             <version>${spring.boot.version}</version>
             <optional>true</optional>
         </dependency>

@@ -7,7 +7,7 @@ its own.
 
 ## Using it
 
-Apps use **released versions only**, from GitHub Packages:
+**Needs Spring Boot 4.2 and Java 21** (`docs/design/platform-baseline.md`). Apps use **released versions only**, from GitHub Packages:
 
 ```xml
 <repositories>
@@ -22,7 +22,7 @@ Apps use **released versions only**, from GitHub Packages:
     <dependency>
       <groupId>com.documentplatform.platform</groupId>
       <artifactId>platform-bom</artifactId>
-      <version>0.1.0</version>
+      <version>0.8.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -44,7 +44,7 @@ designs in `docs/design/`.
 mvn verify
 ```
 
-Java 21, Maven 3.9+. Releases are tags `platform-core-vX.Y.Z`; the release workflow publishes them. To build a tag
+Java 21, Spring Boot 4.2, Maven 3.9+. Releases are tags `platform-core-vX.Y.Z`; the release workflow publishes them. To build a tag
 offline into a separate local repository: `scripts/build-release.ps1 -Tag platform-core-vX.Y.Z -Repository <path>`
 (or `scripts/build-release.sh`).
 

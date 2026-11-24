@@ -57,7 +57,7 @@ import java.util.List;
  * <p>Every bean backs off when the app defines its own of the same type (for example in-memory stores in tests).
  * {@code platform.notifications.enabled=false} switches the whole module off.
  */
-@AutoConfiguration(afterName = "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration")
+@AutoConfiguration(afterName = "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration")
 @ConditionalOnProperty(prefix = NotificationsProperties.PREFIX, name = "enabled", havingValue = "true",
         matchIfMissing = true)
 @EnableConfigurationProperties(NotificationsProperties.class)
@@ -245,7 +245,7 @@ public class NotificationsAutoConfiguration {
     }
 
     @Configuration(proxyBeanMethods = false)
-    @ConditionalOnClass(name = "org.springframework.boot.actuate.health.HealthIndicator")
+    @ConditionalOnClass(name = "org.springframework.boot.health.contributor.HealthIndicator")
     static class HealthConfiguration {
         @Bean
         @ConditionalOnMissingBean

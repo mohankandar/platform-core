@@ -10,17 +10,17 @@ import com.documentplatform.integration.scan.Scanning;
 import com.documentplatform.integration.store.IntegrationConfigs;
 import com.documentplatform.integration.store.StoredIntegration;
 import com.documentplatform.integration.watch.WatchedFolder;
-import org.springframework.boot.actuate.health.CompositeHealthContributor;
-import org.springframework.boot.actuate.health.Health;
-import org.springframework.boot.actuate.health.HealthContributor;
-import org.springframework.boot.actuate.health.HealthIndicator;
-import org.springframework.boot.actuate.health.NamedContributor;
+import org.springframework.boot.health.contributor.CompositeHealthContributor;
+import org.springframework.boot.health.contributor.Health;
+import org.springframework.boot.health.contributor.HealthContributor;
+import org.springframework.boot.health.contributor.HealthIndicator;
+import org.springframework.boot.health.contributor.HealthContributors;
 
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.stream.Stream;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -88,21 +88,21 @@ final class IntegrationHealthContributor implements CompositeHealthContributor {
     }
 
     @Override
-    public Iterator<NamedContributor<HealthContributor>> iterator() {
-        List<NamedContributor<HealthContributor>> out = new ArrayList<>();
-        if (scanning.on()) out.add(NamedContributor.of(SCANNER, scannerIndicator()));
+    public Stream<HealthContributors.Entry> stream() {
+        List<HealthContributors.Entry> out = new ArrayList<>();
+        if (scanning.on()) out.add(new HealthContributors.Entry(SCANNER, scannerIndicator()));
         List<StoredIntegration> enabled;
         try {
             enabled = configs.enabled();
         } catch (RuntimeException storeDown) {
             HealthIndicator down = () -> Health.down().withDetail("reason", "integration store unavailable").build();
-            out.add(NamedContributor.of("store", down));
-            return out.iterator();
+            out.add(new HealthContributors.Entry("store", down));
+            return out.stream();
         }
         for (StoredIntegration s : enabled) {
-            if (checked(s)) out.add(NamedContributor.of(s.id().toString(), indicator(s.id())));
+            if (checked(s)) out.add(new HealthContributors.Entry(s.id().toString(), indicator(s.id())));
         }
-        return out.iterator();
+        return out.stream();
     }
 
     private HealthIndicator scannerIndicator() {

@@ -1,5 +1,7 @@
 # Integrations — install guide for IT
 
+**Needs:** Spring Boot 4.2 and Java 21 in the app (`docs/design/platform-baseline.md`).
+
 The app sends documents to your other systems through integrations. It sends them to an API (API push), or it
 writes them into a folder or network share with a manifest file (folder export). Each integration is set up in the
 app's integration screens, and every change is kept as a new version. This page lists what the installation itself

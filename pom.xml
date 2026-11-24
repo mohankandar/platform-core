@@ -47,21 +47,27 @@
     <properties>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <spring.security.version>6.3.1</spring.security.version>
-        <!-- Compiled against the lowest Spring Boot line the products run (3.3.x; 3.5.x works too). The app's own Boot version wins. -->
-        <spring.boot.version>3.3.2</spring.boot.version>
-        <assertj.version>3.25.3</assertj.version>
-        <junit.version>5.10.3</junit.version>
+        <spring.security.version>7.2.0</spring.security.version>
+        <!-- The platform baseline (P046): Spring Boot 4.2, with what it manages (Framework 7.1, Security 7.2). Pinned, not imported, so
+             platform-bom never brings Boot's versions into an app: the app's own Boot 4.2 version wins. docs/design/platform-baseline.md -->
+        <spring.boot.version>4.2.0</spring.boot.version>
+        <spring.framework.version>7.1.0</spring.framework.version>
+        <micrometer.version>1.18.0</micrometer.version>
+        <servlet.version>6.1.0</servlet.version>
+        <slf4j.version>2.0.20</slf4j.version>
+        <logback.version>1.6.6</logback.version>
+        <assertj.version>3.27.7</assertj.version>
+        <junit.version>6.1.3</junit.version>
         <angus.mail.version>2.0.5</angus.mail.version>
         <greenmail.version>2.1.15</greenmail.version>
         <testcontainers.version>2.0.5</testcontainers.version>
         <postgresql.version>42.7.14</postgresql.version>
         <pdfbox.version>3.0.8</pdfbox.version>
-        <!-- The integrations' HTTP client (connection pinning): the version Spring Boot 3.3.x manages. -->
+        <!-- The integrations' HTTP client (connection pinning): the version Spring Boot 4.2 manages. -->
         <httpclient5.version>5.6.5</httpclient5.version>
-        <!-- Fixed versions of transitive dependencies with advisories (P043, SEC-14 in part): declared where used. -->
+        <!-- Declared where used, so the published POMs carry them (P043): httpcore as Boot 4.2 manages it, Nimbus as Security 7.2 brings it or newer. -->
         <httpcore5.version>5.4.4</httpcore5.version>
-        <nimbus.version>9.37.4</nimbus.version>
+        <nimbus.version>10.10</nimbus.version>
     </properties>
     <distributionManagement>
         <!-- Releases only (tags platform-core-vX.Y.Z, published by .github/workflows/release.yml). -->

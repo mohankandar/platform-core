@@ -1,5 +1,7 @@
 # Licensing — install guide for IT
 
+**Needs:** Spring Boot 4.2 and Java 21 in the app (`docs/design/platform-baseline.md`).
+
 This page tells your IT team how to set up licensing: the database tables, the install config, and the licence
 command you use to store your licence and its renewals. The app's own install guide says where its install config
 file is and how the licence command is started. The settings below all start with `platform.licensing`.

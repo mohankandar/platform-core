@@ -76,7 +76,7 @@ import java.util.List;
  * {@link PollEngine} and {@link WatchedFolder} (the app may supply {@link WatchFiles}) and, with
  * Actuator, the {@code integrations} health contributor. Every bean backs off when the app defines its own.
  */
-@AutoConfiguration(afterName = {"org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration",
+@AutoConfiguration(afterName = {"org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration",
         "com.documentplatform.outbound.spring.OutboundAutoConfiguration"})
 @ConditionalOnProperty(prefix = IntegrationProperties.PREFIX, name = "enabled", havingValue = "true",
         matchIfMissing = true)
@@ -329,7 +329,7 @@ public class IntegrationAutoConfiguration {
     }
 
     @Configuration(proxyBeanMethods = false)
-    @ConditionalOnClass(name = "org.springframework.boot.actuate.health.HealthContributor")
+    @ConditionalOnClass(name = "org.springframework.boot.health.contributor.HealthContributor")
     // Replaced by entries in platform-monitoring-spring's "dependencies" contributor when that module is there (P032).
     @org.springframework.boot.autoconfigure.condition.ConditionalOnMissingClass(
             "com.documentplatform.monitoring.spring.MonitoringAutoConfiguration")

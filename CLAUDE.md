@@ -60,7 +60,7 @@ A release is a tag `platform-core-vX.Y.Z` on main; the release workflow publishe
 For an offline build of a tag into a separate local repository: `scripts/build-release.ps1` / `scripts/build-release.sh`.
 Merges into main go through pull requests with green CI (`.github/workflows/ci.yml`); see `docs/work/README.md`.
 
-Java 21, Maven 3.9+.
+Java 21, Spring Boot 4.2 (`docs/design/platform-baseline.md`), Maven 3.9+.
 
 On the owner's Windows laptop, Norton 360 intercepts TLS; Maven trusts it via the user environment variable
 `MAVEN_OPTS=-Djavax.net.ssl.trustStoreType=Windows-ROOT`. Never add machine-specific settings to the repo.

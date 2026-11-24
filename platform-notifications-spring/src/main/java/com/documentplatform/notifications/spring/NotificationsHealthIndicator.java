@@ -4,9 +4,9 @@ import com.documentplatform.notifications.ChannelKind;
 import com.documentplatform.notifications.DestinationId;
 import com.documentplatform.notifications.email.MailServer;
 import com.documentplatform.notifications.email.MicrosoftTokens;
-import org.springframework.boot.actuate.health.Health;
-import org.springframework.boot.actuate.health.HealthIndicator;
-import org.springframework.boot.actuate.health.Status;
+import org.springframework.boot.health.contributor.Health;
+import org.springframework.boot.health.contributor.HealthIndicator;
+import org.springframework.boot.health.contributor.Status;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

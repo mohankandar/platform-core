@@ -10,7 +10,7 @@ import com.documentplatform.notifications.email.MicrosoftTokens;
 import com.documentplatform.notifications.secret.Secret;
 import com.documentplatform.notifications.secret.SecretRef;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.actuate.health.Health;
+import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
