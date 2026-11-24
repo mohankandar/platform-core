@@ -65,7 +65,10 @@ public final class ClientBindingsFile {
     private static final Pattern JWT = Pattern.compile("eyJ[A-Za-z0-9_-]{5,}\\.[A-Za-z0-9_-]{5,}\\.");
     private static final Pattern SECRET_WORD = Pattern.compile(
             "(?i)(password|passwd|pwd|secret|token|api[_-]?key|private[_-]?key|bearer|authorization)\\s*[:=]");
-    private static final Pattern LONG_RUN = Pattern.compile("[A-Za-z0-9+/=_-]{40,}");
+    // P045, SEC-18: "." and "~" belong to secrets too (a cloud directory's client secrets have both).
+    private static final Pattern LONG_RUN = Pattern.compile("[A-Za-z0-9+/=_.~-]{40,}");
+    /** Known shapes of client secrets: a Google OAuth secret, a cloud directory's secret (3 characters, then 8Q~ or 7Q~). */
+    private static final Pattern KNOWN_SECRET = Pattern.compile("GOCSPX-[A-Za-z0-9_-]{20,}|(?:^|[^A-Za-z0-9])[A-Za-z0-9]{3}[78]Q~[A-Za-z0-9._~-]{20,}");
 
     private ClientBindingsFile() {
     }
@@ -133,9 +136,9 @@ public final class ClientBindingsFile {
                         + "product's \"sources\" in the sign-in file"));
             }
             if (description != null && (description.length() > MachineBinding.DESCRIPTION_MAX
-                    || description.chars().anyMatch(Character::isISOControl))) {
+                    || description.chars().anyMatch(c -> Character.isISOControl(c) || RoleMappingFile.bidi(c)))) {
                 errors.add(new Problem(line, Code.DESCRIPTION_INVALID, "description must be at most 200 characters "
-                        + "without control characters"));
+                        + "without control or text-direction characters"));
             }
             if (errors.size() > before) continue;
             Integer first = seen.putIfAbsent(client, line);
@@ -197,8 +200,10 @@ public final class ClientBindingsFile {
      * A-Z a-z 0-9 + / = _ - with upper case, lower case and digits mixed). Client IDs of the common login systems
      * (Okta, Entra GUIDs, Auth0, Keycloak names) are shorter or not mixed like that.
      */
-    static boolean looksSecret(String v) {
+    public static boolean looksSecret(String v) {
         if (JWT.matcher(v).find() || v.contains("-----BEGIN") || SECRET_WORD.matcher(v).find()) return true;
+        if (KNOWN_SECRET.matcher(v).find()) return true;
+        if (v.length() >= 30 && v.indexOf('~') >= 0) return true; // client IDs never hold "~"; secrets often do
         var m = LONG_RUN.matcher(v);
         while (m.find()) {
             String run = m.group();

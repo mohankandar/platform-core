@@ -354,6 +354,21 @@ class SetupCommandTest {
     }
 
     @Test
+    void aSecretPastedIntoTheSignInFileIsRefusedAndNotPrinted() throws Exception {
+        // P045, SEC-18: the sign-in file's client ID and audience had no secret check at all.
+        demo();
+        Pg db = Pg.migrated();
+        String secret = "Abc8Q~dEfGhIjKlMnOpQrStUvWxYz0123456.7_8"; // made up
+        write("signin-demo.json", read("signin-demo.json").replaceAll("\"apiAudience\": *\"[^\"]*\"",
+                "\"apiAudience\": \"" + secret + "\""));
+        Result r = run(db, "plan", A);
+        assertEquals(SetupCommand.EXIT_REFUSED, r.exit(), r.all());
+        assertTrue(r.err().startsWith("SETUP_SIGNIN_INVALID"), r.err());
+        assertTrue(r.err().contains("looks like a secret"), r.err());
+        assertFalse(r.all().contains(secret), "the secret is never repeated");
+    }
+
+    @Test
     void aSignInFileOfAnotherCustomerIsRefused() throws Exception {
         demo();
         Pg db = Pg.migrated();
@@ -528,7 +543,8 @@ class SetupCommandTest {
     }
 
     @Test
-    void grantsUnderAnotherIssuerAreLeftAlone() throws Exception {
+    void grantsUnderTheReplacedLoginSystemAreListedAndRemovedWithTheFlag() throws Exception {
+        // P045, SEC-17: before, the replaced login system's grants stayed and were live again after a rollback to it.
         demo();
         Pg db = Pg.migrated();
         assertEquals(0, run(db, "apply", A).exit());
@@ -539,14 +555,17 @@ class SetupCommandTest {
         write("role-mapping-product-a.csv", "# Product: PRODUCT_A\nentity_id,entity_name,group,role\n"
                 + "ENT-DEMO-0001,,Demo Finance Readers,READER\nENT-DEMO-0001,,Demo Finance Editors,EDITOR\n");
 
+        Result kept = run(db, "plan", A);
+        assertTrue(kept.out().contains("(under the replaced login system " + older + "; live again after a rollback); "
+                + "kept. Run again with --remove-unlisted-grants"), kept.out());
+
         Result r = run(db, "apply", A, "--remove-unlisted-grants");
         assertEquals(0, r.exit(), r.all());
-        assertFalse(r.out().contains("(not in the mapping file)"), "no grant of the older issuer is listed: " + r.out());
         assertTrue(r.out().contains("create      grant " + S1 + " PRODUCT_A: group \"Demo Finance Readers\" -> READER"),
                 r.out());
-        assertEquals(List.of(S1 + " " + older, S1 + " " + older, S2 + " " + older, S2 + " " + older),
-                db.strings("select slot_id || ' ' || issuer_uri from idn_group_grant where issuer_uri = '" + older
-                        + "' order by 1"), "every grant under the older issuer is untouched");
+        assertTrue(r.out().contains("(under the replaced login system " + older), r.out());
+        assertEquals(0, db.count("select count(*) from idn_group_grant where issuer_uri = '" + older + "'"),
+                "no grant of the replaced login system is left to come back after a rollback");
         assertEquals(2, db.count("select count(*) from idn_group_grant where issuer_uri = '" + newer + "'"));
     }
 

@@ -31,6 +31,7 @@ public final class DirectoryMachineSourceBindings implements MachineSourceBindin
                 || blank(clientPrincipal)) {
             return Optional.empty();
         }
+        if (PushCaller.isFingerprint(clientPrincipal)) return Optional.empty(); // SEC-16: certificate bindings only by certificate
         Set<String> tenants = directory.activeConnections(productCode, key.issuer()).stream()
                 .filter(c -> key.providerId().equals(c.providerId()) && key.audience().equals(c.apiAudience()))
                 .map(PushCallerDirectory.ActiveConnection::tenantId).collect(Collectors.toSet());

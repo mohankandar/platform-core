@@ -22,5 +22,10 @@ public enum PushRefusal implements com.documentplatform.errors.PlatformCode {
     /** The certificate's fingerprint has no binding for this product (or no certificate where one is required). */
     IDN_PUSH_CERT_NOT_BOUND,
     /** The token and the certificate point to different bindings (another customer, entity or source). */
-    IDN_PUSH_TOKEN_AND_CERT_DIFFER
+    IDN_PUSH_TOKEN_AND_CERT_DIFFER,
+    /**
+     * The token is not a machine's (P045, SEC-7): it carries a claim only a person's sign-in has, or lacks the
+     * product's configured machine claim.
+     */
+    IDN_PUSH_NOT_MACHINE
 }

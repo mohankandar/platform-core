@@ -168,7 +168,7 @@ class PushCallerTest {
     void aTokenFromEachClaimOrderFindsTheEntityAndSource(String kind) {
         World w = world(kind);
         PushCaller pc = caller(w);
-        for (String claim : List.of("client_id", "azp", "cid", "sub")) {
+        for (String claim : List.of("client_id", "azp", "cid")) {
             PushCallerResult r = pc.check(token(Map.of(claim, CLIENT)));
             assertTrue(r.allowed(), claim + ": " + r);
             PushCallerIdentity id = r.identity();
@@ -421,8 +421,8 @@ class PushCallerTest {
         try {
             PushCaller pc = caller(w);
             String secretish = "eyJhbGciOiJSUzI1NiJ9.payload.signature";
-            pc.check(token(Map.of("client_id", "0oaUnknown", "raw_token", secretish, "email", "a@b.example")));
-            pc.check(token(Map.of("client_id", CLIENT, "email", "a@b.example")));
+            pc.check(token(Map.of("client_id", "0oaUnknown", "raw_token", secretish, "contact", "a@b.example")));
+            pc.check(token(Map.of("client_id", CLIENT, "contact", "a@b.example")));
             pc.check(PushCallerInput.certificate(CERT_ONE));
             pc.check(PushCallerInput.certificate(CERT_TWO));
             String all = String.join("\n", lines);
@@ -438,5 +438,57 @@ class PushCallerTest {
             logger.removeHandler(h);
             logger.setLevel(before);
         }
+    }
+
+    // ---- P045, SEC-7 and SEC-16
+
+    @ParameterizedTest
+    @ValueSource(strings = {"memory", "postgres"})
+    void aPersonsTokenIsNeverAPushCallerWhateverClientItNames(String kind) {
+        // The review's case: a person signed in through the bound client app; their token names the client in azp.
+        World w = world(kind);
+        PushCaller pc = caller(w);
+        PushCallerResult person = pc.check(token(Map.of("azp", CLIENT, "sub", "user-123", "groups", List.of("staff"))));
+        assertEquals(PushRefusal.IDN_PUSH_NOT_MACHINE, refusal(person), person.toString());
+        for (String userClaim : List.of("email", "name", "auth_time", "upn")) {
+            assertEquals(PushRefusal.IDN_PUSH_NOT_MACHINE, refusal(pc.check(token(Map.of("azp", CLIENT, userClaim,
+                    "x")))), userClaim);
+        }
+        assertTrue(pc.check(token(Map.of("azp", CLIENT, "sub", "service-account"))).allowed(), "a machine token");
+        // sub names the client only when the product says so.
+        assertEquals(PushRefusal.IDN_PUSH_NO_CLIENT_ID, refusal(pc.check(token(Map.of("sub", CLIENT)))));
+        PushCaller bySub = caller(w, PushCallerSettings.of("PRODUCT_A").withCacheFor(Duration.ZERO)
+                .withClientIdClaims(List.of("sub")), Clock.systemUTC());
+        assertTrue(bySub.check(token(Map.of("sub", CLIENT))).allowed());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"memory", "postgres"})
+    void aProductCanRequireItsLoginSystemsMachineMarkAndNameItsOwnPersonClaims(String kind) {
+        World w = world(kind);
+        PushCallerSettings base = PushCallerSettings.of("PRODUCT_A").withCacheFor(Duration.ZERO);
+        PushCaller marked = caller(w, base.withMachineClaim("idtyp", "app"), Clock.systemUTC());
+        assertEquals(PushRefusal.IDN_PUSH_NOT_MACHINE, refusal(marked.check(token(Map.of("client_id", CLIENT)))));
+        assertEquals(PushRefusal.IDN_PUSH_NOT_MACHINE, refusal(marked.check(token(Map.of("client_id", CLIENT,
+                "idtyp", "user")))));
+        assertTrue(marked.check(token(Map.of("client_id", CLIENT, "idtyp", "app"))).allowed());
+        PushCaller own = caller(w, base.withUserClaims(java.util.Set.of("groups")), Clock.systemUTC());
+        assertTrue(own.check(token(Map.of("client_id", CLIENT, "email", "svc@example.test"))).allowed(),
+                "this login system puts email into its machine tokens");
+        assertEquals(PushRefusal.IDN_PUSH_NOT_MACHINE, refusal(own.check(token(Map.of("client_id", CLIENT,
+                "groups", List.of("g"))))));
+        assertThrows(IllegalArgumentException.class, () -> base.withMachineClaim("idtyp", null));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"memory", "postgres"})
+    void aTokenNamingACertificateBindingIsNotBound(String kind) {
+        // SEC-16: a client registered with the literal ID cert-sha256:<hex> must not reach a certificate-only binding.
+        World w = world(kind);
+        PushCaller pc = caller(w);
+        String one = PushCaller.fingerprint(CERT_ONE);
+        bind(w, one, S2, "sender-b");
+        assertTrue(pc.check(PushCallerInput.certificate(CERT_ONE)).allowed());
+        assertEquals(PushRefusal.IDN_PUSH_NOT_BOUND, refusal(pc.check(token(Map.of("client_id", one)))));
     }
 }

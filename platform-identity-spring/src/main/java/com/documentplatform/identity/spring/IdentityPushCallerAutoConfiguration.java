@@ -50,8 +50,17 @@ public class IdentityPushCallerAutoConfiguration {
                                   ObjectProvider<Clock> clock) {
         PushCallerSettings settings;
         try {
+            String machine = p.getMachineClaim() == null ? "" : p.getMachineClaim().strip();
+            int eq = machine.indexOf('=');
+            if (!machine.isEmpty() && (eq < 1 || eq == machine.length() - 1)) {
+                throw new IllegalArgumentException(PushCallerProperties.PREFIX + ".machine-claim must be name=value, "
+                        + "for example idtyp=app");
+            }
             settings = new PushCallerSettings(p.getProductCode().strip(), p.getClientIdClaims(), p.getEntityClaim(),
-                    p.getSourceClaim(), p.isRequireTokenAndCertificate(), p.getCacheFor());
+                    p.getSourceClaim(), p.isRequireTokenAndCertificate(), p.getCacheFor(),
+                    p.getUserClaims() == null ? null : java.util.Set.copyOf(p.getUserClaims()),
+                    machine.isEmpty() ? null : machine.substring(0, eq).strip(),
+                    machine.isEmpty() ? null : machine.substring(eq + 1).strip());
         } catch (IllegalArgumentException | NullPointerException e) {
             throw new PushCallerConfigException(java.util.List.of(e.getMessage() == null ? "a setting is missing"
                     : e.getMessage()));

@@ -31,6 +31,8 @@ public final class PostgresMachineClients implements MachineClients {
     @Override
     public Set<UUID> entitiesWithEnabledClient(String clientPrincipal) {
         if (clientPrincipal == null || clientPrincipal.isBlank()) return Set.of();
+        // P045, SEC-16: a token principal in certificate form never reaches a certificate binding.
+        if (com.documentplatform.identity.push.PushCaller.isFingerprint(clientPrincipal)) return Set.of();
         try {
             return store.activeBinding(productCode, clientPrincipal).map(b -> Set.of(b.entityUuid())).orElse(Set.of());
         } catch (IdentityStoreException e) {

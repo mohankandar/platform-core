@@ -319,6 +319,14 @@ public final class RoleMappingFile {
         return ok;
     }
 
+    /**
+     * P045, SEC-45: a text-direction control (U+202A to U+202E, U+2066 to U+2069, U+200E, U+200F, U+061C) can make a plan
+     * line read differently on screen from what it holds, misleading the installer who reviews it.
+     */
+    static boolean bidi(int c) {
+        return c >= 0x202A && c <= 0x202E || c >= 0x2066 && c <= 0x2069 || c == 0x200E || c == 0x200F || c == 0x061C;
+    }
+
     /** Leading or trailing spaces, non-breaking or zero-width spaces, and control characters are refused. */
     static Optional<String> invisibleProblem(String value) {
         for (int i = 0; i < value.length(); i++) {
@@ -328,6 +336,7 @@ public final class RoleMappingFile {
             if (c == '\u200B' || c == '\u200C' || c == '\u200D' || c == '\u2060' || c == '\uFEFF') {
                 return Optional.of("contains an invisible zero-width character");
             }
+            if (bidi(c)) return Optional.of("contains a text-direction control character (code " + (int) c + ")");
         }
         if (Character.isWhitespace(value.charAt(0)) || Character.isSpaceChar(value.charAt(0))) {
             return Optional.of("starts with a space");

@@ -33,7 +33,7 @@ public final class EntityGroupAuthorization {
             throw new IdentityAdmissionException(NO_ADMISSION_POLICY, "The entity has no group grants");
         }
         for (Object candidate : groups) {
-            if (candidate instanceof String group && grants.containsKey(group.trim())) return true;
+            if (candidate instanceof String group && grants.containsKey(group)) return true; // exactly (SEC-44)
         }
         return false;
     }
@@ -51,7 +51,7 @@ public final class EntityGroupAuthorization {
         Set<String> external = new LinkedHashSet<>();
         if (signedGroups instanceof Collection<?> groups) {
             for (Object group : groups) {
-                if (group instanceof String value && !value.isBlank()) external.add(value.trim());
+                if (group instanceof String value && !value.isBlank()) external.add(value); // exactly (SEC-44)
             }
         } else {
             throw new IdentityAdmissionException(GROUPS_NOT_A_COLLECTION, "The verified groups claim is not a list");

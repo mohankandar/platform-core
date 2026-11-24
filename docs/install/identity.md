@@ -194,13 +194,18 @@ that setup loads (`docs/install/setup.md` section 3a).
 - **With a client certificate:** the client ID in the client-binding file is `cert-sha256:` followed by the
   certificate's SHA-256 fingerprint. No token is needed. Your login connection for the product must still be active.
 - A product may require **both**. Then the token and the certificate must point to the same entity and source.
+- **A push caller is a machine** (since 0.7.0). A person's sign-in token is refused whatever client ID it names, and a
+  token whose client ID is written like a certificate (`cert-sha256:…`) never reaches a certificate binding: the
+  certificate itself must be presented.
 
 **Settings** (the product's install config):
 
 | Property | Default | |
 |---|---|---|
 | `platform.identity.push.product-code` | none | the product; without it there is no push-caller check |
-| `platform.identity.push.client-id-claims` | `client_id,azp,cid,sub` | the claims the client ID is read from, first present wins |
+| `platform.identity.push.client-id-claims` | `client_id,azp,cid` | the claims the client ID is read from, first present wins (`sub` only when you list it: in a person's token it is the person) |
+| `platform.identity.push.user-claims` | `email,upn,given_name,family_name,name,amr,auth_time,sid,uid,nonce,groups` | a token that carries any of these is a person's and is refused (`IDN_PUSH_NOT_MACHINE`); if your login system puts one into its machine tokens, list the claims that mark a person there |
+| `platform.identity.push.machine-claim` | none | optional `name=value` every machine token of your login system carries (for example `idtyp=app`); a token without it is refused |
 | `platform.identity.push.entity-claim` | none | optional: a claim that, when the token has it, must name the bound entity (its `ENT-…` slot ID or entity UUID) |
 | `platform.identity.push.source-claim` | none | optional: a claim that, when the token has it, must name the bound source |
 | `platform.identity.push.require-token-and-certificate` | `false` | both a token and a client certificate |
@@ -254,3 +259,12 @@ are not case folded, trimmed of slashes or normalised (see `ConnectionKey`).
 | `EntityGroupGrants` | One row per group-to-role grant in one entity: entity ID, issuer, group, role name. Joined to the ACTIVE connection on entity ID **and** issuer, so a grant recorded for another issuer never applies. Group names exactly as the login system sends them (no case folding or path stripping; for Keycloak, turn "full group path" off). Only role names the app's `EntityRoleCatalog` knows; an unknown name refuses the grant. | `activeGrants`: entity → (group → role names); an empty map for a blank provider ID or audience; `null` only when the store cannot be read. |
 | `MachineEntityBindings` | Entity ID, an enabled flag and the client principal of each machine integration that signs in with a token, joined to the ACTIVE connection and ACTIVE entity as for `ActiveEntityCandidates`. | `find`: the matching entity IDs; an empty set for a blank provider ID, audience or client principal. The machine is admitted only when exactly one entity is returned, so a client principal must be unique across entities. |
 | `EntityRoleCatalog` | No table. The app names its roles: `canonicalEntityRole` maps a configured name to the canonical one (empty for an unknown name), `aliasTarget` resolves aliases, and `isPlatformRole` names the roles that reach platform-wide screens. A platform role is never granted through an entity's groups; since P028 it is granted platform-wide (section 8). | — |
+
+## Upgrading to 0.7.0: group names and push callers
+
+- **Group names count exactly as your login system sends them** (since 0.7.0): no trimming, and a groups claim that is
+  one text is **one** group, never split on spaces or commas. `Finance Admins` is no longer also `Admins`. Check that
+  your login system sends groups as a list, and that the names in the role mapping file match them character by
+  character.
+- **Push callers must be machines:** a sending system that signed in through a person's session, or whose client ID is
+  only in `sub`, is refused until you set `user-claims` / `client-id-claims` (section 9) or give it a client of its own.

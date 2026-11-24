@@ -31,7 +31,7 @@ class IdentityClaimsTest {
         assertEquals("alice", identity.username());
         assertEquals("alice@test", identity.email());
         assertEquals("Alice A", identity.displayName());
-        assertEquals(Set.of("g1", "g2"), identity.groups());
+        assertEquals(Set.of("g1", " g2 "), identity.groups(), "group names exactly as given (P045, SEC-44)");
     }
 
     @Test
@@ -62,14 +62,16 @@ class IdentityClaimsTest {
     }
 
     @Test
-    void groupValuesAreTrimmedButNotCaseFoldedOrSlashStripped() {
-        assertEquals(Set.of("/Group-A", "group-a"), IdentityClaims.values(List.of(" /Group-A ", "group-a")));
+    void groupValuesAreKeptExactlyNotTrimmedCaseFoldedOrSlashStripped() {
+        // P045, SEC-44: "admins " from the login system is not the granted group "admins".
+        assertEquals(Set.of(" /Group-A ", "group-a"), IdentityClaims.values(List.of(" /Group-A ", "group-a")));
     }
 
     @Test
-    void knownFinding_plainStringGroupsClaimIsSplitOnSpacesAndCommas() {
-        // A provider sending one string "Business Users, Auditors" yields three groups, not two.
-        assertEquals(Set.of("Business", "Users", "Auditors"), IdentityClaims.values("Business Users, Auditors"));
+    void aPlainStringGroupsClaimIsOneGroupNeverSplit() {
+        // P045, SEC-44 (was a known finding): the string "Finance Admins" used to also give the group "Admins".
+        assertEquals(Set.of("Finance Admins"), IdentityClaims.values("Finance Admins"));
+        assertEquals(Set.of("Business Users, Auditors"), IdentityClaims.values("Business Users, Auditors"));
     }
 
     @Test
