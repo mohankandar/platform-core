@@ -18,8 +18,15 @@ When the owner says "do the next task":
 1. Find the highest-numbered `PNNN.md` that has no matching `PNNN-report.md`. If there is none, say so and stop.
 2. Read `CLAUDE.md` and follow its rules. They always apply.
 3. Do the task exactly as written. If the task is unclear, or would break a rule in `CLAUDE.md`, stop and write the question in the report instead of guessing.
-4. Check locally with `mvn verify` only. Never `mvn install` into the shared `~/.m2` (apps use released versions
-   from GitHub Packages; `scripts/build-release.*` builds a tag into a separate repository when needed).
+4. Check locally with **targeted tests only**; the full build runs in CI on the PR, so do not repeat it locally:
+   - while working: only the modules you changed and what they need, `mvn -B -pl <module>[,<module>] -am verify`,
+     or one test class, `mvn -B -pl <module> -am verify -Dtest=<Class> -Dsurefire.failIfNoSpecifiedTests=false`;
+   - a change to the root POM, the BOM, a shared build plugin or a public API used by other modules: run
+     `mvn -B verify` once locally before pushing;
+   - CI's full `mvn -B verify` on the PR (no test skipped) is the gate; the install proof runs only for a release
+     and monthly. A full local build is never needed just to "double-check" CI.
+   - Never `mvn install` into the shared `~/.m2` (apps use released versions from GitHub Packages;
+     `scripts/build-release.*` builds a tag into a separate repository when needed).
 5. Merge through a pull request, never locally into main:
    1. push the branch (`git push -u origin <branch>`);
    2. open a PR (`gh pr create`) and note its number `<n>`;
