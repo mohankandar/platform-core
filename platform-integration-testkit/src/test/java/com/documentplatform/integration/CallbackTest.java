@@ -154,10 +154,39 @@ class CallbackTest {
         // HMAC-SHA256("whsec-test-1", "1700000000." + body), lower-case hex (computed with openssl dgst -hmac).
         assertEquals("c374d8b6f6e2240e381b93831661f2782ad111ecee63e50f09fbdd061ad70464",
                 CallbackSignature.v1("whsec-test-1", 1700000000L, body));
-        assertEquals("t=1700000000,v1=c374d8b6f6e2240e381b93831661f2782ad111ecee63e50f09fbdd061ad70464",
-                CallbackSignature.header("whsec-test-1", 1700000000L, body));
         assertEquals("497d387712895633901069f2a612ef6920569725ce5c8e11dfb75bae6fc2b3a8",
                 CallbackSignature.v1("whsec-test-2", 1700000000L, body));
+        // v2 (P044): HMAC-SHA256("whsec-test-1", "1700000000.cb-example-1." + body), computed with openssl dgst -hmac.
+        assertEquals("2039c9328fff815a89ac1cfdf5f70a4410f2d733fda64ef106f7f2e8f00ed2e1",
+                CallbackSignature.v2("whsec-test-1", 1700000000L, "cb-example-1", body));
+        assertEquals("t=1700000000,v2=2039c9328fff815a89ac1cfdf5f70a4410f2d733fda64ef106f7f2e8f00ed2e1",
+                CallbackSignature.header("whsec-test-1", 1700000000L, "cb-example-1", body));
+    }
+
+    @Test
+    void aCapturedCallbackSentAgainUnderANewIdIsRefused() {
+        // P044, SEC-8: the review's attack. With v1 the ID was not signed, so every resend under a fresh ID passed the
+        // signature, the window and the repeat check.
+        Instant at = Instant.ofEpochSecond(1700000000L);
+        byte[] body = BODY.getBytes(StandardCharsets.UTF_8);
+        CallbackVerifier.SeenIds seen = CallbackVerifier.SeenIds.inMemory(100);
+        List<String> one = List.of("whsec-test-1");
+        String signed = CallbackSignature.header("whsec-test-1", at.getEpochSecond(), "cb-A", body);
+        assertTrue(check(Map.of(CallbackSignature.SIGNATURE_HEADER, signed, CallbackSignature.ID_HEADER, "cb-A"), BODY,
+                one, seen, at).ok());
+        assertEquals(IntegrationCode.INT_CALLBACK_SIGNATURE, check(Map.of(CallbackSignature.SIGNATURE_HEADER, signed,
+                CallbackSignature.ID_HEADER, "cb-B"), BODY, one, seen, at).failure(), "resent under a new ID");
+
+        // An old v1 callback: refused by default.
+        String v1 = "t=" + at.getEpochSecond() + ",v1=" + CallbackSignature.v1("whsec-test-1", at.getEpochSecond(), body);
+        assertEquals(IntegrationCode.INT_CALLBACK_SIGNATURE, check(Map.of(CallbackSignature.SIGNATURE_HEADER, v1,
+                CallbackSignature.ID_HEADER, "cb-C"), BODY, one, seen, at).failure());
+        // Accepted when the installation turns v1 on; then a copy under a new ID is a repeat (keyed on the signature).
+        CallbackVerifier.Policy withV1 = new CallbackVerifier.Policy(true, null);
+        assertTrue(withV1.verify(Map.of(CallbackSignature.SIGNATURE_HEADER, v1, CallbackSignature.ID_HEADER,
+                "cb-C")::get, body, one, seen, at).ok());
+        assertEquals(IntegrationCode.INT_CALLBACK_REPLAYED, withV1.verify(Map.of(CallbackSignature.SIGNATURE_HEADER, v1,
+                CallbackSignature.ID_HEADER, "cb-D")::get, body, one, seen, at).failure());
     }
 
     // ---- Sending ----
@@ -313,31 +342,35 @@ class CallbackTest {
     void theVerifierRefusesWhatIsNotRight() {
         Instant at = Instant.ofEpochSecond(1700000000L);
         byte[] body = BODY.getBytes(StandardCharsets.UTF_8);
-        String good = CallbackSignature.header("whsec-test-1", at.getEpochSecond(), body);
+        java.util.function.Function<String, String> good = id -> CallbackSignature.header("whsec-test-1",
+                at.getEpochSecond(), id, body);
         CallbackVerifier.SeenIds seen = CallbackVerifier.SeenIds.inMemory(100);
         List<String> one = List.of("whsec-test-1");
 
-        Map<String, String> ok = Map.of(CallbackSignature.SIGNATURE_HEADER, good, CallbackSignature.ID_HEADER, "cb-1");
+        Map<String, String> ok = Map.of(CallbackSignature.SIGNATURE_HEADER, good.apply("cb-1"),
+                CallbackSignature.ID_HEADER, "cb-1");
         assertTrue(check(ok, BODY, one, seen, at.plusSeconds(10)).ok());
         // The same ID again.
         assertEquals(IntegrationCode.INT_CALLBACK_REPLAYED, check(ok, BODY, one, seen, at.plusSeconds(20)).failure());
         // Another body, another secret, a changed signature, none, malformed.
-        assertEquals(IntegrationCode.INT_CALLBACK_SIGNATURE, check(Map.of(CallbackSignature.SIGNATURE_HEADER, good,
-                CallbackSignature.ID_HEADER, "cb-2"), BODY.replace("DONE", "FAILED"), one, seen, at).failure());
-        assertEquals(IntegrationCode.INT_CALLBACK_SIGNATURE, check(Map.of(CallbackSignature.SIGNATURE_HEADER, good,
-                CallbackSignature.ID_HEADER, "cb-3"), BODY, List.of("other"), seen, at).failure());
         assertEquals(IntegrationCode.INT_CALLBACK_SIGNATURE, check(Map.of(CallbackSignature.SIGNATURE_HEADER,
-                good.substring(0, good.length() - 1) + "0", CallbackSignature.ID_HEADER, "cb-4"), BODY, one, seen, at)
+                good.apply("cb-2"), CallbackSignature.ID_HEADER, "cb-2"), BODY.replace("DONE", "FAILED"), one, seen, at)
+                .failure());
+        assertEquals(IntegrationCode.INT_CALLBACK_SIGNATURE, check(Map.of(CallbackSignature.SIGNATURE_HEADER,
+                good.apply("cb-3"), CallbackSignature.ID_HEADER, "cb-3"), BODY, List.of("other"), seen, at).failure());
+        String four = good.apply("cb-4");
+        assertEquals(IntegrationCode.INT_CALLBACK_SIGNATURE, check(Map.of(CallbackSignature.SIGNATURE_HEADER,
+                four.substring(0, four.length() - 1) + "0", CallbackSignature.ID_HEADER, "cb-4"), BODY, one, seen, at)
                 .failure());
         assertEquals(IntegrationCode.INT_CALLBACK_SIGNATURE, check(Map.of(CallbackSignature.ID_HEADER, "cb-5"), BODY,
                 one, seen, at).failure());
         assertEquals(IntegrationCode.INT_CALLBACK_SIGNATURE, check(Map.of(CallbackSignature.SIGNATURE_HEADER,
-                "v1=abc", CallbackSignature.ID_HEADER, "cb-6"), BODY, one, seen, at).failure());
-        assertEquals(IntegrationCode.INT_CALLBACK_SIGNATURE, check(Map.of(CallbackSignature.SIGNATURE_HEADER, good),
-                BODY, one, seen, at).failure(), "no callback ID");
+                "v2=abc", CallbackSignature.ID_HEADER, "cb-6"), BODY, one, seen, at).failure());
+        assertEquals(IntegrationCode.INT_CALLBACK_SIGNATURE, check(Map.of(CallbackSignature.SIGNATURE_HEADER,
+                good.apply("cb-6")), BODY, one, seen, at).failure(), "no callback ID");
         // Too old and too far ahead: outside 5 minutes either way.
-        Map<String, String> late = Map.of(CallbackSignature.SIGNATURE_HEADER, good, CallbackSignature.ID_HEADER,
-                "cb-7");
+        Map<String, String> late = Map.of(CallbackSignature.SIGNATURE_HEADER, good.apply("cb-7"),
+                CallbackSignature.ID_HEADER, "cb-7");
         assertEquals(IntegrationCode.INT_CALLBACK_EXPIRED, check(late, BODY, one, seen, at.plusSeconds(301))
                 .failure());
         assertEquals(IntegrationCode.INT_CALLBACK_EXPIRED, check(late, BODY, one, seen, at.minusSeconds(301))
@@ -345,7 +378,7 @@ class CallbackTest {
         // A refused callback is not recorded as seen: the genuine one still goes through.
         assertTrue(check(late, BODY, one, seen, at.plusSeconds(299)).ok());
         // During a change: either secret.
-        String withNew = CallbackSignature.header("whsec-test-2", at.getEpochSecond(), body);
+        String withNew = CallbackSignature.header("whsec-test-2", at.getEpochSecond(), "cb-8", body);
         assertTrue(check(Map.of(CallbackSignature.SIGNATURE_HEADER, withNew, CallbackSignature.ID_HEADER, "cb-8"),
                 BODY, List.of("whsec-test-1", "whsec-test-2"), seen, at).ok());
     }

@@ -897,7 +897,8 @@ public final class CallEngine implements AutoCloseable {
         long t = clock.instant().getEpochSecond();
         headers.add(entry("Content-Type", "application/json"));
         headers.add(entry("Accept", "application/json"));
-        headers.add(entry(CallbackSignature.SIGNATURE_HEADER, CallbackSignature.header(secret.get().reveal(), t, bytes)));
+        headers.add(entry(CallbackSignature.SIGNATURE_HEADER, CallbackSignature.header(secret.get().reveal(), t,
+                callbackId.toString(), bytes)));
         headers.add(entry(CallbackSignature.ID_HEADER, callbackId.toString()));
         Outbound.Answer a;
         try {

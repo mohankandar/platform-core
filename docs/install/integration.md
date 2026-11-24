@@ -39,6 +39,7 @@ secret at the moment it is needed, so a changed password works without a restart
 | `platform.integration.callbacks.max-delay` | `6h` | callbacks: the longest wait between two sends |
 | `platform.integration.callbacks.give-up-after` | `24h` | callbacks: given up this long after they were created (or resent) |
 | `platform.integration.callbacks.keep-finished` | `30d` | callbacks sent or given up are deleted after this |
+| `platform.integration.callbacks.accept-v1-signatures` | `false` | callbacks **in**: also accept the earlier `v1` signature, which does not cover the callback ID (section on signed callbacks); only for a sender that cannot sign `v2` yet |
 | `platform.integration.worker.enabled` | `true` | the background work: callbacks that are due, and certificate switches at their set time |
 | `platform.integration.worker.every` | `15s` | how often the background work runs |
 | `platform.integration.scanner.*` | none | the virus scanner for incoming files (section 13) |
@@ -227,23 +228,30 @@ A message that cannot be delivered is sent again: after 1 minute, then 2, 4, 8 a
 other than sign-in) is not sent again. Messages that were given up are listed for the app's IT screen, which can send
 them again.
 
-**What your receiver checks**, for every message, in plain steps:
+**What your receiver checks**, for every message, in plain steps (signature version 2, P044):
 
-1. Read the header `Platform-Signature`. It looks like `t=1700000000,v1=c374d8b6…`. `t` is the time it was sent (Unix
-   seconds) and `v1` is the signature.
+1. Read the headers `Platform-Signature` and `Platform-Callback-Id`. The signature looks like
+   `t=1700000000,v2=2039c932…`. `t` is the time it was sent (Unix seconds) and `v2` is the signature.
 2. Take the message body exactly as it arrived, byte for byte (do not parse it and write it again).
-3. Compute HMAC-SHA256 with the signing secret as the key over: the value of `t`, then a full stop `.`, then the body.
-   Write the result as lower-case hex.
-4. Compare it with `v1` using a constant-time comparison. If they differ, refuse the message (401).
+3. Compute HMAC-SHA256 with the signing secret as the key over: the value of `t`, a full stop `.`, the value of
+   `Platform-Callback-Id`, a full stop `.`, then the body. Write the result as lower-case hex.
+4. Compare it with `v2` using a constant-time comparison. If they differ, refuse the message (401).
 5. Check that `t` is within 5 minutes of your clock. If not, refuse it: it is old or replayed.
-6. Read `Platform-Callback-Id`. If you have seen this ID before, answer 200 and do nothing else: it is a repeat (the
-   app sends the same ID again when it did not get your answer).
+6. If you have seen this `Platform-Callback-Id` before, answer 200 and do nothing else: it is a repeat (the app sends
+   the same ID again when it did not get your answer). Because the ID is signed, a copied message cannot be sent
+   again under a new ID.
 7. Answer `2xx` quickly, then do the work.
 
-Example: secret `whsec-test-1`, `t=1700000000`, body `{"case":"C-1","state":"DONE"}`. The signed text is
-`1700000000.{"case":"C-1","state":"DONE"}`, and `v1` is
-`c374d8b6f6e2240e381b93831661f2782ad111ecee63e50f09fbdd061ad70464`
-(`printf '%s' '1700000000.{"case":"C-1","state":"DONE"}' | openssl dgst -sha256 -hmac 'whsec-test-1'`).
+Example: secret `whsec-test-1`, `t=1700000000`, `Platform-Callback-Id: cb-example-1`, body
+`{"case":"C-1","state":"DONE"}`. The signed text is `1700000000.cb-example-1.{"case":"C-1","state":"DONE"}`, and `v2`
+is `2039c9328fff815a89ac1cfdf5f70a4410f2d733fda64ef106f7f2e8f00ed2e1`
+(`printf '%s' '1700000000.cb-example-1.{"case":"C-1","state":"DONE"}' | openssl dgst -sha256 -hmac 'whsec-test-1'`).
+
+**Version 1 (before 0.7).** The app sent `v1`, the HMAC over `t`, `.` and the body only, without the ID; a copied
+message could then be sent again under a new ID. The app sends `v2` only now. A receiver built on the platform's
+`CallbackVerifier` accepts `v1` only when its installation sets
+`platform.integration.callbacks.accept-v1-signatures=true` (off by default); turn it on only for a sender that cannot
+sign `v2` yet, and off again once it can.
 
 **Changing the secret** without losing messages:
 
