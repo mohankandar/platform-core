@@ -140,8 +140,8 @@ class VaultTransitSignerTest {
                 "the Vault request ID, to match Vault's audit log: " + entry);
         assertTrue(Files.readString(records).contains("\"keyId\":\"lic-2026:1\""));
 
-        // The export prints the install config, with brackets so Spring keeps the ':' in the key ID.
-        assertTrue(out().contains("\"[lic-2026:1]\": "), out());
+        // The keys go into the product's build (P045, SEC-12), not into an installation's config.
+        assertTrue(out().contains("META-INF/platform/licence-keys.json"), out());
     }
 
     @Test

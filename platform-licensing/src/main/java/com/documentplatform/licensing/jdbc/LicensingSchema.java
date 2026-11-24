@@ -11,6 +11,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static com.documentplatform.licensing.jdbc.LicensingSchemaException.Problem.*;
 
@@ -20,7 +21,8 @@ import static com.documentplatform.licensing.jdbc.LicensingSchemaException.Probl
  * <p><b>Database rule:</b> the tables are created and changed only by the app's schema step, as a separate Flyway run
  * with location {@link #LOCATION} and history table {@link #HISTORY_TABLE}. App startup never creates tables or
  * inserts rows: {@link #verify(DataSource)} only reads, and stops with a specific message if the tables are missing,
- * at another version, or not usable by the app's database user, who needs only SELECT, INSERT, UPDATE and DELETE.
+ * at another version, or not usable by the app's database user, who needs only SELECT, INSERT, UPDATE and DELETE
+ * (fewer on some tables).
  */
 public final class LicensingSchema {
 
@@ -31,17 +33,22 @@ public final class LicensingSchema {
     public static final String HISTORY_TABLE = "lic_schema_history";
 
     /** The table version this code needs: the number of the last migration file. */
-    public static final int VERSION = 1;
+    public static final int VERSION = 2;
 
     /** The tables the code reads and writes at runtime. */
     public static final List<String> TABLES = List.of("lic_licence", "lic_last_seen", "lic_clock_reset", "lic_usage",
-            "lic_chain_head", "lic_notice_sent");
+            "lic_chain_head", "lic_notice_sent", "lic_version_floor");
 
     /** Holds the version of the files that were run. */
     public static final String VERSION_TABLE = "lic_schema_version";
 
-    private static final List<String> SCRIPTS = List.of("V1__licensing.sql");
+    private static final List<String> SCRIPTS = List.of("V1__licensing.sql", "V2__licensing_clock_and_versions.sql");
     private static final List<String> RIGHTS = List.of("SELECT", "INSERT", "UPDATE", "DELETE");
+    /** Tables the app's user needs fewer rights on (P045, SEC-13). */
+    private static final Map<String, List<String>> FEWER_RIGHTS = Map.of(
+            "lic_last_seen", List.of("SELECT", "INSERT", "UPDATE"),
+            "lic_clock_reset", List.of("SELECT", "INSERT"),
+            "lic_version_floor", List.of("SELECT"));
     private static final String RUN_STEP = "run the licensing schema step (Flyway location " + LOCATION
             + ", history table " + HISTORY_TABLE + ") before starting the app";
 
@@ -107,7 +114,7 @@ public final class LicensingSchema {
                         + version + ", missing: " + String.join(", ", missing) + "; " + RUN_STEP + ".");
             }
             for (String table : TABLES) {
-                requireRights(c, table, RIGHTS);
+                requireRights(c, table, FEWER_RIGHTS.getOrDefault(table, RIGHTS));
             }
         } catch (SQLException e) {
             throw new LicensingSchemaException(LIC_CHECK_FAILED, "Licensing tables could not be checked: the database "
@@ -154,8 +161,8 @@ public final class LicensingSchema {
         }
         if (!lacking.isEmpty()) {
             throw new LicensingSchemaException(LIC_PRIVILEGES_MISSING, "The app's database user lacks "
-                    + String.join(", ", lacking) + " on " + table + ": grant SELECT, INSERT, UPDATE and DELETE on the "
-                    + "lic_ tables (and SELECT on " + VERSION_TABLE + ") to that user.");
+                    + String.join(", ", lacking) + " on " + table + ": grant them to that user as the licensing "
+                    + "install guide lists.");
         }
     }
 }

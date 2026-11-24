@@ -73,7 +73,8 @@ public final class LicenceService {
         Licence current = currentRow.map(r -> verifier.verify(bytes(r), tenantId)).orElse(null);
         String tenant = tenantId != null ? tenantId : current == null ? null : current.tenantId();
         Licence waiting = waitingRow.map(r -> verifier.verify(bytes(r), tenant)).orElse(null);
-        ClockReading reading = clock.read();
+        requireNotOlder(current, waiting);
+        ClockReading reading = clock.read(issuedAt(current, waiting));
         LocalDate today = LocalDate.ofInstant(reading.effective(), ZoneOffset.UTC);
         if (waiting != null && (current == null || !today.isBefore(waiting.startsOn()))) {
             store.promoteWaiting(waiting.licenceId());
@@ -169,15 +170,16 @@ public final class LicenceService {
             }
         }
         long newest = Math.max(current.map(Licence::version).orElse(0L), waiting.map(Licence::version).orElse(0L));
+        newest = Math.max(newest, Math.max(store.highestVersion(CURRENT), store.highestVersion(WAITING)));
         if (licence.version() < newest) {
             throw new LicenceException(LicenceRefusal.LICENCE_OLDER_VERSION, "It is version " + licence.version()
                     + "; version " + newest + " is already stored.");
         }
-        if (licence.version() == newest) {
+        if (licence.version() == newest && (current.isPresent() || waiting.isPresent())) {
             throw new LicenceException(LicenceRefusal.LICENCE_VERSION_CONFLICT, "Version " + newest
                     + " is already stored as a different licence; this one is " + licence.licenceId() + ".");
         }
-        ClockReading reading = clock.read();
+        ClockReading reading = clock.read(issuedAt(licence, current.orElse(null)));
         Instant now = reading.effective();
         LocalDate today = LocalDate.ofInstant(now, ZoneOffset.UTC);
         LicenceStore.Stored row = LicenceStore.Stored.of(text, licence, clock.serverTime());
@@ -235,9 +237,29 @@ public final class LicenceService {
 
             @Override
             public Instant instant() {
-                return clock.read().effective();
+                return clock.read(issuedAt(readable(CURRENT).orElse(null), null)).effective();
             }
         };
+    }
+
+    /** P045, SEC-13: an older signed licence written back over a newer one is refused. */
+    private void requireNotOlder(Licence current, Licence waiting) {
+        long inForce = current == null ? 0 : current.version();
+        long newest = Math.max(inForce, waiting == null ? 0 : waiting.version());
+        long floorInForce = current == null ? 0 : store.highestVersion(CURRENT);
+        long floor = Math.max(store.highestVersion(CURRENT), store.highestVersion(WAITING));
+        if (inForce < floorInForce || newest < floor) {
+            LOG.log(System.Logger.Level.WARNING, "Licence refused: {0}", LicenceRefusal.LICENCE_OLDER_VERSION);
+            throw new LicenceException(LicenceRefusal.LICENCE_OLDER_VERSION, "The stored licence is version "
+                    + (inForce < floorInForce ? inForce : newest) + "; version " + Math.max(floorInForce, floor)
+                    + " was stored before. Store the newest licence file again.");
+        }
+    }
+
+    private static Instant issuedAt(Licence a, Licence b) {
+        Instant first = a == null ? Instant.MIN : a.issuedAt();
+        Instant second = b == null ? Instant.MIN : b.issuedAt();
+        return first.isAfter(second) ? first : second;
     }
 
     private Optional<Licence> readable(LicenceStore.Slot slot) {

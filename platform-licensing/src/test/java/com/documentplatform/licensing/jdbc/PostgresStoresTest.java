@@ -129,11 +129,59 @@ class PostgresStoresTest {
         store.advanceTo(t.plusSeconds(5));
         assertEquals(t.plusSeconds(5), store.lastSeen().orElseThrow());
         assertFalse(store.resetApplied("RST-1"));
-        store.resetTo(t.minusSeconds(86400), "RST-1");
+        // P045, SEC-13: the app's user cannot; the schema owner, who applies the signed reset, can.
+        assertEquals(com.documentplatform.licensing.ResetRefusal.RESET_NEEDS_OWNER,
+                assertThrows(com.documentplatform.licensing.ResetException.class,
+                        () -> store.resetTo(t.minusSeconds(86400), "RST-1")).code());
+        assertFalse(store.resetApplied("RST-1"), "rolled back");
+        new PostgresLastSeenStore(db.owner).resetTo(t.minusSeconds(86400), "RST-1");
         assertEquals(t.minusSeconds(86400), store.lastSeen().orElseThrow());
         assertTrue(store.resetApplied("RST-1"));
-        assertThrows(LicensingStoreException.class, () -> store.resetTo(t, "RST-1"), "a reset works once");
+        assertThrows(LicensingStoreException.class, () -> new PostgresLastSeenStore(db.owner).resetTo(t, "RST-1"),
+                "a reset works once");
         assertEquals(t.minusSeconds(86400), store.lastSeen().orElseThrow());
+    }
+
+    /** P045, SEC-13: what the runtime user did to bring an expired or older licence back. */
+    @Test
+    void theRuntimeUserCannotUndoTheClockRuleOrBringBackAnOlderLicence() throws Exception {
+        Pg db = Pg.migrated();
+        DataSource app = db.appUser("select, insert, update, delete, truncate");
+        Instant t = Instant.parse("2026-11-21T10:00:00Z");
+        new PostgresLastSeenStore(app).advanceTo(t);
+        new PostgresLastSeenStore(db.owner).resetTo(t.minusSeconds(60), "RST-1");
+        PostgresLicenceStore licences = new PostgresLicenceStore(app);
+        LicenceStore.Stored v1 = new LicenceStore.Stored("{v1}", "LIC-1", 1, "TEN-1", LocalDate.parse("2026-01-01"), t);
+        licences.put(LicenceStore.Slot.CURRENT, new LicenceStore.Stored("{v2}", "LIC-2", 2, "TEN-1",
+                LocalDate.parse("2026-01-01"), t));
+        for (String sql : List.of("update lic_last_seen set last_seen = last_seen - interval '30 days'",
+                "update lic_last_seen set id = 2", "delete from lic_last_seen", "truncate lic_last_seen",
+                "delete from lic_clock_reset", "update lic_clock_reset set reset_id = 'RST-X'",
+                "truncate lic_clock_reset", "update lic_version_floor set version = 1", "delete from lic_version_floor",
+                "truncate lic_version_floor", "select lic_keep_version_floor()")) {
+            try (java.sql.Connection c = app.getConnection(); java.sql.Statement s = c.createStatement()) {
+                assertThrows(java.sql.SQLException.class, () -> s.execute(sql), sql);
+            }
+        }
+        // A temporary table named like the floor is not the one the trigger writes.
+        try (java.sql.Connection c = app.getConnection(); java.sql.Statement s = c.createStatement()) {
+            s.execute("create temporary table lic_version_floor (slot text primary key, version bigint)");
+            s.execute("update lic_licence set version = 3");
+        }
+        assertEquals(3, db.count("select version from lic_version_floor where slot = 'CURRENT'"));
+        licences.remove(LicenceStore.Slot.CURRENT);
+        licences.put(LicenceStore.Slot.CURRENT, v1);
+        assertEquals(3, licences.highestVersion(LicenceStore.Slot.CURRENT), "the older row does not lower the floor");
+        assertEquals(t.minusSeconds(60), new PostgresLastSeenStore(app).lastSeen().orElseThrow());
+    }
+
+    /** P045, SEC-34, for this schema: no function looks a name up in pg_temp first. */
+    @Test
+    void everyFunctionHasAFixedSearchPath() {
+        Pg db = Pg.migrated();
+        assertTrue(db.count("select count(*) from pg_proc p where pronamespace = current_schema()::regnamespace") > 0);
+        assertEquals(0, db.count("select count(*) from pg_proc p where pronamespace = current_schema()::regnamespace "
+                + "and (proconfig is null or not exists (select 1 from unnest(proconfig) x where x like 'search_path=%pg_temp'))"));
     }
 
     @Test
@@ -162,11 +210,11 @@ class PostgresStoresTest {
         assertEquals(List.of(), empty.tables(), "the check created nothing");
 
         Pg older = Pg.migrated();
-        older.exec("update lic_schema_version set version = 0");
+        older.exec("update lic_schema_version set version = 1");
         assertEquals(LIC_VERSION_OLDER, problem(older.owner));
 
         Pg newer = Pg.migrated();
-        newer.exec("update lic_schema_version set version = 2");
+        newer.exec("update lic_schema_version set version = 3");
         assertEquals(LIC_VERSION_NEWER, problem(newer.owner));
 
         Pg noVersion = Pg.migrated();
@@ -177,7 +225,7 @@ class PostgresStoresTest {
         incomplete.exec("drop table lic_chain_head");
         LicensingSchemaException e = assertThrows(LicensingSchemaException.class, () -> LicensingSchema.verify(incomplete.owner));
         assertEquals(LIC_TABLES_INCOMPLETE, e.problem());
-        assertEquals("Licensing tables incomplete at version 1, missing: lic_chain_head; run the licensing schema step "
+        assertEquals("Licensing tables incomplete at version 2, missing: lic_chain_head; run the licensing schema step "
                 + "(Flyway location db/platform/licensing, history table lic_schema_history) before starting the app.",
                 e.getMessage());
 

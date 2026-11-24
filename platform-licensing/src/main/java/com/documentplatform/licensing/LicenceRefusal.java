@@ -4,8 +4,8 @@ package com.documentplatform.licensing;
  * Why a licence is refused. Each code is stable (apps and support docs key on it) and has one exact cause.
  *
  * <p>For the stored licence, the first seven mean the app does not start. A server clock behind is never a refusal
- * (see {@link ClockReading}). {@link #LICENCE_OLDER_VERSION} and {@link #LICENCE_VERSION_CONFLICT} only refuse storing a
- * new licence; the licence already stored stays in force.
+ * (see {@link ClockReading}). {@link #LICENCE_OLDER_VERSION} also refuses an older file put back (P045);
+ * {@link #LICENCE_VERSION_CONFLICT} only refuses storing a new licence; the licence already stored stays in force.
  */
 public enum LicenceRefusal implements com.documentplatform.errors.PlatformCode {
     LICENCE_MISSING("No licence is stored. Install the licence file you received with the setup or licence command."),

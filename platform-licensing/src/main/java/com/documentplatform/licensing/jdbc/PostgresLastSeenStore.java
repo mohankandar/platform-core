@@ -1,6 +1,8 @@
 package com.documentplatform.licensing.jdbc;
 
 import com.documentplatform.licensing.LastSeenStore;
+import com.documentplatform.licensing.ResetException;
+import com.documentplatform.licensing.ResetRefusal;
 
 import javax.sql.DataSource;
 import java.sql.PreparedStatement;
@@ -45,6 +47,18 @@ public final class PostgresLastSeenStore implements LastSeenStore {
 
     @Override
     public void resetTo(Instant to, String resetId) {
+        // P045, SEC-13: the database lets only the schema owner move the time back.
+        try {
+            applyReset(to, resetId);
+        } catch (LicensingStoreException e) {
+            if ("42501".equals(e.sqlState())) {
+                throw new ResetException(ResetRefusal.RESET_NEEDS_OWNER, "");
+            }
+            throw e;
+        }
+    }
+
+    private void applyReset(Instant to, String resetId) {
         Sql.inTransaction(ds, "apply last-seen reset", c -> {
             try (PreparedStatement used = c.prepareStatement(
                     "insert into lic_clock_reset (reset_id, reset_to) values (?, ?)");

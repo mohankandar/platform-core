@@ -10,6 +10,7 @@ import com.documentplatform.identity.store.LoginConnections;
 import com.documentplatform.identity.testkit.MockIssuer;
 import com.documentplatform.licensing.ClockGuard;
 import com.documentplatform.licensing.LastSeenStore;
+import com.documentplatform.licensing.LicenceBuild;
 import com.documentplatform.licensing.LicenceKind;
 import com.documentplatform.licensing.LicenceService;
 import com.documentplatform.licensing.LicenceStore;
@@ -57,26 +58,20 @@ class DevelopmentKeyWiringTest {
     private final TestLicences development = new TestLicences("dev-key-1");
     private final TestLicences production = new TestLicences("prod-key-1");
 
-    @TempDir
-    Path dir;
-
-    private Path keysFile() throws Exception {
-        TrustedKeys keys = TrustedKeys.of(Map.of(
+    private TrustedKeys keys() {
+        return TrustedKeys.of(Map.of(
                 development.keyId(), development.keyPair().getPublic(),
                 production.keyId(), production.keyPair().getPublic()), Set.of(development.keyId()));
-        Path f = dir.resolve("trusted-keys.json");
-        Files.writeString(f, keys.toJson(), StandardCharsets.UTF_8);
-        return f;
     }
 
     /** The draft outcome for a local http issuer with a licence signed by {@code signer} in force. */
-    private ConnectionOutcome draftUnder(TestLicences signer) throws Exception {
-        Path keys = keysFile();
+    private ConnectionOutcome draftUnder(TestLicences signer, boolean developmentBuild) throws Exception {
+        LicenceBuild build = LicenceBuild.of(keys(), developmentBuild, Instant.EPOCH);
         InMemoryLicenceStore licenceStore = new InMemoryLicenceStore();
         InMemoryLastSeenStore lastSeen = new InMemoryLastSeenStore();
         InMemoryUsageLedger ledger = new InMemoryUsageLedger();
         // Stored the way the licence command does.
-        new LicenceService(licenceStore, new LicenceVerifier(TrustedKeys.parse(Files.readString(keys))),
+        new LicenceService(licenceStore, new LicenceVerifier(keys()),
                 new ClockGuard(Clock.fixed(NOW, ZoneOffset.UTC), lastSeen), ledger, PRODUCT, null)
                 .store(signer.sign(signer.subscription(LicenceKind.PRODUCTION, LocalDate.parse("2026-01-01"),
                         LocalDate.parse("2027-12-31"))));
@@ -91,8 +86,8 @@ class DevelopmentKeyWiringTest {
                             IdentityLoginConnectionsAutoConfiguration.class))
                     .withClassLoader(new FilteredClassLoader("com.documentplatform.integration"))
                     .withPropertyValues("platform.outbound.installation=ON_PREMISES",
-                            "platform.licensing.trusted-keys-file=" + keys,
                             "platform.licensing.product-code=" + PRODUCT, "platform.licensing.tenant-id=" + TENANT)
+                    .withBean(LicenceBuild.class, () -> build)
                     .withBean(SecretResolver.class, InMemorySecretResolver::new)
                     .withBean(LicensingClock.class, () -> new LicensingClock(Clock.fixed(NOW, ZoneOffset.UTC)))
                     .withBean(LicenceStore.class, () -> licenceStore)
@@ -114,13 +109,20 @@ class DevelopmentKeyWiringTest {
 
     @Test
     void aDevelopmentSignedLicenceAllowsALocalHttpIssuer() throws Exception {
-        ConnectionOutcome d = draftUnder(development);
+        ConnectionOutcome d = draftUnder(development, true);
         assertEquals(ConnectionOutcome.Result.DRAFT_CREATED, d.result(), d.message());
+    }
+
+    /** P045, SEC-12 and SEC-43: a build without the development switch never trusts a key marked as one. */
+    @Test
+    void aProductionBuildNeverTrustsADevelopmentKey() {
+        Throwable e = assertThrows(Throwable.class, () -> draftUnder(development, false));
+        assertTrue(String.valueOf(e.getMessage()).contains("LICENCE_UNKNOWN_KEY_ID"), () -> String.valueOf(e));
     }
 
     @Test
     void aProductionSignedLicenceStillRefusesALocalHttpIssuer() throws Exception {
-        ConnectionOutcome d = draftUnder(production);
+        ConnectionOutcome d = draftUnder(production, true);
         assertEquals(ConnectionOutcome.Result.IDN_HTTP_ISSUER_NOT_ALLOWED, d.result(), d.message());
     }
 }

@@ -16,7 +16,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 /**
- * The public keys an app trusts, by key ID. Apps ship this set; a new signing key is added beside the old ones, so
+ * The public keys an app trusts, by key ID. Apps ship this set inside their own build ({@link LicenceBuild}); a new signing key is added beside the old ones, so
  * licences signed with an earlier key keep verifying after a rotation.
  *
  * <p>File form ({@value #FORMAT}):
@@ -25,7 +25,7 @@ import java.util.TreeSet;
  * </pre>
  *
  * A key may carry {@code "development": true}: a development key (demo and local test licences only), which no
- * production release lists. Some local test features (an {@code http} login issuer on this machine) are allowed only
+ * production build trusts ({@link LicenceBuild}). Some local test features (an {@code http} login issuer on this machine) are allowed only
  * for a licence signed by such a key ({@link #isDevelopmentKey}). Files without the field load as before.
  */
 public final class TrustedKeys {
@@ -110,6 +110,13 @@ public final class TrustedKeys {
 
     public Set<String> keyIds() {
         return keys.keySet();
+    }
+
+    /** These keys without the development keys. */
+    TrustedKeys withoutDevelopmentKeys() {
+        Map<String, PublicKey> kept = new TreeMap<>(keys);
+        kept.keySet().removeAll(development);
+        return new TrustedKeys(kept, Set.of());
     }
 
     /** Whether the key is listed here as a development key ({@code "development": true}). */

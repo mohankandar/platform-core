@@ -152,22 +152,16 @@ Vault options.
 
 ### 2.4 Public keys for the release
 
-Apps ship the public keys they trust. Export them from Vault (public keys only):
+Products ship the public keys they trust inside their own jar. Export them from Vault (public keys only):
 
 ```sh
 issue-licence --export-trusted-keys lic-2026 --out trusted-keys.json --run-log issued.jsonl.runs.log
 ```
 
-This writes every version of the key in the trusted-keys format (`platform-licence-keys/1`) and prints the install
-config lines. Name several keys with commas (`lic-2026,lic-2027`). Key IDs with a version must be in brackets in the
-app config so Spring keeps the `:`:
-
-```yaml
-platform:
-  licensing:
-    trusted-keys:
-      "[lic-2026:1]": MCowBQYDK2VwAyEA...
-```
+This writes every version of the key in the trusted-keys format (`platform-licence-keys/1`). Name several keys with commas
+(`lic-2026,lic-2027`). Put the file into the product's source as `META-INF/platform/licence-keys.json`: the keys are part
+of the product's build, never of an installation's config. The build also writes
+`META-INF/platform/licence-build.properties` with `built-at` (and `development-keys=true` in a development build only).
 
 ## 3. Rotation
 

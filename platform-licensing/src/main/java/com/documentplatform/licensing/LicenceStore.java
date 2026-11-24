@@ -38,6 +38,12 @@ public interface LicenceStore {
     void remove(Slot slot);
 
     /**
+     * The highest licence version ever put in {@code slot} (0 if none), kept by the store itself and never lowered, so an
+     * older signed licence written back is refused (P045, SEC-13).
+     */
+    long highestVersion(Slot slot);
+
+    /**
      * In one step: the waiting licence becomes current and the waiting slot is emptied, provided the waiting licence
      * is still {@code licenceId} (another node may have promoted it already; then nothing happens).
      */

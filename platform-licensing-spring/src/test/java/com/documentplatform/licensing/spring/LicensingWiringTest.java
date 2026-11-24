@@ -53,8 +53,7 @@ class LicensingWiringTest {
                 .withConfiguration(AutoConfigurations.of(LicensingAutoConfiguration.class))
                 .withBean(DataSource.class, () -> ds)
                 .withBean(LicensingClock.class, () -> new LicensingClock(Clock.fixed(now, ZoneOffset.UTC)))
-                .withPropertyValues("platform.licensing.trusted-keys." + licences.keyId() + "="
-                        + Ed25519.encodePublic(licences.keyPair().getPublic()))
+                .withBean(com.documentplatform.licensing.LicenceBuild.class, licences::licenceBuild)
                 .withPropertyValues("platform.licensing.product-code=" + PRODUCT, "platform.licensing.tenant-id=" + TENANT)
                 .withPropertyValues(properties);
     }
@@ -279,43 +278,50 @@ class LicensingWiringTest {
     }
 
     @Test
-    void theShippedTrustedKeysFileIsReadAndTheTenantIdIsRequired(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dir)
+    void theTenantIdIsRequired() {
+        new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(LicensingAutoConfiguration.class))
+                .withBean(com.documentplatform.licensing.LicenceBuild.class, licences::licenceBuild)
+                .withPropertyValues("platform.licensing.product-code=" + PRODUCT)
+                .run(ctx -> {
+                    LicensingConfigException e = rootOf(ctx.getStartupFailure(), LicensingConfigException.class);
+                    assertEquals(1, e.problems().size(), e.getMessage());
+                    assertTrue(e.getMessage().contains("platform.licensing.tenant-id is missing"), e.getMessage());
+                    assertTrue(e.getMessage().contains("setup command"), e.getMessage());
+                });
+    }
+
+    /** P045, SEC-12: the customer makes a key, signs a licence with it and adds the key at the installation. */
+    @Test
+    void anInstallationCannotAddOrChangeATrustedKey(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dir)
             throws Exception {
-        Db db = Db.migrated();
-        DataSource ds = db.dmlUser();
-        store(ds, production("2026-01-01", "2027-12-31"));
+        TestLicences own = new TestLicences("customer-key");
         java.nio.file.Path keys = dir.resolve("trusted-keys.json");
-        java.nio.file.Files.writeString(keys, licences.trustedKeys().toJson());
-        String keysFile = "platform.licensing.trusted-keys-file=" + keys.toString().replace('\\', '/');
-        ApplicationContextRunner fromFile = new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(LicensingAutoConfiguration.class))
-                .withBean(DataSource.class, () -> ds)
-                .withBean(LicensingClock.class, () -> new LicensingClock(Clock.fixed(NOW, ZoneOffset.UTC)))
-                .withPropertyValues(keysFile, "platform.licensing.product-code=" + PRODUCT);
-        fromFile.withPropertyValues("platform.licensing.tenant-id=" + TENANT).run(ctx -> {
-            assertNull(ctx.getStartupFailure(), "no key IDs typed in the config");
-            assertEquals(LicenceState.VALID, ctx.getBean(LicenceService.class).status().state());
-        });
-        fromFile.run(ctx -> {
-            LicensingConfigException e = rootOf(ctx.getStartupFailure(), LicensingConfigException.class);
-            assertEquals(1, e.problems().size(), e.getMessage());
-            assertTrue(e.getMessage().contains("platform.licensing.tenant-id is missing"), e.getMessage());
-            assertTrue(e.getMessage().contains("setup command"), e.getMessage());
-        });
+        java.nio.file.Files.writeString(keys, own.trustedKeys().toJson());
+        for (String setting : List.of("platform.licensing.trusted-keys.customer-key="
+                + Ed25519.encodePublic(own.keyPair().getPublic()), "platform.licensing.trusted-keys-file="
+                + keys.toString().replace('\\', '/'))) {
+            app(Db.migrated().dmlUser(), NOW, setting).run(ctx -> assertTrue(rootOf(ctx.getStartupFailure(),
+                    LicensingConfigException.class).getMessage().contains("is no longer a setting"), setting));
+        }
+        // Without a key in the build, nothing an installation gives starts the app.
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(LicensingAutoConfiguration.class))
-                .withPropertyValues("platform.licensing.trusted-keys-file=" + dir.toString().replace('\\', '/')
-                                + "/missing.json", "platform.licensing.product-code=" + PRODUCT,
-                        "platform.licensing.tenant-id=" + TENANT)
+                .withPropertyValues("platform.licensing.product-code=" + PRODUCT, "platform.licensing.tenant-id=" + TENANT)
                 .run(ctx -> assertTrue(rootOf(ctx.getStartupFailure(), LicensingConfigException.class).getMessage()
-                        .contains("trusted-keys-file"), "a missing keys file stops the start"));
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(LicensingAutoConfiguration.class))
-                .withPropertyValues(keysFile, "platform.licensing.product-code=" + PRODUCT,
-                        "platform.licensing.tenant-id=" + TENANT, "platform.licensing.trusted-keys." + licences.keyId()
-                                + "=" + Ed25519.encodePublic(new TestLicences().keyPair().getPublic()))
-                .run(ctx -> assertTrue(rootOf(ctx.getStartupFailure(), LicensingConfigException.class).getMessage()
-                        .contains("differs from the key with the same ID"), "one key ID, two keys: refused"));
+                        .contains("missing from the app's build")));
+    }
+
+    /** P045, SEC-13: a new installation's clock set back, with nothing stored, still reads the licence's issue time. */
+    @Test
+    void anEmptyStoreAndAClockSetBackDoNotReviveALicence() {
+        DataSource ds = Db.migrated().dmlUser();
+        store(ds, production("2026-01-01", "2026-10-01"));
+        DataSource fresh = Db.migrated().dmlUser();
+        new PostgresLicenceStore(fresh).put(com.documentplatform.licensing.LicenceStore.Slot.CURRENT,
+                new PostgresLicenceStore(ds).get(com.documentplatform.licensing.LicenceStore.Slot.CURRENT).orElseThrow());
+        app(fresh, Instant.parse("2026-02-01T00:00:00Z")).run(ctx -> assertEquals(LicenceState.EXPIRED_GRACE_OVER,
+                ctx.getBean(LicenceService.class).status().state()));
     }
 
     @Test
@@ -327,9 +333,8 @@ class LicensingWiringTest {
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(LicensingAutoConfiguration.class))
                 .withBean(DataSource.class, () -> ds)
-                .withPropertyValues("platform.licensing.trusted-keys.other-key-9="
-                                + Ed25519.encodePublic(other.keyPair().getPublic()),
-                        "platform.licensing.product-code=" + PRODUCT, "platform.licensing.tenant-id=" + TENANT)
+                .withBean(com.documentplatform.licensing.LicenceBuild.class, other::licenceBuild)
+                .withPropertyValues("platform.licensing.product-code=" + PRODUCT, "platform.licensing.tenant-id=" + TENANT)
                 .run(ctx -> assertEquals(LicenceRefusal.LICENCE_UNKNOWN_KEY_ID,
                         rootOf(ctx.getStartupFailure(), LicenceException.class).code()));
     }
@@ -367,8 +372,8 @@ class LicensingWiringTest {
                         "platform.licensing.clock-tolerance=-1s", "platform.licensing.tenant-id=bad id")
                 .run(ctx -> {
                     LicensingConfigException e = rootOf(ctx.getStartupFailure(), LicensingConfigException.class);
-                    assertEquals(4, e.problems().size(), e.getMessage());
-                    assertTrue(e.getMessage().contains("platform.licensing.trusted-keys.k1 is not a Base64 X.509 Ed25519 public key"));
+                    assertEquals(5, e.problems().size(), e.getMessage());
+                    assertTrue(e.getMessage().contains("platform.licensing.trusted-keys is no longer a setting"));
                     assertTrue(e.getMessage().contains("platform.licensing.product-code"));
                     assertTrue(e.getMessage().contains("platform.licensing.clock-tolerance"));
                     assertTrue(e.getMessage().contains("platform.licensing.tenant-id"));
@@ -396,8 +401,8 @@ class LicensingWiringTest {
                 .withBean(com.documentplatform.licensing.LicenceStore.class, () -> memory)
                 .withBean(com.documentplatform.licensing.LastSeenStore.class, () -> lastSeen)
                 .withBean(UsageLedger.class, InMemoryUsageLedger::new)
-                .withPropertyValues("platform.licensing.trusted-keys." + licences.keyId() + "="
-                        + Ed25519.encodePublic(licences.keyPair().getPublic()), "platform.licensing.product-code=" + PRODUCT,
+                .withBean(com.documentplatform.licensing.LicenceBuild.class, licences::licenceBuild)
+                .withPropertyValues("platform.licensing.product-code=" + PRODUCT,
                         "platform.licensing.tenant-id=" + TENANT)
                 .run(ctx -> {
                     assertNull(ctx.getStartupFailure(), "no DataSource needed with the app's own stores");

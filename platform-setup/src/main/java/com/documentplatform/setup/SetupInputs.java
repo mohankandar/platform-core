@@ -3,6 +3,7 @@ package com.documentplatform.setup;
 import com.documentplatform.identity.mapping.ClientBindingsFile;
 import com.documentplatform.identity.signin.LocalTestIssuers;
 import com.documentplatform.licensing.Licence;
+import com.documentplatform.licensing.LicenceBuild;
 import com.documentplatform.licensing.LicenceException;
 import com.documentplatform.licensing.LicenceVerifier;
 import com.documentplatform.licensing.TrustedKeys;
@@ -13,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /**
  * The checked input files of one run: everything that can be checked without the database. Built by
@@ -22,20 +24,22 @@ import java.util.Map;
  * @param bindings    the client-binding file's rows, checked line by line; null when the sign-in file names no file
  * @param bindingsName the client-binding file's name, for messages; null without one
  */
-record SetupInputs(String product, byte[] licenceFile, Licence licence, TrustedKeys keys, SigninFile signin,
+record SetupInputs(String product, byte[] licenceFile, Licence licence, LicenceBuild build, SigninFile signin,
                    SigninFile.Product productSignin, ProductRoles roles, byte[] mapping, String mappingName,
                    List<ClientBindingsFile.Row> bindings, String bindingsName, List<CheckedProfile> profiles,
                    Path configOut, boolean removeUnlistedGrants, boolean replaceConnection) {
 
     /** @throws SetupException with the first problem found, in the order the files are listed */
-    static SetupInputs load(Map<String, String> o, boolean removeUnlisted, boolean replaceConnection) {
+    static SetupInputs load(Map<String, String> o, Supplier<LicenceBuild> builtIn, boolean removeUnlisted,
+                            boolean replaceConnection) {
         String product = o.get("--product");
-        TrustedKeys keys;
+        LicenceBuild build;
         try {
-            keys = TrustedKeys.parse(text(o.get("--keys"), "--keys"));
-        } catch (IllegalArgumentException e) {
-            throw new SetupException(SetupRefusal.SETUP_KEYS_INVALID, "--keys: " + e.getMessage() + ".");
+            build = builtIn.get();
+        } catch (LicenceBuild.Invalid e) {
+            throw new SetupException(SetupRefusal.SETUP_KEYS_INVALID, e.getMessage());
         }
+        TrustedKeys keys = build.keys();
         byte[] licenceFile = bytes(Path.of(o.get("--licence")), "--licence");
         Licence licence;
         try {
@@ -80,7 +84,7 @@ record SetupInputs(String product, byte[] licenceFile, Licence licence, TrustedK
             profiles.add(checkProfile(e, signinPath.toAbsolutePath().getParent().resolve(e.file())));
         }
         Path configOut = Path.of(o.getOrDefault("--config-out", ConfigFragment.DEFAULT_NAME));
-        return new SetupInputs(product, licenceFile, licence, keys, signin, productSignin, roles, mapping,
+        return new SetupInputs(product, licenceFile, licence, build, signin, productSignin, roles, mapping,
                 mappingPath.getFileName().toString(), bindings, bindingsName, List.copyOf(profiles), configOut, removeUnlisted,
                 replaceConnection);
     }

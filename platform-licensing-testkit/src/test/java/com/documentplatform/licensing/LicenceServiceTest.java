@@ -75,6 +75,24 @@ class LicenceServiceTest {
                 base.deployment(), base.keyId(), base.issuedAt());
     }
 
+    /** P045, SEC-13: the older signed file written back into the table verifies, but is refused. */
+    @Test
+    void anOlderSignedLicenceWrittenBackIsRefused() {
+        String v1 = licences.sign(version(1, "2026-01-01", "2027-12-31"));
+        service().store(v1);
+        service().store(licences.sign(version(2, "2026-02-01", "2026-12-31")));
+        LicenceStore.Stored now = store.get(LicenceStore.Slot.CURRENT).orElseThrow();
+        store.put(LicenceStore.Slot.CURRENT, new LicenceStore.Stored(v1, "LIC-X", 1, now.tenantId(), now.startsOn(),
+                now.storedAt()));
+        assertEquals(LicenceRefusal.LICENCE_OLDER_VERSION,
+                assertThrows(LicenceException.class, () -> service().status()).code());
+        store.remove(LicenceStore.Slot.CURRENT);
+        assertEquals(LicenceRefusal.LICENCE_OLDER_VERSION,
+                assertThrows(LicenceException.class, () -> service().store(v1)).code(), "nor stored again");
+        service().store(licences.sign(version(2, "2026-02-01", "2026-12-31")));
+        assertEquals(2, service().status().licence().version(), "the newest can be stored again");
+    }
+
     @Test
     void noLicenceStoredIsTheOnlyMissingRefusal() {
         assertEquals(LicenceRefusal.LICENCE_MISSING, assertThrows(LicenceException.class, () -> service().status()).code());

@@ -3,13 +3,14 @@ package com.documentplatform.licensing.command;
 import com.documentplatform.licensing.ClockGuard;
 import com.documentplatform.licensing.LastSeenReset;
 import com.documentplatform.licensing.Licence;
+import com.documentplatform.licensing.LicenceBuild;
 import com.documentplatform.licensing.LicenceException;
 import com.documentplatform.licensing.LicenceService;
 import com.documentplatform.licensing.LicenceStatus;
 import com.documentplatform.licensing.LicenceType;
 import com.documentplatform.licensing.LicenceVerifier;
 import com.documentplatform.licensing.ResetException;
-import com.documentplatform.licensing.TrustedKeys;
+import com.documentplatform.licensing.SignedDocument;
 import com.documentplatform.licensing.jdbc.LicensingSchema;
 import com.documentplatform.licensing.jdbc.LicensingSchemaException;
 import com.documentplatform.licensing.jdbc.PostgresLastSeenStore;
@@ -20,7 +21,6 @@ import com.documentplatform.licensing.jdbc.LicensingStoreException;
 import javax.sql.DataSource;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -43,8 +43,10 @@ import java.util.Set;
  * licence status                            [connection options]
  * licence apply-reset --file reset.json     [connection options]
  *
- * connection options: --jdbc-url jdbc:postgresql://host/db  --db-user app_user  --keys trusted-keys.json
+ * connection options: --jdbc-url jdbc:postgresql://host/db  --db-user app_user
  *                     [--tenant-id TEN-...] [--product-code CODE] [--clock-tolerance PT1H]
+ * The trusted keys are those inside the product's own build ({@link LicenceBuild}): run the command the product ships.
+ * apply-reset needs the schema owner's database user (only the owner may move the latest time seen back).
  * The database password is read from the environment variable PLATFORM_LICENSING_DB_PASSWORD, never an option.
  * </pre>
  *
@@ -54,7 +56,7 @@ public final class LicenceCommand {
 
     public static final String PASSWORD_VARIABLE = "PLATFORM_LICENSING_DB_PASSWORD";
 
-    private static final Set<String> OPTIONS = Set.of("--file", "--jdbc-url", "--db-user", "--keys", "--tenant-id",
+    private static final Set<String> OPTIONS = Set.of("--file", "--jdbc-url", "--db-user", "--tenant-id",
             "--product-code", "--clock-tolerance");
     private static final List<String> ACTIONS = List.of("store", "status", "apply-reset");
 
@@ -70,32 +72,33 @@ public final class LicenceCommand {
     }
 
     public static void main(String[] args) {
-        System.exit(new LicenceCommand(o -> jdbc(o, System.getenv(), Clock.systemUTC()))
+        System.exit(new LicenceCommand(o -> jdbc(o, System.getenv(), Clock.systemUTC(), builtIn()))
                 .run(Arrays.asList(args), System.out, System.err));
     }
 
     /** The service on the installation's database, as {@link #main} builds it. */
-    public static LicenceService jdbc(Map<String, String> o, Map<String, String> env, Clock clock) {
+    public static LicenceService jdbc(Map<String, String> o, Map<String, String> env, Clock clock,
+                                      LicenceBuild build) {
         DataSource ds = new DriverManagerDataSource(required(o, "--jdbc-url"), required(o, "--db-user"),
                 env.getOrDefault(PASSWORD_VARIABLE, ""));
         LicensingSchema.verify(ds);
         return service(o, new PostgresLicenceStore(ds), new PostgresLastSeenStore(ds), new PostgresUsageLedger(ds),
-                clock);
+                clock, build);
     }
 
-    /** The service on the given stores, with keys, tenant, product code and tolerance from the options. */
+    private static LicenceBuild builtIn() {
+        try {
+            return LicenceBuild.load();
+        } catch (LicenceBuild.Invalid e) {
+            throw new UsageError(e.getMessage());
+        }
+    }
+
+    /** The service on the given stores, with the build's keys, and tenant, product code and tolerance from the options. */
     public static LicenceService service(Map<String, String> o, com.documentplatform.licensing.LicenceStore licences,
                                          com.documentplatform.licensing.LastSeenStore lastSeen,
-                                         com.documentplatform.licensing.usage.UsageLedger ledger, Clock clock) {
-        TrustedKeys keys;
-        Path keysFile = Path.of(required(o, "--keys"));
-        try {
-            keys = TrustedKeys.parse(Files.readString(keysFile, StandardCharsets.UTF_8));
-        } catch (IOException e) {
-            throw new UsageError("--keys " + keysFile + " cannot be read (" + e.getClass().getSimpleName() + ").");
-        } catch (IllegalArgumentException e) {
-            throw new UsageError("--keys " + keysFile + ": " + e.getMessage() + ".");
-        }
+                                         com.documentplatform.licensing.usage.UsageLedger ledger, Clock clock,
+                                         LicenceBuild build) {
         Duration tolerance = ClockGuard.DEFAULT_TOLERANCE;
         if (o.containsKey("--clock-tolerance")) {
             try {
@@ -105,7 +108,8 @@ public final class LicenceCommand {
             }
         }
         try {
-            return new LicenceService(licences, new LicenceVerifier(keys), new ClockGuard(clock, tolerance, lastSeen),
+            return new LicenceService(licences, new LicenceVerifier(build.keys()),
+                    new ClockGuard(clock, tolerance, lastSeen, build.builtAt()),
                     ledger, o.get("--product-code"), o.get("--tenant-id"));
         } catch (IllegalArgumentException e) {
             throw new UsageError(e.getMessage() + ".");
@@ -199,7 +203,11 @@ public final class LicenceCommand {
 
     private static byte[] readFile(String name) {
         try {
-            return Files.readAllBytes(Path.of(name));
+            Path file = Path.of(name);
+            if (Files.size(file) > SignedDocument.MAX_BYTES) {
+                throw new UsageError("--file " + name + " is larger than any licence or reset file.");
+            }
+            return Files.readAllBytes(file);
         } catch (IOException e) {
             throw new UsageError("--file " + name + " cannot be read (" + e.getClass().getSimpleName() + ").");
         }

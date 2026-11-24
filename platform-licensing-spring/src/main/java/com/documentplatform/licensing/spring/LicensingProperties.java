@@ -3,12 +3,10 @@ package com.documentplatform.licensing.spring;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.time.Duration;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 /**
  * The install config of licensing, prefix {@code platform.licensing}. Checked at startup, which stops the app with a
- * specific message for each wrong value. Only public keys go here; no secret is ever needed on the app side.
+ * specific message for each wrong value. The trusted keys are inside the app's build ({@code LicenceBuild}), never here.
  */
 @ConfigurationProperties(prefix = LicensingProperties.PREFIX)
 public class LicensingProperties {
@@ -17,15 +15,6 @@ public class LicensingProperties {
 
     /** Switches the whole module off when false. */
     private boolean enabled = true;
-
-    /** The public keys licences may be signed with: key ID → Base64 X.509 Ed25519 public key. Keep old keys after a rotation. */
-    private Map<String, String> trustedKeys = new LinkedHashMap<>();
-
-    /**
-     * The trusted-keys file shipped with this release ({@code platform-licence-keys/1}): a file path, or
-     * {@code classpath:...}. Used instead of, or together with, {@link #trustedKeys}.
-     */
-    private String trustedKeysFile;
 
     /** This app's product code, as listed in licences (for example PRODUCT_A). */
     private String productCode;
@@ -42,22 +31,6 @@ public class LicensingProperties {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
-    }
-
-    public Map<String, String> getTrustedKeys() {
-        return trustedKeys;
-    }
-
-    public void setTrustedKeys(Map<String, String> trustedKeys) {
-        this.trustedKeys = trustedKeys;
-    }
-
-    public String getTrustedKeysFile() {
-        return trustedKeysFile;
-    }
-
-    public void setTrustedKeysFile(String trustedKeysFile) {
-        this.trustedKeysFile = trustedKeysFile;
     }
 
     public String getProductCode() {

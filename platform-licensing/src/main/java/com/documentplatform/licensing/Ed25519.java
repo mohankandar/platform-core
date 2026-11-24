@@ -2,24 +2,19 @@ package com.documentplatform.licensing;
 
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
-import java.security.InvalidKeyException;
 import java.security.KeyFactory;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.Signature;
 import java.security.SignatureException;
-import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 import java.util.HexFormat;
 
 /**
  * Ed25519 and SHA-256 with the JDK's own providers (no extra dependency). Public keys are exchanged as Base64 of their
- * X.509 (SubjectPublicKeyInfo) encoding, private keys as Base64 of PKCS#8. Signatures are 64 bytes.
+ * X.509 (SubjectPublicKeyInfo) encoding. Signatures are 64 bytes.
  */
 public final class Ed25519 {
 

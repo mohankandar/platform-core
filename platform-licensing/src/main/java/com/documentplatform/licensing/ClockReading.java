@@ -13,7 +13,8 @@ import java.util.Optional;
  * behind the latest time seen by more than the tolerance is reported ({@link #clockBehind()}, {@link #message()}); it
  * never stops the app.
  *
- * @param lastSeen the latest time seen before this reading, or null on the very first reading
+ * @param lastSeen the latest time known before this reading (seen by the installation, or the licence's issue time or the
+ *                 app's build time when that is later), or null on the very first reading
  */
 public record ClockReading(Instant serverTime, Instant lastSeen, Instant effective, Duration tolerance) {
 

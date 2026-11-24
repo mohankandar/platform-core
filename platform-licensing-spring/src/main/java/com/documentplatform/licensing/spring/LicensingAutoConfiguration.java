@@ -2,6 +2,7 @@ package com.documentplatform.licensing.spring;
 
 import com.documentplatform.licensing.ClockGuard;
 import com.documentplatform.licensing.LastSeenStore;
+import com.documentplatform.licensing.LicenceBuild;
 import com.documentplatform.licensing.LicenceService;
 import com.documentplatform.licensing.LicenceStore;
 import com.documentplatform.licensing.LicenceVerifier;
@@ -20,12 +21,16 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.context.properties.bind.Bindable;
+import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.core.env.Environment;
 
 import javax.sql.DataSource;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -45,8 +50,22 @@ import java.util.List;
 public class LicensingAutoConfiguration {
 
     @Bean
-    LicensingConfig licensingConfig(LicensingProperties properties) {
-        return LicensingConfig.from(properties);
+    LicensingConfig licensingConfig(LicensingProperties properties, ObjectProvider<LicenceBuild> build,
+                                    Environment environment) {
+        return LicensingConfig.from(properties, () -> build.getIfAvailable(LicenceBuild::load), removed(environment));
+    }
+
+    /** The settings of earlier releases that are gone (P045): set, they stop the app instead of being ignored. */
+    private static List<String> removed(Environment environment) {
+        Binder binder = Binder.get(environment);
+        List<String> found = new ArrayList<>();
+        if (binder.bind(LicensingProperties.PREFIX + ".trusted-keys", Bindable.mapOf(String.class, String.class)).isBound()) {
+            found.add(LicensingProperties.PREFIX + ".trusted-keys");
+        }
+        if (binder.bind(LicensingProperties.PREFIX + ".trusted-keys-file", String.class).isBound()) {
+            found.add(LicensingProperties.PREFIX + ".trusted-keys-file");
+        }
+        return found;
     }
 
     @Bean
@@ -99,8 +118,8 @@ public class LicensingAutoConfiguration {
     LicenceService licenceService(LicensingConfig config, LicenceStore store, LastSeenStore lastSeen,
                                   UsageLedger ledger, LicensingClock clock) {
         return new LicenceService(store, new LicenceVerifier(config.trustedKeys()),
-                new ClockGuard(clock.clock(), config.clockTolerance(), lastSeen), ledger, config.productCode(),
-                config.tenantId());
+                new ClockGuard(clock.clock(), config.clockTolerance(), lastSeen, config.builtAt()), ledger,
+                config.productCode(), config.tenantId());
     }
 
     @Bean

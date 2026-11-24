@@ -153,11 +153,8 @@ public final class IssueLicenceCommand {
                 Path file = Path.of(options.get("--out"));
                 out.println("Exported " + exported.keyIds().size() + " public key(s) " + exported.keyIds()
                         + " -> " + file);
-                out.println("Install config (key IDs with ':' need the brackets):");
-                out.println("platform:\n  licensing:\n    trusted-keys:");
-                for (String id : exported.keyIds()) {
-                    out.println("      \"[" + id + "]\": " + Ed25519.encodePublic(exported.key(id).orElseThrow()));
-                }
+                out.println("Put it into the product's source as META-INF/platform/licence-keys.json: the keys are part of "
+                        + "the product's build.");
                 runLog(options, "KEYS_EXPORTED", null, null, null, exported.keyIds());
                 LOG.log(System.Logger.Level.INFO, "Exported public keys {0}", exported.keyIds());
                 return 0;

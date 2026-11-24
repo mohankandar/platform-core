@@ -86,7 +86,7 @@ class ClockGuardTest {
     void aClockBehindIsReportedWithTheExactDifferenceAndNeverRefused() {
         guard.read();
         clock.set(t0.minus(Duration.ofHours(3)));
-        ClockReading r = assertDoesNotThrow(guard::read);
+        ClockReading r = assertDoesNotThrow(() -> guard.read());
         assertTrue(r.clockBehind());
         assertEquals("The server clock is 3 hours behind the latest time this installation has seen (server "
                 + "2026-11-21T07:00:00Z, latest seen 2026-11-21T10:00:00Z). Licence dates use 2026-11-21T10:00:00Z, "

@@ -4,7 +4,6 @@ import com.documentplatform.licensing.json.Fields;
 import com.documentplatform.licensing.json.JsonException;
 
 import java.nio.charset.StandardCharsets;
-import java.security.PrivateKey;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;

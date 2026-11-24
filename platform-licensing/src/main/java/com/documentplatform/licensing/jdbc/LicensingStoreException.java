@@ -6,9 +6,16 @@ import java.sql.SQLException;
 public final class LicensingStoreException extends RuntimeException
         implements com.documentplatform.errors.HasPlatformCode {
 
+    private final String sqlState;
+
     LicensingStoreException(String operation, SQLException cause) {
         super(LicensingStoreCode.LIC_STORE_FAILED.name() + ": Licensing store: "
                 + operation + " failed (SQL state " + cause.getSQLState() + ")", withoutText(cause));
+        this.sqlState = cause.getSQLState();
+    }
+
+    String sqlState() {
+        return sqlState;
     }
 
     /** P045, SEC-56: the state and the stack only; the driver's text can quote row values ("Detail: Key (...)="). */

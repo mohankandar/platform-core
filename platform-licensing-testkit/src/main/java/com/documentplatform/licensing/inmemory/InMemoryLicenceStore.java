@@ -10,6 +10,7 @@ import java.util.Optional;
 public final class InMemoryLicenceStore implements LicenceStore {
 
     private final Map<Slot, Stored> rows = new EnumMap<>(Slot.class);
+    private final Map<Slot, Long> highest = new EnumMap<>(Slot.class);
 
     @Override
     public synchronized Optional<Stored> get(Slot slot) {
@@ -19,6 +20,7 @@ public final class InMemoryLicenceStore implements LicenceStore {
     @Override
     public synchronized void put(Slot slot, Stored licence) {
         rows.put(slot, licence);
+        highest.merge(slot, licence.version(), Math::max);
     }
 
     @Override
@@ -27,10 +29,15 @@ public final class InMemoryLicenceStore implements LicenceStore {
     }
 
     @Override
+    public synchronized long highestVersion(Slot slot) {
+        return highest.getOrDefault(slot, 0L);
+    }
+
+    @Override
     public synchronized void promoteWaiting(String licenceId) {
         Stored waiting = rows.get(Slot.WAITING);
         if (waiting != null && waiting.licenceId().equals(licenceId)) {
-            rows.put(Slot.CURRENT, waiting);
+            put(Slot.CURRENT, waiting);
             rows.remove(Slot.WAITING);
         }
     }

@@ -51,6 +51,22 @@ class UsageExportTest {
         return UsageExport.create(licence, ledger, from, to, after, NOW);
     }
 
+    /** P045, SEC-27: a rewritten file verifies on its own; only the file and anchor our side kept show it. */
+    @Test
+    void aRewrittenFileIsFoundByTheKeptAnchorOnly() {
+        UsageExport received = export(M9, M9, ExportAnchor.first());
+        UsageExport next = export(M10, M10, received.nextAnchor());
+        InMemoryUsageLedger less = new InMemoryUsageLedger();
+        new UsageRecorder(licence, less, Clock.fixed(NOW, ZoneOffset.UTC))
+                .record(SLOT, PRODUCT, AllowanceType.PAGES_PER_MONTH, M9, 1, false);
+        UsageExport rewritten = UsageExport.create(licence, less, M9, M9, ExportAnchor.first(), NOW);
+        ExportCheck alone = UsageExportVerifier.verify(rewritten.text(), ExportAnchor.first());
+        assertTrue(alone.ok(), "the chain is not keyed");
+        assertNotEquals(received.nextAnchor(), alone.nextAnchor(), "differs from the anchor kept when it was received");
+        assertEquals(EXPORT_START_MISMATCH, UsageExportVerifier.verifySequence(List.of(rewritten.text(), next.text()),
+                ExportAnchor.first()).problem());
+    }
+
     private List<String> threeMonthlyFiles() {
         UsageExport f1 = export(M9, M9, ExportAnchor.first());
         UsageExport f2 = export(M10, M10, f1.nextAnchor());

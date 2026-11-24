@@ -4,6 +4,7 @@ import com.documentplatform.crypto.CustomerId;
 import com.documentplatform.identity.jdbc.IdentitySchema;
 import com.documentplatform.identity.jdbc.IdentitySchemaException;
 import com.documentplatform.identity.jdbc.IdentityStoreException;
+import com.documentplatform.licensing.LicenceBuild;
 import com.documentplatform.licensing.jdbc.LicensingSchema;
 import com.documentplatform.licensing.jdbc.LicensingSchemaException;
 import com.documentplatform.licensing.jdbc.LicensingStoreException;
@@ -29,12 +30,13 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Supplier;
 
 /**
  * The setup command, direct sign-in mode. Run once per product database (or schema) with the same input files.
  *
  * <pre>
- * setup plan  --licence licence.json --signin signin.json --product PRODUCT_A --keys trusted-keys.json
+ * setup plan  --licence licence.json --signin signin.json --product PRODUCT_A
  *             --product-roles product-roles.json [--config-out platform-tenant.properties]
  *             [--run-log platform-setup-runs.log] [--remove-unlisted-grants] [--replace-connection]
  *             [--no-customer-keys]
@@ -47,7 +49,8 @@ import java.util.TreeSet;
  * </pre>
  *
  * <ol>
- *   <li><b>Preflight, no writes:</b> the licence verifies with the release's trusted keys; the sign-in file is valid,
+ *   <li><b>Preflight, no writes:</b> the licence verifies with the trusted keys inside the product's build
+ *       ({@link LicenceBuild}: run the setup command the product ships); the sign-in file is valid,
  *       direct mode, for the licence's customer and lists the product; the licence lists the product; the
  *       product-roles file is the product's; the {@code lic_} and {@code idn_} tables are at this release's version;
  *       the database holds no other customer; the licence is not older than the stored one; every mapping row names a
@@ -87,9 +90,9 @@ public final class SetupCommand {
     static final String DEFAULT_RUN_LOG = "platform-setup-runs.log";
 
     private static final List<String> ACTIONS = List.of("plan", "apply");
-    private static final Set<String> VALUE_OPTIONS = Set.of("--licence", "--signin", "--product", "--keys",
+    private static final Set<String> VALUE_OPTIONS = Set.of("--licence", "--signin", "--product",
             "--product-roles", "--config-out", "--run-log");
-    private static final List<String> REQUIRED = List.of("--licence", "--signin", "--product", "--keys",
+    private static final List<String> REQUIRED = List.of("--licence", "--signin", "--product",
             "--product-roles");
     private static final Set<String> FLAGS = Set.of("--remove-unlisted-grants", "--replace-connection",
             "--no-customer-keys");
@@ -97,12 +100,18 @@ public final class SetupCommand {
     private final Map<String, String> env;
     private final Clock clock;
     private final SetupKeys.Connector keyConnector;
+    private final Supplier<LicenceBuild> build;
 
     /**
      * @param env the environment (the database and key service settings are read from it, nothing else)
      */
     public SetupCommand(Map<String, String> env, Clock clock) {
-        this(env, clock, SetupKeys::vault);
+        this(env, clock, SetupKeys::vault, LicenceBuild::load);
+    }
+
+    /** For a product's setup wrapper that has its licence keys in code. */
+    public SetupCommand(Map<String, String> env, Clock clock, LicenceBuild build) {
+        this(env, clock, SetupKeys::vault, () -> build);
     }
 
     /**
@@ -111,7 +120,9 @@ public final class SetupCommand {
      * @param env          the environment (the database and key service settings are read from it, nothing else)
      * @param keyConnector how to reach the key service (the default: Vault, settings from {@code env})
      */
-    SetupCommand(Map<String, String> env, Clock clock, SetupKeys.Connector keyConnector) {
+    SetupCommand(Map<String, String> env, Clock clock, SetupKeys.Connector keyConnector,
+                 Supplier<LicenceBuild> build) {
+        this.build = Objects.requireNonNull(build, "build");
         this.env = Map.copyOf(Objects.requireNonNull(env, "env"));
         this.clock = Objects.requireNonNull(clock, "clock");
         this.keyConnector = Objects.requireNonNull(keyConnector, "keyConnector");
@@ -162,7 +173,7 @@ public final class SetupCommand {
                 throw new SetupException(SetupRefusal.SETUP_BAD_OPTION, "--product must be a product code (2 to 32 "
                         + "of A-Z 0-9 _).");
             }
-            SetupInputs in = SetupInputs.load(options, flags.contains("--remove-unlisted-grants"),
+            SetupInputs in = SetupInputs.load(options, build, flags.contains("--remove-unlisted-grants"),
                     flags.contains("--replace-connection"));
             if (flags.contains("--no-customer-keys") && in.roles().customerKeysRequired()) {
                 throw new SetupException(SetupRefusal.SETUP_CUSTOMER_KEYS_REQUIRED, "The product-roles file for "
@@ -353,7 +364,7 @@ public final class SetupCommand {
     }
 
     private static String usage() {
-        return "Usage: setup plan|apply --licence FILE --signin FILE --product CODE --keys trusted-keys.json "
+        return "Usage: setup plan|apply --licence FILE --signin FILE --product CODE "
                 + "--product-roles product-roles.json [--config-out FILE] [--run-log FILE] [--remove-unlisted-grants] "
                 + "[--replace-connection] [--no-customer-keys]; database settings " + DB_URL + ", " + DB_USER + ", " + DB_PASSWORD
                 + " from the environment.";
