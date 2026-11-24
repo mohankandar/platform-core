@@ -5,15 +5,12 @@ import com.documentplatform.licensing.json.Json;
 import com.documentplatform.licensing.json.JsonException;
 
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
-import java.security.InvalidKeyException;
-import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.util.Base64;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Set;
 
 /**
@@ -47,11 +44,25 @@ public final class SignedDocument {
 
     private static final Set<String> SIGNATURE = Set.of("algorithm", "payloadSha256", "value");
 
+    /** The largest signed file read: far above any real licence. */
+    public static final int MAX_BYTES = 4 * 1024 * 1024;
+
     private SignedDocument() {
     }
 
     public static byte[] signedMessage(String format, Object payload) {
-        return (format + "\n" + Json.canonical(payload)).getBytes(StandardCharsets.UTF_8);
+        // A REPORT encoder (P045, SEC-26): a character UTF-8 cannot hold is refused, never written as "?".
+        try {
+            ByteBuffer b = StandardCharsets.UTF_8.newEncoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .encode(CharBuffer.wrap(format + "\n" + Json.canonical(payload)));
+            byte[] out = new byte[b.remaining()];
+            b.get(out);
+            return out;
+        } catch (CharacterCodingException e) {
+            throw new JsonException("a text holds a character that UTF-8 cannot write");
+        }
     }
 
     /**
@@ -62,6 +73,9 @@ public final class SignedDocument {
     public static Fields open(byte[] stored, String format, String body, TrustedKeys keys) {
         if (stored == null || stored.length == 0) {
             throw new Failure(Problem.MISSING, "");
+        }
+        if (stored.length > MAX_BYTES) {
+            throw new Failure(Problem.MALFORMED, "The file is larger than any signed file (" + MAX_BYTES + " bytes).");
         }
         String text = utf8(stored);
         if (text.isBlank()) {

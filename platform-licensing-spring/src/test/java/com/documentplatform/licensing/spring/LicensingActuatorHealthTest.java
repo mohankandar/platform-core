@@ -48,8 +48,7 @@ class LicensingActuatorHealthTest {
                         HealthContributorAutoConfiguration.class, HealthEndpointAutoConfiguration.class))
                 .withBean(DataSource.class, () -> ds)
                 .withBean(LicensingClock.class, () -> new LicensingClock(Clock.fixed(now, ZoneOffset.UTC)))
-                .withPropertyValues("platform.licensing.trusted-keys." + licences.keyId() + "="
-                        + Ed25519.encodePublic(licences.keyPair().getPublic()))
+                .withBean(com.documentplatform.licensing.LicenceBuild.class, licences::licenceBuild)
                 .withPropertyValues("platform.licensing.product-code=" + PRODUCT, "platform.licensing.tenant-id=" + TENANT);
     }
 

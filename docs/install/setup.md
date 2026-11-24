@@ -19,7 +19,6 @@ This version sets up **direct sign-in**: your people sign in with your own login
 | File | From | Holds |
 |---|---|---|
 | Your licence (`licence.json`) | Your account manager | Signed licence: customer, entities, products |
-| `trusted-keys.json` | The product release | Our public signing keys |
 | `product-roles.json` | The product release | The product's role names |
 | Sign-in file (`signin.json`) | You fill it in | Your login system and, per product, client ID, API audience and mapping file |
 | Role mapping file per product (`.csv`) | You fill it in | Which group gets which role in which entity |
@@ -78,7 +77,7 @@ This version sets up **direct sign-in**: your people sign in with your own login
 - **`issuer` is your login system's `https` address,** without a query. One exception, for testing only: a local test
   login server on the same machine may use `http`, when its host is exactly `localhost`, `127.0.0.1` or `[::1]` **and**
   the licence is a demo or test licence signed by a development key (one marked `"development": true` in the
-  `trusted-keys.json` you were given). A production release lists no development key, so there an `http` issuer is
+  keys inside the product's development build). A production release lists no development key, so there an `http` issuer is
   always refused (`SETUP_HTTP_ISSUER_NOT_ALLOWED`), as is any `http` address on another machine.
 
 ## 3. The role mapping file
@@ -250,7 +249,7 @@ Sign-in files without `integrationProfiles` work as before.
 
 ```
 setup plan  --licence licence.json --signin signin.json --product PRODUCT_A \
-            --keys trusted-keys.json --product-roles product-roles.json
+            --product-roles product-roles.json
 setup apply (the same options)
 ```
 
@@ -326,5 +325,5 @@ never holds group names, secrets, the database password or the key service login
 ## 6. Demo files
 
 `platform-setup/demo/` holds demo input files (demo values only), signed with a separate **development** key. A
-production installation never lists that key in its `trusted-keys.json`, so it refuses the demo licence
+production installation never trusts that key (only a development build does), so it refuses the demo licence
 (`SETUP_LICENCE_REFUSED: LICENCE_UNKNOWN_KEY_ID`). See `platform-setup/demo/README.md`.

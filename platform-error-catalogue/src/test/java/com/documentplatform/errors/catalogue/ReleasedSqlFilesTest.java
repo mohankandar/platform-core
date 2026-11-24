@@ -26,6 +26,18 @@ class ReleasedSqlFilesTest {
 
     /** Path from the repository root → SHA-256 of the text with LF line ends. */
     static final Map<String, String> PINNED = new TreeMap<>(Map.ofEntries(
+            Map.entry("platform-erase-log/src/main/resources/db/platform/erase-log/V3__erase_log_search_path.sql",
+                    "6015d24515ecd352d5b27e9abacbf7b959a60f254633e4129b974bdce598fc8a"),
+            Map.entry("platform-fields/src/main/resources/db/platform/fields/V2__fields_search_path.sql",
+                    "31e5f1312b325e77e0a0ae6f708ed7124a65f5c8c8195de9d435f9a0244456da"),
+            Map.entry("platform-identity-jdbc/src/main/resources/db/platform/identity/V5__identity_history_and_search_path.sql",
+                    "535fa07ec564a18d588d258df28349a076b0536d91d400937ba408b54ad4a0df"),
+            Map.entry("platform-integration/src/main/resources/db/platform/integration/V3__integration_search_path.sql",
+                    "5619da5e3a9a3d017812fe37733923602a053da45d2d12643f09b724f2f225be"),
+            Map.entry("platform-licensing/src/main/resources/db/platform/licensing/V2__licensing_clock_and_versions.sql",
+                    "3cc774b2b1c237c5b37d49338327b4874bd434d60be4fa36c56265ea2a930206"),
+            Map.entry("platform-model-governance/src/main/resources/db/platform/modelgov/V5__modelgov_gate_and_history.sql",
+                    "846f6c4cc022fe3e7cb9207566e6f65c08c33587d704298ef77a3a815db065ba"),
             Map.entry("platform-erase-log/src/main/resources/db/platform/erase-log/V1__erase_log.sql",
                     "2d5572126da22cfa66abc15fb58e8325eb7879d6f4352e9c1894631d4a1ebf5b"),
             Map.entry("platform-fields/src/main/resources/db/platform/fields-optional/partial-search.sql",

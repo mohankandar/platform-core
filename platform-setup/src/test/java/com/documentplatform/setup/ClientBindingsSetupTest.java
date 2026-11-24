@@ -65,7 +65,7 @@ class ClientBindingsSetupTest {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         ByteArrayOutputStream err = new ByteArrayOutputStream();
         int exit = new SetupCommand(db.appEnv(PASSWORD), Clock.fixed(NOW, ZoneOffset.UTC),
-                env -> new SetupKeys.Connection(keys, () -> { })).run(args,
+                env -> new SetupKeys.Connection(keys, () -> { }), TestBuild.take(args)).run(args,
                 new PrintStream(out, true, StandardCharsets.UTF_8), new PrintStream(err, true, StandardCharsets.UTF_8));
         return new Result(exit, out.toString(StandardCharsets.UTF_8), err.toString(StandardCharsets.UTF_8));
     }

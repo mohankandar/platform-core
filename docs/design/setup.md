@@ -81,7 +81,7 @@ Full proposal, table columns, input files and command steps: `docs/work/P012-rep
 ### Owner answers to the P014 questions (2026-11-21)
 
 1. **Where `trusted-keys.json` and `product-roles.json` come from:** yes, each product ships a `setup` wrapper script
-   that passes `--keys` and `--product-roles`.
+   that passes `--product-roles`. Since P045 the keys are inside the wrapper's own build (`LicenceBuild`); `--keys` is gone.
 2. **Suspending a `NOT_IN_LICENCE` slot:** keep it refused.
 3. **Exit code 3 when grants are not removed** (no flag): keep it.
 4. **Grants under an older issuer:** yes, list them as "not in the file", in the hub-mode task.

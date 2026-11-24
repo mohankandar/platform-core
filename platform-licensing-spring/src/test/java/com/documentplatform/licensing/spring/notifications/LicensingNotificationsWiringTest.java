@@ -1,6 +1,5 @@
 package com.documentplatform.licensing.spring.notifications;
 
-import com.documentplatform.licensing.Ed25519;
 import com.documentplatform.licensing.LastSeenStore;
 import com.documentplatform.licensing.LicenceKind;
 import com.documentplatform.licensing.LicenceService;
@@ -16,7 +15,6 @@ import com.documentplatform.licensing.inmemory.InMemoryUsageLedger;
 import com.documentplatform.licensing.inmemory.TestLicences;
 import com.documentplatform.licensing.spring.LicensingAutoConfiguration;
 import com.documentplatform.licensing.spring.LicensingClock;
-import com.documentplatform.licensing.spring.internal.LicensingConfig;
 import com.documentplatform.licensing.spring.internal.LicensingConfigException;
 import com.documentplatform.licensing.usage.UsageLedger;
 import com.documentplatform.notifications.EventCatalogue;
@@ -31,7 +29,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import org.springframework.core.env.MapPropertySource;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -68,9 +65,8 @@ class LicensingNotificationsWiringTest {
                 .withBean(LastSeenStore.class, InMemoryLastSeenStore::new)
                 .withBean(UsageLedger.class, InMemoryUsageLedger::new)
                 .withBean(NoticeLog.class, InMemoryNoticeLog::new)
-                .withPropertyValues("platform.licensing.trusted-keys." + licences.keyId() + "="
-                                + Ed25519.encodePublic(licences.keyPair().getPublic()),
-                        "platform.licensing.product-code=" + TestLicences.PRODUCT,
+                .withBean(com.documentplatform.licensing.LicenceBuild.class, licences::licenceBuild)
+                .withPropertyValues("platform.licensing.product-code=" + TestLicences.PRODUCT,
                         "platform.licensing.tenant-id=" + TestLicences.TENANT)
                 .withPropertyValues(properties);
     }
@@ -152,27 +148,6 @@ class LicensingNotificationsWiringTest {
                 .run(ctx -> {
                     assertNull(ctx.getStartupFailure());
                     assertTrue(ctx.getBeansOfType(LicensingNotices.class).isEmpty());
-                });
-    }
-
-    @Test
-    void aVaultKeyIdWithItsVersionBindsWhenWrittenInBrackets() {
-        String key = Ed25519.encodePublic(licences.keyPair().getPublic());
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(LicensingAutoConfiguration.class))
-                .withBean(LicensingClock.class, () -> new LicensingClock(Clock.fixed(NOW, ZoneOffset.UTC)))
-                .withBean(LicenceStore.class, () -> store)
-                .withBean(LastSeenStore.class, InMemoryLastSeenStore::new)
-                .withBean(UsageLedger.class, InMemoryUsageLedger::new)
-                .withInitializer(ctx -> ctx.getEnvironment().getPropertySources().addFirst(new MapPropertySource("t",
-                        Map.of("platform.licensing.trusted-keys[lic-2026:1]", key,
-                                "platform.licensing.trusted-keys[" + licences.keyId() + "]", key,
-                                "platform.licensing.product-code", TestLicences.PRODUCT,
-                                "platform.licensing.tenant-id", TestLicences.TENANT))))
-                .run(ctx -> {
-                    assertNull(ctx.getStartupFailure());
-                    assertTrue(ctx.getBean(LicensingConfig.class).trustedKeys().keyIds().contains("lic-2026:1"),
-                            ctx.getBean(LicensingConfig.class).trustedKeys().keyIds().toString());
                 });
     }
 

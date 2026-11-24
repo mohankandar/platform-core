@@ -68,6 +68,18 @@ public final class PostgresLicenceStore implements LicenceStore {
     }
 
     @Override
+    public long highestVersion(Slot slot) {
+        return Sql.run(ds, "read highest licence version", c -> {
+            try (PreparedStatement ps = c.prepareStatement("select version from lic_version_floor where slot = ?")) {
+                ps.setString(1, slot.name());
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next() ? rs.getLong(1) : 0L;
+                }
+            }
+        });
+    }
+
+    @Override
     public void promoteWaiting(String licenceId) {
         Sql.inTransaction(ds, "promote waiting licence", c -> {
             try (PreparedStatement lock = c.prepareStatement(

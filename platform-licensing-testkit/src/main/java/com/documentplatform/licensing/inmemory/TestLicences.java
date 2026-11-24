@@ -6,6 +6,7 @@ import com.documentplatform.licensing.Deployment;
 import com.documentplatform.licensing.Ed25519;
 import com.documentplatform.licensing.EntitySlot;
 import com.documentplatform.licensing.Licence;
+import com.documentplatform.licensing.LicenceBuild;
 import com.documentplatform.licensing.LicenceKind;
 import com.documentplatform.licensing.LicenceType;
 import com.documentplatform.licensing.TrustedKeys;
@@ -48,6 +49,11 @@ public final class TestLicences {
 
     public TrustedKeys trustedKeys() {
         return TrustedKeys.of(Map.of(keyId, keys.getPublic()));
+    }
+
+    /** A build that trusts this instance's key: for an app test's {@code LicenceBuild} bean. */
+    public LicenceBuild licenceBuild() {
+        return LicenceBuild.of(trustedKeys(), false, Instant.EPOCH);
     }
 
     /**

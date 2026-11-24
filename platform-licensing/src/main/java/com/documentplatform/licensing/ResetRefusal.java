@@ -9,7 +9,8 @@ public enum ResetRefusal implements com.documentplatform.errors.PlatformCode {
     RESET_TAMPERED("The reset content was changed after it was signed."),
     RESET_FORGED("The reset signature was not made by the named key."),
     RESET_WRONG_CUSTOMER("The reset was issued for a different customer (tenant) than this installation."),
-    RESET_EXPIRED("The reset is past its validity.");
+    RESET_EXPIRED("The reset is past its validity."),
+    RESET_NEEDS_OWNER("The database user may not move the latest time seen back; only the schema owner may.");
 
     private final String meaning;
 

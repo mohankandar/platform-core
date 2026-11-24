@@ -36,9 +36,13 @@ Source of truth: the owner's Shared capabilities thread (project doc `Licensing-
 ## 4. Usage
 
 - **Never stop at a limit.** 80% and 100% warnings and over-limit are reported; work continues; overage is recorded.
-- The module provides a **usage ledger**: the app records units at its own meter point (e.g. pages processed, daily peak of concurrent seats, named seats assigned, storage). Records carry entity slot, period, amount, billable flag (false under an install licence or when the app marks it free), and a hash chained to the previous record so edits are detected.
+- The module provides a **usage ledger**: the app records units at its own meter point (e.g. pages processed, daily peak of concurrent seats, named seats assigned, storage). Records carry entity slot, period, amount, billable flag (false under an install licence or when the app marks it free), and a hash chained to the previous record so accidental edits and gaps are detected (the hash is not keyed: whoever owns the database can rewrite the chain).
 - Usage per entity per month can be read for the app's screens and notifications.
-- **Usage file export** for any period, on demand: tamper-evident, no document data, no prices. How often it is sent is a contract term; nothing in the software reacts to a late file.
+- **Usage file export** for any period, on demand: detects accidental edits and gaps, no document data, no prices. How often it is sent is a contract term; nothing in the software reacts to a late file.
+- **Our side keeps every received file and its anchor** (P045, SEC-27) and checks each new file against the anchor of the
+  one before (`UsageExportVerifier.verify(file, anchor)`, `verifySequence`), and a file sent again against the one kept.
+  A rewritten file verifies alone; it does not continue from the kept anchor. Other evidence (invoices, support data) is
+  compared as well.
 - **The export anchor is the app's.** Each export continues from the previous file's sequence, final chain value and
   last period (`ExportAnchor`). The app keeps the anchor of the last file it exported (`UsageExport.nextAnchor()`);
   there is no `lic_` table for it. If the usage tables are wiped but the app keeps its anchor, the next export holds
@@ -182,3 +186,16 @@ As built; source docs/work/P011-report.md (the last six items written here in P0
   notice.
 - **Housekeeping (P011-7, -9, -11).** Notice claims (`lic_notice_sent`) are purged after 400 days; only event types
   in the app's catalogue are published; "version not covered" needs the app's `release-date`.
+
+## Trust root and clock (P045)
+
+- **Keys in the build.** The trusted keys and the build time are resources in the product's jar (`LicenceBuild`), each
+  there exactly once on the classpath. No installation file or setting adds or changes a key. Development keys are trusted
+  only by a build made with `development-keys=true`.
+- **On premises licensing is a deterrent, not tamper-proof.** Whoever rebuilds the jar or owns the database can get round
+  it. The rules stop what the app's configuration and its everyday database user can do.
+- **Clock.** Effective time = the latest of the server clock, the latest time seen, the licence's issue time and the build
+  time. `lic_last_seen` only moves forward for the app's user; a reset is applied with the schema owner's user.
+- **Versions.** `lic_version_floor` (kept by a trigger) holds the highest version ever per slot; an older signed file put
+  back is refused (`LICENCE_OLDER_VERSION`).
+- **`deployment`** in the licence is information for people (contract and support); the software does not enforce it.

@@ -43,7 +43,7 @@ A strict subset of JSON, so each value has exactly one canonical form:
 | `startsOn` | date |
 | `expiresOn` | SUBSCRIPTION only: last valid day (inclusive, UTC) |
 | `updatesUntil` | PERPETUAL only: last product release date covered |
-| `deployment` | `HOSTED` or `ON_PREM` |
+| `deployment` | `HOSTED` or `ON_PREM`; information only, not enforced |
 | `keyId` | signing key ID: a name `[a-z0-9][a-z0-9._-]{0,63}`, optionally `:VERSION` (Vault Transit key name and version, for example `lic-2026:1`; since P011) |
 | `issuedAt` | time |
 

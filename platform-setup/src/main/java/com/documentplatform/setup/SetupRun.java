@@ -180,8 +180,9 @@ final class SetupRun {
     }
 
     private LicenceService service() {
-        return new LicenceService(new PostgresLicenceStore(joined), new LicenceVerifier(in.keys()),
-                new ClockGuard(clock, new PostgresLastSeenStore(joined)), new PostgresUsageLedger(joined),
+        return new LicenceService(new PostgresLicenceStore(joined), new LicenceVerifier(in.build().keys()),
+                new ClockGuard(clock, ClockGuard.DEFAULT_TOLERANCE, new PostgresLastSeenStore(joined),
+                        in.build().builtAt()), new PostgresUsageLedger(joined),
                 in.product(), tenant);
     }
 
@@ -203,7 +204,7 @@ final class SetupRun {
     /** As {@link LicenceService#store}: unchanged, first, replaces, or waits for its start date. */
     private List<Licence> planLicence(Plan p) {
         PostgresLicenceStore store = new PostgresLicenceStore(joined);
-        LicenceVerifier verifier = new LicenceVerifier(in.keys());
+        LicenceVerifier verifier = new LicenceVerifier(in.build().keys());
         Optional<Licence> current = readable(store, LicenceStore.Slot.CURRENT, verifier);
         Optional<Licence> waiting = readable(store, LicenceStore.Slot.WAITING, verifier);
         Licence file = in.licence();
@@ -215,16 +216,18 @@ final class SetupRun {
             }
         }
         long newest = Math.max(current.map(Licence::version).orElse(0L), waiting.map(Licence::version).orElse(0L));
+        newest = Math.max(newest, Math.max(store.highestVersion(LicenceStore.Slot.CURRENT),
+                store.highestVersion(LicenceStore.Slot.WAITING)));
         if (file.version() < newest) {
             throw new SetupException(SetupRefusal.SETUP_LICENCE_OLDER, "Licence " + id + " is older than version "
                     + newest + ", which is already stored.");
         }
-        if (file.version() == newest) {
+        if (file.version() == newest && (current.isPresent() || waiting.isPresent())) {
             throw new SetupException(SetupRefusal.SETUP_LICENCE_VERSION_CONFLICT, "Version " + newest
                     + " is already stored as a different licence than " + file.licenceId() + ".");
         }
-        LocalDate today = LocalDate.ofInstant(new ClockGuard(clock, new PostgresLastSeenStore(joined)).read()
-                .effective(), ZoneOffset.UTC);
+        LocalDate today = LocalDate.ofInstant(new ClockGuard(clock, ClockGuard.DEFAULT_TOLERANCE,
+                new PostgresLastSeenStore(joined), in.build().builtAt()).read(file.issuedAt()).effective(), ZoneOffset.UTC);
         if (current.isEmpty()) {
             p.add(CREATE, "licence " + id + " (first licence)");
             return List.of(file);

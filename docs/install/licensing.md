@@ -24,8 +24,17 @@ usage ledger and its chain head, and the schema version.
    - location `classpath:db/platform/licensing` (files `V1__licensing.sql`, …)
    - history table `lic_schema_history`
    - run it as the schema owner, in the same schema the app connects to.
-2. **Grant the app's database user** SELECT, INSERT, UPDATE and DELETE on the `lic_` tables, and SELECT on
-   `lic_schema_version`. Nothing more is needed.
+2. **Grant the app's database user:**
+   - SELECT, INSERT, UPDATE and DELETE on `lic_licence`, `lic_usage`, `lic_chain_head` and `lic_notice_sent`;
+   - SELECT, INSERT and UPDATE on `lic_last_seen` (the database lets the time move forward only);
+   - SELECT and INSERT on `lic_clock_reset`;
+   - SELECT on `lic_version_floor` (kept by the database itself) and `lic_schema_version`.
+
+   Nothing more is needed, and the app's user must not own the tables.
+
+**Upgrading to 0.7.0** (table version 2): run the schema step, then `grant select on lic_version_floor` and
+`revoke delete on lic_last_seen` and `revoke update, delete on lic_clock_reset` for the app's user. Remove
+`platform.licensing.trusted-keys` and `trusted-keys-file` from the config: an app that finds them does not start.
 
 If the tables are missing, at another version, or the rights are short, the app does not start. It names the exact
 problem (for example `LIC_TABLES_MISSING`, `LIC_PRIVILEGES_MISSING`) and what to do.
@@ -36,11 +45,14 @@ The tables hold no secrets, no prices and no document data.
 
 | Setting | What to give |
 |---|---|
-| `platform.licensing.trusted-keys-file` | The `trusted-keys.json` shipped with this release: a file path (for example `/opt/app/config/trusted-keys.json`) or `classpath:trusted-keys.json`. You do not type key IDs. After an upgrade, point it to the new release's file; it keeps the older keys. |
-| `platform.licensing.trusted-keys.<key ID>` | Instead of the file, or as well: the public keys typed in (key ID and Base64 key). Key IDs with a version, such as `lic-2026:1`, must be written in brackets so the `:` is kept: `"[lic-2026:1]": MCowBQYDK2VwAyEA...` in YAML, `platform.licensing.trusted-keys[lic-2026:1]=...` in a properties file. A key ID given both here and in the file must have the same key. |
 | `platform.licensing.product-code` | **Required.** The app's product code as listed in licences (set by the app's own install guide). Without it the app does not start. |
 | `platform.licensing.tenant-id` | **Required.** Your customer ID from the licence (`TEN-…`). The setup command writes it into `platform-tenant.properties`, which the app imports. A licence for any other customer is refused. Without it the app does not start and says `platform.licensing.tenant-id is missing`. |
 | `platform.licensing.clock-tolerance` | Optional, default `1h`, zero to at most `1d` (1 day). How far the server clock may be behind before a warning is shown. |
+
+The public keys that licences are checked with are part of the app itself (P045). No setting, file or option at an
+installation adds or changes one, and nothing may be added to the app's classpath: a second copy of the keys stops the
+app. (For products: the build puts `META-INF/platform/licence-keys.json` and `META-INF/platform/licence-build.properties`
+with `built-at=<time>` in its jar; a development build, and only that, adds `development-keys=true`.)
 
 A missing or wrong value stops the app with `LIC_SETTINGS_INVALID`; the start-up message lists every problem with
 the property name and what is wrong. Codes: `docs/errors/platform-error-codes.md`.
@@ -50,8 +62,8 @@ the property name and what is wrong. Codes: `docs/errors/platform-error-codes.md
 You receive a signed licence file from your account manager. Store it with the licence command:
 
 ```
-licence store  --file licence.json  --jdbc-url jdbc:postgresql://dbhost/appdb  --db-user app_user  --keys trusted-keys.json
-licence status --jdbc-url …  --db-user …  --keys …
+licence store  --file licence.json  --jdbc-url jdbc:postgresql://dbhost/appdb  --db-user app_user
+licence status --jdbc-url …  --db-user …
 ```
 
 The database password is read from the environment variable `PLATFORM_LICENSING_DB_PASSWORD`, never from an
@@ -61,7 +73,6 @@ option.
 |---|---|
 | `--file` | The licence file (`store`) or the clock reset file (`apply-reset`). Not used with `status`. |
 | `--jdbc-url`, `--db-user` | **Required.** The app's database and its database user. |
-| `--keys` | **Required.** The `trusted-keys.json` shipped with this release. |
 | `--tenant-id` | Optional. Your customer ID (`TEN-…`), the same as `platform.licensing.tenant-id`. A licence for another customer is then refused. |
 | `--product-code` | Optional. The app's product code, the same as `platform.licensing.product-code`, so the command checks the licence for this product as the app does. |
 | `--clock-tolerance` | Optional, default `PT1H` (an ISO-8601 duration). The same as `platform.licensing.clock-tolerance`. |
@@ -82,23 +93,25 @@ Exit codes: 0 done, 1 refused (the message starts with the code), 2 options wron
   "updates until" date) and the state.
 
 The app refuses to start only when no licence was ever stored, or when the stored licence is unreadable, changed,
-not signed by us, signed with a key this release does not know, or for another customer. Each case has a stable
+not signed by us, signed with a key this release does not know, for another customer,
+or older than a licence stored before (`LICENCE_OLDER_VERSION`: store the newest file again). Each case has a stable
 code, and the message says what to do.
 
 ## 4. The server clock
 
-Licence dates use the later of the server clock and the latest time the app has seen, so turning the clock back
-never extends a licence. If the server clock is behind by more than the tolerance, the app warns, for example "The
+Licence dates use the latest of the server clock, the latest time the app has seen, the licence's issue time and the
+time the app was built, so turning the clock back never extends a licence. If the server clock is behind by more than the tolerance, the app warns, for example "The
 server clock is 3 hours behind …". Correct the clock (NTP); the warning clears on its own.
 
 If the server clock was once set far into the **future**, licence dates stay at that future time. Ask your account
 manager for a **clock reset** file and apply it:
 
 ```
-licence apply-reset --file reset.json  --jdbc-url …  --db-user …  --keys …
+licence apply-reset --file reset.json  --jdbc-url …  --db-user schema_owner
 ```
 
-A reset works only for your installation, only once, and only for a few days after it was issued.
+Run it with the **schema owner's** database user: the app's everyday user may not move the time back
+(`RESET_NEEDS_OWNER`). A reset works only for your installation, only once, and only for a few days after it was issued.
 
 ## 5. Health
 

@@ -1,5 +1,6 @@
 package com.documentplatform.licensing.json;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -13,7 +14,7 @@ import java.util.TreeMap;
  *   <li>objects ({@code Map<String, Object>}), arrays ({@code List<Object>}), strings, integers ({@code Long}) and
  *       booleans;</li>
  *   <li>no {@code null} (a field is either present or absent), no fractions or exponents, no leading zeros, no
- *       duplicate keys, nesting at most 32 deep.</li>
+ *       duplicate keys, no unpaired surrogates, nesting at most 32 deep.</li>
  * </ul>
  * The canonical form ({@link #canonical}) follows RFC 8785 (JCS) for this subset: keys sorted by UTF-16 code units,
  * no whitespace, strings escaped only where JSON requires it ({@code \" \\ \b \f \n \r \t}, other control characters
@@ -26,12 +27,17 @@ import java.util.TreeMap;
 public final class Json {
 
     private static final int MAX_DEPTH = 32;
+    /** The longest document read (usage exports are the largest). */
+    private static final int MAX_CHARS = 64 * 1024 * 1024;
 
     private Json() {
     }
 
     /** Parses one JSON value. The message of a failure gives a position only, never the content. */
     public static Object parse(String text) {
+        if (text.length() > MAX_CHARS) {
+            throw new JsonException("the document is too large");
+        }
         Parser p = new Parser(text);
         p.ws();
         Object value = p.value(0);
@@ -276,6 +282,9 @@ public final class Json {
                 }
                 char c = s.charAt(pos++);
                 if (c == '"') {
+                    if (!StandardCharsets.UTF_8.newEncoder().canEncode(b)) {
+                        throw fail("unpaired surrogate in a string"); // would be signed as "?" (P045, SEC-26)
+                    }
                     return b.toString();
                 }
                 if (c < 0x20) {

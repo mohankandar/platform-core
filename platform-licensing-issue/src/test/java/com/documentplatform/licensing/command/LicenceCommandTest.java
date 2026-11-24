@@ -7,6 +7,7 @@ import com.documentplatform.licensing.EntitySlot;
 import com.documentplatform.licensing.Fixtures;
 import com.documentplatform.licensing.LastSeenReset;
 import com.documentplatform.licensing.Licence;
+import com.documentplatform.licensing.LicenceBuild;
 import com.documentplatform.licensing.LicenceKind;
 import com.documentplatform.licensing.LicenceType;
 import com.documentplatform.licensing.jdbc.Pg;
@@ -39,14 +40,11 @@ class LicenceCommandTest {
     private final Fixtures.MutableClock clock = new Fixtures.MutableClock(Instant.parse("2026-11-21T10:00:00Z"));
     private final ByteArrayOutputStream out = new ByteArrayOutputStream();
     private final ByteArrayOutputStream err = new ByteArrayOutputStream();
-    private Path keys;
 
     @BeforeEach
     void setUp() throws Exception {
         db = Pg.migrated();
         db.appUser("select, insert, update, delete");
-        keys = dir.resolve("keys.json");
-        Files.writeString(keys, Fixtures.trustKey1().toJson());
     }
 
     static Licence licence(String id, long version, String tenant, String starts, String expires) {
@@ -73,8 +71,9 @@ class LicenceCommandTest {
         out.reset();
         err.reset();
         List<String> all = new ArrayList<>(List.of(args));
-        all.addAll(List.of("--jdbc-url", db.jdbcUrl(), "--db-user", db.appUserName(), "--keys", keys.toString()));
-        return new LicenceCommand(o -> LicenceCommand.jdbc(o, Map.of(LicenceCommand.PASSWORD_VARIABLE, "pw"), clock))
+        all.addAll(List.of("--jdbc-url", db.jdbcUrl(), "--db-user", db.appUserName()));
+        return new LicenceCommand(o -> LicenceCommand.jdbc(o, Map.of(LicenceCommand.PASSWORD_VARIABLE, "pw"), clock,
+                LicenceBuild.of(Fixtures.trustKey1(), false, Instant.EPOCH)))
                 .run(all, new PrintStream(out, true, StandardCharsets.UTF_8), new PrintStream(err, true, StandardCharsets.UTF_8));
     }
 
@@ -158,7 +157,9 @@ class LicenceCommandTest {
         LastSeenReset reset = new LastSeenReset("RST-0000-0001", TENANT, now, now.plus(Duration.ofDays(7)), now,
                 Fixtures.KEY_ID_1);
         Path resetFile = file("reset.json", com.documentplatform.licensing.issue.ResetSigner.sign(reset, Fixtures.KEY_1.getPrivate()));
-        assertEquals(0, run("apply-reset", "--file", resetFile.toString()), err());
+        assertEquals(1, run("apply-reset", "--file", resetFile.toString()), "the everyday user may not (P045, SEC-13)");
+        assertTrue(err().startsWith("RESET_NEEDS_OWNER: "), err());
+        assertEquals(0, runAsOwner("apply-reset", "--file", resetFile.toString()), err());
         assertTrue(out().startsWith("Reset applied"), out());
         assertTrue(out().contains("State VALID"), out());
         assertFalse(out().contains("server clock is"), out());
@@ -180,10 +181,20 @@ class LicenceCommandTest {
     void missingTablesAndBadOptionsAreReported() throws Exception {
         db.exec("drop table lic_chain_head");
         assertEquals(1, run("status"));
-        assertTrue(err().startsWith("Licensing tables incomplete at version 1"), err());
+        assertTrue(err().startsWith("Licensing tables incomplete at version 2"), err());
         assertEquals(2, run("frobnicate"));
         assertEquals(2, run("store"));
         assertTrue(err().contains("store needs --file"), err());
+    }
+
+    private int runAsOwner(String... args) {
+        out.reset();
+        err.reset();
+        List<String> all = new ArrayList<>(List.of(args));
+        all.addAll(List.of("--jdbc-url", db.jdbcUrl(), "--db-user", db.owner.getUser()));
+        return new LicenceCommand(o -> LicenceCommand.jdbc(o, Map.of(LicenceCommand.PASSWORD_VARIABLE,
+                db.owner.getPassword()), clock, LicenceBuild.of(Fixtures.trustKey1(), false, Instant.EPOCH)))
+                .run(all, new PrintStream(out, true, StandardCharsets.UTF_8), new PrintStream(err, true, StandardCharsets.UTF_8));
     }
 
     /** Runs the command with this JDBC URL and password variable (not the test's usual ones). */
@@ -191,8 +202,9 @@ class LicenceCommandTest {
         out.reset();
         err.reset();
         List<String> all = new ArrayList<>(List.of(args));
-        all.addAll(List.of("--jdbc-url", jdbcUrl, "--db-user", db.appUserName(), "--keys", keys.toString()));
-        return new LicenceCommand(o -> LicenceCommand.jdbc(o, Map.of(LicenceCommand.PASSWORD_VARIABLE, password), clock))
+        all.addAll(List.of("--jdbc-url", jdbcUrl, "--db-user", db.appUserName()));
+        return new LicenceCommand(o -> LicenceCommand.jdbc(o, Map.of(LicenceCommand.PASSWORD_VARIABLE, password), clock,
+                LicenceBuild.of(Fixtures.trustKey1(), false, Instant.EPOCH)))
                 .run(all, new PrintStream(out, true, StandardCharsets.UTF_8), new PrintStream(err, true, StandardCharsets.UTF_8));
     }
 

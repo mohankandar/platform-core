@@ -112,7 +112,7 @@ class SetupCommandTest {
         }
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         ByteArrayOutputStream err = new ByteArrayOutputStream();
-        int exit = new SetupCommand(env, Clock.fixed(NOW, ZoneOffset.UTC), connector).run(args,
+        int exit = new SetupCommand(env, Clock.fixed(NOW, ZoneOffset.UTC), connector, TestBuild.take(args)).run(args,
                 new PrintStream(out, true, StandardCharsets.UTF_8), new PrintStream(err, true, StandardCharsets.UTF_8));
         return new Result(exit, out.toString(StandardCharsets.UTF_8), err.toString(StandardCharsets.UTF_8));
     }

@@ -24,8 +24,15 @@ public final class ClockGuard {
     private final Clock clock;
     private final Duration tolerance;
     private final LastSeenStore store;
+    private final Instant notBefore;
 
     public ClockGuard(Clock clock, Duration tolerance, LastSeenStore store) {
+        this(clock, tolerance, store, Instant.MIN);
+    }
+
+    /** @param notBefore when the app was built ({@link LicenceBuild#builtAt}): the effective time is never before it */
+    public ClockGuard(Clock clock, Duration tolerance, LastSeenStore store, Instant notBefore) {
+        this.notBefore = Objects.requireNonNull(notBefore, "notBefore");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.tolerance = Objects.requireNonNull(tolerance, "tolerance");
         if (tolerance.isNegative()) {
@@ -44,13 +51,26 @@ public final class ClockGuard {
 
     /** Reads the clock and moves the latest time seen forward to the server clock when it is later. */
     public ClockReading read() {
+        return read(Instant.MIN);
+    }
+
+    /**
+     * As {@link #read()}, with a floor (P045, SEC-13): the effective time is never before {@code issuedAt} (a signed time
+     * of our side) nor before the app's build time, whatever the store and the server clock say.
+     */
+    public ClockReading read(Instant issuedAt) {
         Instant now = clock.instant();
         Optional<Instant> last = store.lastSeen();
         if (last.isEmpty() || now.isAfter(last.get())) {
             store.advanceTo(now);
         }
-        Instant effective = last.isPresent() && last.get().isAfter(now) ? last.get() : now;
-        return new ClockReading(now, last.orElse(null), effective, tolerance);
+        Instant floor = issuedAt.isAfter(notBefore) ? issuedAt : notBefore;
+        Instant known = last.orElse(null);
+        if (floor.isAfter(now) && (known == null || floor.isAfter(known))) {
+            known = floor;
+        }
+        Instant effective = known != null && known.isAfter(now) ? known : now;
+        return new ClockReading(now, known, effective, tolerance);
     }
 
     /** The server clock itself, without reading or writing the store. */

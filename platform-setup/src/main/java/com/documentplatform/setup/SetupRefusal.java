@@ -7,9 +7,9 @@ package com.documentplatform.setup;
 public enum SetupRefusal implements com.documentplatform.errors.PlatformCode {
     SETUP_BAD_OPTION(SetupCommand.EXIT_REFUSED, "Correct the options; 'setup' without options lists them."),
     SETUP_FILE_UNREADABLE(SetupCommand.EXIT_REFUSED, "Check the path and that the file can be read."),
-    SETUP_KEYS_INVALID(SetupCommand.EXIT_REFUSED, "Use the trusted-keys.json shipped with this release, unchanged."),
+    SETUP_KEYS_INVALID(SetupCommand.EXIT_REFUSED, "Run the setup command the product ships, unchanged, with nothing added to its classpath."),
     SETUP_LICENCE_REFUSED(SetupCommand.EXIT_REFUSED, "Use the licence file you received, unchanged, with the "
-            + "trusted-keys.json of this release. A demo licence (development key) is never accepted by a production "
+            + "product's own setup command. A demo licence (development key) is never accepted by a production "
             + "installation."),
     SETUP_SIGNIN_INVALID(SetupCommand.EXIT_REFUSED, "Correct the sign-in file (format platform-signin/1). It holds "
             + "no secrets: client secrets are never written in it."),
