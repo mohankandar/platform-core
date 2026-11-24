@@ -247,8 +247,8 @@ class MonitoringWiringTest {
     void integrationsAreInTheListButNeverInReadiness() {
         try (MockDestination mock = MockDestination.start()) {
             InMemoryIntegrationStore store = new InMemoryIntegrationStore();
-            IntegrationConfig c = IntegrationConfig.apiPush(UUID.randomUUID(), "PRODUCT_A", "Destination",
-                            new Endpoint(mock.address(), true), new SignIn.BearerFixed(SecretRef.of("int/t")))
+            IntegrationConfig c = IntegrationConfig.apiPush(UUID.fromString("5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f"), "PRODUCT_A", "Destination",
+                            new Endpoint(mock.address(), true), new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t")))
                     .withSteps(List.of(CallStep.of("send", HttpMethod.POST, "/api/notice")))
                     .withHealth(HealthCheck.get(MockDestination.HEALTH_PATH, false));
             store.create(c, new ConfigChange(c.id(), c.entity(), c.product(), 1, "test", Instant.now(), List.of(),
