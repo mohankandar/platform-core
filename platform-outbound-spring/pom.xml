@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.documentplatform.platform</groupId>
         <artifactId>platform-core</artifactId>
-        <version>0.8.0</version>
+        <version>0.9.0-SNAPSHOT</version>
     </parent>
     <artifactId>platform-outbound-spring</artifactId>
     <description>Spring Boot wiring for platform-outbound, shared by platform-identity-spring and
