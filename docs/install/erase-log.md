@@ -65,7 +65,8 @@ tables:
   `erl_schema_version`. No DELETE, no DDL.
 
 Schema version 2 (P044) adds a trigger only: a recorded restore (`replay_required`) is cleared only together with a
-newer `verified_at`, as the verified replay writes it; no new rights.
+newer `verified_at`, as the verified replay writes it; no new rights. Version 3 (0.7.0) fixes the functions'
+`search_path`; no new rights.
 
 The app checks the table at startup and stops with a specific message (`ERL_TABLES_MISSING`, `ERL_PRIVILEGES_MISSING`,
 …) if it is missing or not usable. It never creates it.

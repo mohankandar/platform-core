@@ -113,7 +113,7 @@ public final class IntegrationSchema {
             }
         } catch (SQLException e) {
             throw new IntegrationSchemaException(INT_CHECK_FAILED, "Integration tables could not be checked: the "
-                    + "database refused the check (SQL state " + e.getSQLState() + ").");
+                    + "database could not be reached or refused the check (SQL state " + e.getSQLState() + ").");
         }
     }
 

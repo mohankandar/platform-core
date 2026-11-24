@@ -194,10 +194,10 @@ stop_app
 step "11. Start-up refusals"
 refused() { # code
   if timeout 180 java -jar "$(native "$APP_JAR")" > refused.log 2>&1; then fail "the app started; $1 expected"; fi
-  grep -n "$1" refused.log | head -3 || { grep -vE '^[[:space:]]*(at |[.][.][.])' refused.log | tail -40 | cut -c1-600; fail "no $1 in the refusal"; }
+  grep -n "APPLICATION FAILED TO START" refused.log; grep -nE "$1" refused.log | head -3 || { grep -vE '^[[:space:]]*(at |[.][.][.])' refused.log | tail -40 | cut -c1-600; fail "no $1 in the refusal"; }
 }
 hex="$(vault list -format=json transit/keys | jq -r '.[]' | grep -v -- '-fp$' | head -1)"
-eval "$DB_STOP"; refused "${DB_DOWN_CODE:-MON_DB_UNREACHABLE}"; eval "$DB_START"
+eval "$DB_STOP"; refused "(IDN|LIC|ERL|INT|MG)_CHECK_FAILED|MON_DB_UNREACHABLE"; eval "$DB_START"
 for _ in $(seq 1 60); do psql -q -d sampledb -c "select 1" >/dev/null 2>&1 && break; sleep 1; done
 for k in "$hex" "$hex-fp"; do vault write "transit/keys/$k/config" deletion_allowed=true >/dev/null; vault delete "transit/keys/$k" >/dev/null; done
 refused CRYPTO_KEY_MISSING

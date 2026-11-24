@@ -38,7 +38,7 @@ The identity tables all start with `idn_`:
 
 1. **Run the identity schema step as its own Flyway run,** apart from the app's other tables:
    - location `classpath:db/platform/identity` (files `V1__identity.sql`, `V2__machine_binding.sql`,
-     `V3__grant_history.sql`, `V4__platform_grants.sql`; a database that ran only the earlier files gets the later ones
+     `V3__grant_history.sql`, `V4__platform_grants.sql`, `V5__identity_history_and_search_path.sql`; a database that ran only the earlier files gets the later ones
      at the next schema step,
      and the app refuses to start with `IDN_VERSION_OLDER` until then)
    - history table `idn_schema_history`
@@ -191,7 +191,7 @@ that setup loads (`docs/install/setup.md` section 3a).
 
 - **With a token:** the token's issuer must be your active login connection for the product, and the token must be
   for the product's API audience. The client ID is read from the token's claims, in this order by default:
-  `client_id`, `azp`, `cid`, `sub` (login systems differ; the first one present is used). That client ID must be
+  `client_id`, `azp`, `cid` (login systems differ; the first one present is used; `sub` only when you list it). That client ID must be
   bound (and switched on) to an active entity.
 - **With a client certificate:** the client ID in the client-binding file is `cert-sha256:` followed by the
   certificate's SHA-256 fingerprint. No token is needed. Your login connection for the product must still be active.

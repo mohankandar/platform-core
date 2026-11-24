@@ -59,6 +59,11 @@ The app cannot start: 1 required dependency is down.
 
 Do what the line says, then start the app again.
 
+**The database cannot be reached, or the app's tables are not ready:** the app usually stops a little earlier, at the first
+module that looks at its tables. The log then shows "APPLICATION FAILED TO START" with that module's code, for example
+`IDN_CHECK_FAILED` (or `LIC_`, `ERL_`, `INT_`, `MG_…`, notifications: `CHECK_FAILED`), and the SQL state (`08…`: no connection).
+Check that the database runs and that its address is right.
+
 ## 4. The Support screen and the bundle
 
 The app's Support screen lists every check with its state, code, cause and fix. From there IT can download a
