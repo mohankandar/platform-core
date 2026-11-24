@@ -27,7 +27,7 @@ public final class PlatformError {
         Map<String, String> d = new LinkedHashMap<>();
         if (safeDetails != null) {
             safeDetails.forEach((k, v) -> {
-                if (k != null && v != null) d.put(k, SafeText.forName(k, String.valueOf(v)));
+                if (k != null && v != null) d.put(k, SafeText.oneLine(SafeText.forName(k, String.valueOf(v))));
             });
         }
         this.details = Map.copyOf(d);
@@ -80,7 +80,7 @@ public final class PlatformError {
         Map<String, String> d = new LinkedHashMap<>();
         if (safeDetails != null) {
             safeDetails.forEach((k, v) -> {
-                if (k != null && v != null) d.put(k, SafeText.forName(k, String.valueOf(v)));
+                if (k != null && v != null) d.put(k, SafeText.oneLine(SafeText.forName(k, String.valueOf(v))));
             });
         }
         return fillIn(code.cause(), d);

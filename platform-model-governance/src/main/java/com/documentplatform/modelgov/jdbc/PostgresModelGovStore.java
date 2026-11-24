@@ -37,7 +37,14 @@ public final class PostgresModelGovStore implements ModelGovStore {
     public static final class StoreException extends RuntimeException implements com.documentplatform.errors.HasPlatformCode {
         StoreException(String operation, SQLException e) {
             super(ModelGovStoreCode.MG_STORE_FAILED.name() + ": Model-governance store: "
-                    + operation + " failed (SQL state " + e.getSQLState() + ")", e);
+                    + operation + " failed (SQL state " + e.getSQLState() + ")", withoutText(e));
+        }
+
+        /** P045, SEC-56: the state and the stack only; the driver's text can quote row values. */
+        private static SQLException withoutText(SQLException e) {
+            SQLException safe = new SQLException("SQL state " + e.getSQLState(), e.getSQLState(), e.getErrorCode());
+            safe.setStackTrace(e.getStackTrace());
+            return safe;
         }
 
         /** {@code MG_STORE_FAILED}: the code for monitoring and the app's error handler. */

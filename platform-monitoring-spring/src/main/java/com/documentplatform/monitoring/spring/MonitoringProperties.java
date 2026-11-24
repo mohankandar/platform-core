@@ -44,8 +44,18 @@ public class MonitoringProperties {
     private String productCode;
     private String tenantId;
     private List<String> secrets = new ArrayList<>();
+    /** More property name prefixes the diagnostic bundle may hold (P045, SEC-11), for example "myapp.". */
+    private List<String> bundleProperties = new ArrayList<>();
     private Map<String, Folder> folders = new LinkedHashMap<>();
     private Map<String, Service> services = new LinkedHashMap<>();
+
+    public List<String> getBundleProperties() {
+        return bundleProperties;
+    }
+
+    public void setBundleProperties(List<String> bundleProperties) {
+        this.bundleProperties = bundleProperties;
+    }
 
     public static class Folder {
         private String path;

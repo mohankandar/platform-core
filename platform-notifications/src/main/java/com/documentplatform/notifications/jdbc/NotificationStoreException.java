@@ -8,7 +8,14 @@ public final class NotificationStoreException extends RuntimeException
 
     NotificationStoreException(String operation, SQLException cause) {
         super(NotificationStoreCode.NOTIF_STORE_FAILED.name() + ": Notification store failed to "
-                + operation + " (SQL state " + cause.getSQLState() + ")", cause);
+                + operation + " (SQL state " + cause.getSQLState() + ")", withoutText(cause));
+    }
+
+    /** P045, SEC-56: the state and the stack only; the driver's text can quote row values ("Detail: Key (...)="). */
+    private static SQLException withoutText(SQLException e) {
+        SQLException safe = new SQLException("SQL state " + e.getSQLState(), e.getSQLState(), e.getErrorCode());
+        safe.setStackTrace(e.getStackTrace());
+        return safe;
     }
 
     /** {@code NOTIF_STORE_FAILED}: the code for monitoring and the app's error handler. */

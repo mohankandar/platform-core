@@ -325,7 +325,7 @@ class MonitoringWiringTest {
     }
 
     @Test
-    void theRequestFilterEchoesOrMakesTheReferenceAndSetsItForTheRequest() throws Exception {
+    void theRequestFilterMakesTheReferenceNeverTakingTheCallersAndSetsItForTheRequest() throws Exception {
         RequestReferenceFilter f = new RequestReferenceFilter();
         AtomicReference<String> during = new AtomicReference<>();
         AtomicReference<String> recorded = new AtomicReference<>();
@@ -335,16 +335,20 @@ class MonitoringWiringTest {
         f.doFilter(req, res, new MockFilterChain(new jakarta.servlet.http.HttpServlet() {
             @Override
             protected void service(jakarta.servlet.http.HttpServletRequest q, jakarta.servlet.http.HttpServletResponse s) {
-                during.set(ReferenceId.current() + "|" + org.slf4j.MDC.get("ref"));
+                during.set(ReferenceId.current() + "|" + org.slf4j.MDC.get("ref") + "|" + org.slf4j.MDC.get("requestId"));
                 // error-codes-27 (P037): a failure recorded in the request carries the request's reference.
                 recorded.set(com.documentplatform.errors.FailureLog.record(MonitoringCode.MON_CHECK_FAILED,
                         java.util.Map.of("check", "ocr")));
             }
         }));
-        assertEquals("abc-123", res.getHeader("X-Request-Id"));
-        assertEquals("abc-123|abc-123", during.get());
-        assertEquals("abc-123", recorded.get(), "FailureLog.record uses the request's reference");
-        assertEquals("abc-123", com.documentplatform.errors.FailureLog.recent(1).get(0).reference());
+        // P045, SEC-21: the caller does not choose the reference; its own ID is kept apart.
+        String own = res.getHeader("X-Request-Id");
+        assertTrue(ReferenceId.isReference(own), own);
+        assertEquals(own + "|" + own + "|abc-123", during.get());
+        assertEquals(org.springframework.core.Ordered.HIGHEST_PRECEDENCE + 10, RequestReferenceFilter.class
+                .getAnnotation(org.springframework.core.annotation.Order.class).value(), "before Spring Security");
+        assertEquals(own, recorded.get(), "FailureLog.record uses the request's reference");
+        assertEquals(own, com.documentplatform.errors.FailureLog.recent(1).get(0).reference());
         assertNull(ReferenceId.current(), "cleared after the request");
 
         MockHttpServletRequest bad = new MockHttpServletRequest();

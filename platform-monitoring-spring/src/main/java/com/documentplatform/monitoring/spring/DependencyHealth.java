@@ -32,7 +32,8 @@ final class DependencyHealth {
             boolean refusing = availability != null && availability.getReadinessState()
                     == org.springframework.boot.availability.ReadinessState.REFUSING_TRAFFIC;
             Health.Builder b = down || refusing ? Health.outOfService() : Health.up();
-            required.forEach(r -> b.withDetail(r.name(), details(r)));
+            // P045, SEC-23: state and code only; cause and fix are on the dependencies view and the Support screen.
+            required.forEach(r -> b.withDetail(r.name(), Map.of("state", r.state().name(), "code", r.code().code())));
             return b.build();
         };
     }

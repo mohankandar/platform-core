@@ -65,7 +65,7 @@ final class EraseLogHealthIndicator extends AbstractHealthIndicator {
             failure.put("seq", f.seq());
             failure.put("kind", f.kind());
             failure.put("recordType", f.recordType());
-            failure.put("recordId", f.recordId());
+            // P045, SEC-23: never the record ID here; the admin screen has it (EraseGuard.State.lastFailure).
             failure.put("handlerCode", f.handlerCode());
             failure.put("code", f.code().name());
             failure.put("at", f.at().toString());

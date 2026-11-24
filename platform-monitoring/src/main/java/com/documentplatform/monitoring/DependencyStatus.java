@@ -168,7 +168,7 @@ public final class DependencyStatus implements AutoCloseable {
         if (e != null) {
             if (r.state() != CheckState.WORKING) {
                 LOG.log(System.Logger.Level.WARNING, "check={0} state={1} code={2} cause=\"{3}\"", r.name(),
-                        r.state(), r.code().code(), r.cause().replace('"', '\''));
+                        r.state(), r.code().code(), com.documentplatform.errors.SafeText.oneLine(r.cause()).replace('"', '\''));
             } else {
                 LOG.log(System.Logger.Level.INFO, "check={0} state=WORKING (recovered)", r.name());
             }
