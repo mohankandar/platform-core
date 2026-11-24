@@ -193,7 +193,7 @@ class Smoke {
             check(rs.getInt(1) == 0, "the name is stored readably");
         }
         found(true);
-        check(values.readSensitive(record("C-1")).values("borrower_name").toString().contains(NAME), "opened with the key");
+        check(values.readSensitive(record("C-1")).values("borrower_name").get(0).display().equals(FieldValue.text(NAME)), "not opened with the key");
         return "encrypted, found by exact search, opened with the customer's key";
     }
 
