@@ -46,7 +46,7 @@ public final class PlatformGroupAuthorization {
         Set<String> out = new LinkedHashSet<>();
         for (Object g : groups) {
             if (!(g instanceof String group) || group.isBlank()) continue;
-            Set<String> forGroup = granted.get(group.trim());
+            Set<String> forGroup = granted.get(group); // exactly as the token gives it (SEC-44)
             if (forGroup == null) continue;
             for (String role : forGroup) {
                 String canonical = roles.canonicalEntityRole(role).orElseThrow(() -> new IdentityAdmissionException(

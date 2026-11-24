@@ -68,6 +68,10 @@ final class Plan {
     /** Platform-wide grants ({@code *} rows, identity V4) to add, and those not in the file (removed only with the flag). */
     final Set<Grant> platformToAdd = new java.util.LinkedHashSet<>();
     final Set<Grant> platformToRemove = new java.util.LinkedHashSet<>();
+    /** P045, SEC-17: the login system this run replaces, and the grants still stored under it. */
+    java.net.URI replacedIssuer;
+    final Map<String, Set<Grant>> replacedIssuerGrants = new TreeMap<>();
+    final Set<Grant> replacedIssuerPlatformGrants = new java.util.LinkedHashSet<>();
     ConfigFragment.State config;
     /** The customer's time zone to store (none stored yet), or null. */
     java.time.ZoneId customerZone;

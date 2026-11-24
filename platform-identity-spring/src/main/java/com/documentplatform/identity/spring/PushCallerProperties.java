@@ -12,11 +12,14 @@ import java.util.List;
  *
  * <pre>
  * platform.identity.push.product-code=PRODUCT_A
- * platform.identity.push.client-id-claims=client_id,azp,cid,sub   # the default; first present wins
+ * platform.identity.push.client-id-claims=client_id,azp,cid       # the default; first present wins (sub: only if set)
  * platform.identity.push.entity-claim=                             # optional; must equal the binding when present
  * platform.identity.push.source-claim=                             # optional; must equal the binding when present
  * platform.identity.push.require-token-and-certificate=false
  * platform.identity.push.cache-for=30s                             # 0s to 10m; a binding switched off counts within it
+ * platform.identity.push.user-claims=                              # claims that mark a person (default: email, upn, given_name,
+ *                                                                #   family_name, name, amr, auth_time, sid, uid, nonce, groups)
+ * platform.identity.push.machine-claim=                            # optional name=value every machine token carries (idtyp=app)
  * </pre>
  */
 @ConfigurationProperties(prefix = PushCallerProperties.PREFIX)
@@ -25,11 +28,29 @@ public class PushCallerProperties {
     public static final String PREFIX = "platform.identity.push";
 
     private String productCode;
-    private List<String> clientIdClaims = new ArrayList<>(List.of("client_id", "azp", "cid", "sub"));
+    private List<String> clientIdClaims = new ArrayList<>(List.of("client_id", "azp", "cid"));
+    private List<String> userClaims = new ArrayList<>();
+    private String machineClaim;
     private String entityClaim;
     private String sourceClaim;
     private boolean requireTokenAndCertificate = false;
     private Duration cacheFor = Duration.ofSeconds(30);
+
+    public List<String> getUserClaims() {
+        return userClaims;
+    }
+
+    public void setUserClaims(List<String> userClaims) {
+        this.userClaims = userClaims;
+    }
+
+    public String getMachineClaim() {
+        return machineClaim;
+    }
+
+    public void setMachineClaim(String machineClaim) {
+        this.machineClaim = machineClaim;
+    }
 
     public String getProductCode() {
         return productCode;

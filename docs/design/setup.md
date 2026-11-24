@@ -95,8 +95,10 @@ Full proposal, table columns, input files and command steps: `docs/work/P012-rep
   sign-in file's issuer. Every stored grant of the customer for that product and issuer that the file does not list is
   "not in the file", also when the file does not name its slot at all (every row of a slot dropped). Such grants are
   listed as `not removed` (exit code 3) and removed only with `--remove-unlisted-grants`.
-- **Grants under another issuer** (for example after the customer moved to a new login system) are left alone: not
-  listed, not removed, even with `--remove-unlisted-grants`. Listing them is for the hub-mode task (answer 4 above).
+- **Grants under the replaced issuer** (P045, SEC-17): when the sign-in file moves the customer to another login
+  system, the grants still stored under the one it replaces are listed (`not removed`, exit code 3) and removed with
+  `--remove-unlisted-grants`, so a rollback in the app brings none of them back. Grants under still older issuers are
+  left alone, as a rollback never returns to those.
 - **Slots of a waiting renewal.** A licence that starts later is stored as the waiting renewal, and its slots are
   stored at once (`NOT_ACTIVATED`), so the mapping and client-binding files may already name them. Activating a slot
   still follows the licence in force.

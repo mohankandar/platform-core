@@ -142,8 +142,10 @@ record SigninFile(String tenantId, String mode, String loginType, URI issuer, St
                         "clientBindingsFile", "sources", "integrationProfiles"));
                 String bindings = p.has("clientBindingsFile")
                         ? text(p.string("clientBindingsFile"), "products." + code + ".clientBindingsFile", 500) : null;
-                out.put(code, new Product(text(p.string("browserClientId"), "products." + code + ".browserClientId", 200),
-                        text(p.string("apiAudience"), "products." + code + ".apiAudience", 200),
+                out.put(code, new Product(notSecret(text(p.string("browserClientId"), "products." + code
+                        + ".browserClientId", 200), "products." + code + ".browserClientId"),
+                        notSecret(text(p.string("apiAudience"), "products." + code + ".apiAudience", 200),
+                                "products." + code + ".apiAudience"),
                         text(p.string("roleMappingFile"), "products." + code + ".roleMappingFile", 500),
                         bindings, p.has("sources") ? sources(p.list("sources"), "products." + code + ".sources")
                         : List.of(), p.has("integrationProfiles") ? profiles(p.list("integrationProfiles"),
@@ -226,6 +228,14 @@ record SigninFile(String tenantId, String mode, String loginType, URI issuer, St
         if (value.isBlank() || value.length() > max) throw invalid(field + " must be 1 to " + max + " characters");
         if (!value.equals(value.strip())) throw invalid(field + " starts or ends with a space");
         if (value.chars().anyMatch(Character::isISOControl)) throw invalid(field + " contains a control character");
+        return value;
+    }
+
+    /** P045, SEC-18: a client secret pasted where the client ID or audience goes is refused (and never printed). */
+    private static String notSecret(String value, String field) {
+        if (com.documentplatform.identity.mapping.ClientBindingsFile.looksSecret(value)) {
+            throw invalid(field + " looks like a secret (a token, key or password), not a client ID or audience");
+        }
         return value;
     }
 

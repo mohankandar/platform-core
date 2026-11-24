@@ -36,15 +36,18 @@ public final class IdentityClaims {
             if (collection.size() > 200) throw new IllegalArgumentException("groups claim contains too many values");
             for (Object item : collection) add(out, item);
         } else if (raw != null) {
-            for (String item : raw.toString().split("[,\\s]+")) add(out, item);
+            // P045, SEC-44: a string claim is one value, exactly as given; never split on spaces or commas, so the
+            // group "Finance Admins" is never also "Admins".
+            add(out, raw);
         }
         return Set.copyOf(out);
     }
 
     private static void add(Set<String> out, Object value) {
         if (value == null) return;
-        String normalized = value.toString().trim();
-        if (normalized.isEmpty()) return;
+        // Exactly as the login system gives it (P045, SEC-44): "admins " is not the group "admins".
+        String normalized = value.toString();
+        if (normalized.isBlank()) return;
         if (normalized.length() > 200) throw new IllegalArgumentException("identity claim value is too long");
         out.add(normalized);
     }

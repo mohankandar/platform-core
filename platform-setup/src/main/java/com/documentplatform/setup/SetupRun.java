@@ -116,6 +116,7 @@ final class SetupRun {
         planConnection(p);
         planGrants(p, rows.stream().filter(r -> !r.platformWide()).toList());
         planPlatformGrants(p, rows.stream().filter(MappingRow::platformWide).toList());
+        planReplacedIssuerGrants(p);
         planClientBindings(p, licensed);
         for (SetupInputs.CheckedProfile cp : in.profiles()) {
             p.add(CHECKED, "integration profile " + cp.name() + " " + cp.version() + " (tag " + cp.tag() + ", file "
@@ -158,6 +159,15 @@ final class SetupRun {
         Set<Grant> platformRemove = in.removeUnlistedGrants() ? p.platformToRemove : Set.of();
         if (!p.platformToAdd.isEmpty() || !platformRemove.isEmpty()) {
             grants.changePlatform(tenant, product, in.signin().issuer(), p.platformToAdd, platformRemove, author);
+        }
+        if (in.removeUnlistedGrants() && p.replacedIssuer != null) { // SEC-17
+            for (Map.Entry<String, Set<Grant>> e : p.replacedIssuerGrants.entrySet()) {
+                grants.change(e.getKey(), product, p.replacedIssuer, Set.of(), e.getValue(), author);
+            }
+            if (!p.replacedIssuerPlatformGrants.isEmpty()) {
+                grants.changePlatform(tenant, product, p.replacedIssuer, Set.of(), p.replacedIssuerPlatformGrants,
+                        author);
+            }
         }
         for (MachineBinding b : p.bindingsToInsert) {
             bindings.insertBinding(b, ChangeSource.SETUP, CHANGED_BY);
@@ -371,6 +381,7 @@ final class SetupRun {
                     + "it with the sign-in file's values.");
             return;
         }
+        if (!now.issuer().equals(want.issuer())) p.replacedIssuer = now.issuer();
         p.connectionStep = Plan.ConnectionStep.UPDATE;
         p.connection = want;
         p.connectionExpectedVersion = now.configurationVersion();
@@ -469,6 +480,35 @@ final class SetupRun {
                 p.add(UNCHANGED, "grants " + change.slotId() + " " + product + ": " + change.unchanged()
                         + (change.unchanged() == 1 ? " grant" : " grants"));
             }
+        }
+    }
+
+    /**
+     * P045, SEC-17: when this run moves the customer to another login system, the grants still stored under the one
+     * it replaces would be live again after a rollback to it in the app. They are listed like any grant not in the
+     * mapping file, and removed only with --remove-unlisted-grants.
+     */
+    private void planReplacedIssuerGrants(Plan p) {
+        if (p.replacedIssuer == null) return;
+        String product = in.product();
+        String where = " (under the replaced login system " + p.replacedIssuer + "; live again after a rollback)";
+        p.replacedIssuerGrants.putAll(grants.grantsOfCustomer(tenant, product, p.replacedIssuer));
+        p.replacedIssuerPlatformGrants.addAll(grants.platformGrants(tenant, product, p.replacedIssuer));
+        p.replacedIssuerGrants.forEach((slot, set) -> {
+            for (Grant g : sorted(set)) unlisted(p, "grant " + slot + " " + product + ": group \"" + g.group()
+                    + "\" -> " + g.role() + where);
+        });
+        for (Grant g : sorted(p.replacedIssuerPlatformGrants)) {
+            unlisted(p, "platform grant " + product + " (every entity): group \"" + g.group() + "\" -> " + g.role()
+                    + where);
+        }
+    }
+
+    private void unlisted(Plan p, String text) {
+        if (in.removeUnlistedGrants()) {
+            p.add(REMOVE, text);
+        } else {
+            p.add(NOT_REMOVED, text + "; kept. Run again with --remove-unlisted-grants to remove it.");
         }
     }
 

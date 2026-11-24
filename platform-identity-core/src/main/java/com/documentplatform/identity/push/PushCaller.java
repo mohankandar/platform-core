@@ -161,7 +161,24 @@ public final class PushCaller {
         }
     }
 
+    /**
+     * P045, SEC-7: null when the token is a machine's; else the refusal. A token with a claim only a person's sign-in
+     * has, or without the product's machine claim and value, is never a push caller.
+     */
+    private PushRefusal machine(PushCallerInput input) {
+        for (String c : settings.userClaims()) {
+            if (input.claims().containsKey(c)) return IDN_PUSH_NOT_MACHINE;
+        }
+        if (settings.machineClaim() != null
+                && !settings.machineClaimValue().equals(input.claims().get(settings.machineClaim()))) {
+            return IDN_PUSH_NOT_MACHINE;
+        }
+        return null;
+    }
+
     private Found byToken(PushCallerInput input, String clientId) {
+        PushRefusal notMachine = machine(input);
+        if (notMachine != null) return Found.refused(notMachine);
         List<PushCallerDirectory.ActiveConnection> connections =
                 directory.activeConnections(settings.productCode(), input.issuer());
         if (connections.isEmpty()) return Found.refused(IDN_PUSH_NO_CONNECTION);
@@ -171,6 +188,8 @@ public final class PushCaller {
         }
         if (tenants.isEmpty()) return Found.refused(IDN_PUSH_AUDIENCE);
         if (clientId == null) return Found.refused(IDN_PUSH_NO_CLIENT_ID);
+        // P045, SEC-16: a certificate binding is reached by the certificate only, never by a token naming it.
+        if (isFingerprint(clientId)) return Found.refused(IDN_PUSH_NOT_BOUND);
         List<PushCallerDirectory.BoundClient> bound = directory.bindings(settings.productCode(), clientId).stream()
                 .filter(b -> tenants.contains(b.binding().tenantId())).toList();
         Found found = choose(bound, IDN_PUSH_NOT_BOUND);
@@ -228,7 +247,8 @@ public final class PushCaller {
             k.append("t\u0000").append(input.issuer()).append('\u0000').append(new TreeSet<>(input.audiences()))
                     .append('\u0000').append(clientId).append('\u0000')
                     .append(claim(input, settings.entityClaim())).append('\u0000')
-                    .append(claim(input, settings.sourceClaim()));
+                    .append(claim(input, settings.sourceClaim())).append('\u0000')
+                    .append(machine(input) == null ? "m" : "p"); // the machine-token rule's answer (SEC-7)
         }
         if (fingerprint != null) k.append("\u0000c\u0000").append(fingerprint);
         return k.toString();
