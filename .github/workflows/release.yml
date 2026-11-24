@@ -118,6 +118,6 @@ jobs:
     permissions:
       contents: read
       packages: read
-    uses: ./.github/workflows/install-proof.yml
+    uses: ./.github/workflows/install-proof-run.yml
     with:
       version: ${{ needs.version.outputs.version }}

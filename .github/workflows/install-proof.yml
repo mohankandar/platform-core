@@ -1,92 +1,98 @@
 name: Install proof
 
 # Installs the sample app from the published artifacts of one version, as the install guides say, on Linux and on Windows
-# (P047). By hand with a version, and for every release candidate from the release workflow.
+# (P047): by hand, and once a month against the newest release (P053). Release candidates: release.yml.
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: The released platform-core version, for example 1.0.0-rc.1
-        required: true
-  workflow_call:
-    inputs:
-      version:
-        type: string
-        required: true
+        description: The released platform-core version, for example 1.0.0-rc.1; empty for the newest release
+        required: false
+  schedule:
+    - cron: '17 6 3 * *'
 
-permissions:
-  contents: read
-  packages: read
+# Nothing by default; each job names only what it needs.
+permissions: {}
 
 jobs:
-  proof:
-    name: install proof (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
-    defaults:
-      run:
-        shell: bash
-    env:
-      PLATFORM_VERSION: ${{ inputs.version || '0.8.1' }}
-      VAULT_VERSION: 1.21.4
-      PGHOST: 127.0.0.1
-      PGPORT: "5432"
-      PGUSER: postgres
-      PGPASSWORD: root
+  version:
+    name: version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      ref: ${{ steps.v.outputs.ref }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
-        with:
-          distribution: temurin
-          java-version: '21'
-          server-id: github-platform-core
-          server-username: GITHUB_ACTOR
-          server-password: GITHUB_TOKEN
-
-      - name: Build the sample app from the published artifacts
-        run: mvn -B -f examples/sample-app/pom.xml package "-Dplatform.version=${PLATFORM_VERSION}"
+      # A version given by hand is proved from the chosen branch. Otherwise the newest published release that is no
+      # candidate, with the sample app and the guides of its own tag.
+      - name: The version asked for, or the newest release
+        id: v
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # The runner images carry PostgreSQL as the operating system's own package / installer.
-      - name: PostgreSQL (Linux)
-        if: runner.os == 'Linux'
+          GH_TOKEN: ${{ github.token }}
+          ASKED: ${{ inputs.version }}
         run: |
-          sudo systemctl start postgresql
-          sudo -u postgres psql -c "alter user postgres password 'root'"
-          echo "DB_STOP=sudo systemctl stop postgresql" >> "$GITHUB_ENV"
-          echo "DB_START=sudo systemctl start postgresql" >> "$GITHUB_ENV"
+          set -o pipefail
+          if [ -n "${ASKED}" ]; then
+            version="${ASKED}"; ref=""
+          else
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" \
+              --jq '.[] | select((.draft or .prerelease) | not) | .tag_name' > "${RUNNER_TEMP}/tags.txt"
+            tag="$(grep -E '^platform-core-v[0-9]+[.][0-9]+[.][0-9]+$' "${RUNNER_TEMP}/tags.txt" | sort -V | tail -n 1)"
+            version="${tag#platform-core-v}"; ref="refs/tags/${tag}"
+          fi
+          echo "version ${version}, sample app and guides from ${ref:-${GITHUB_REF}}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "ref=${ref}" >> "${GITHUB_OUTPUT}"
 
-      - name: PostgreSQL (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $s = Get-Service 'postgresql*' | Select-Object -First 1
-          Set-Service $s.Name -StartupType Manual
-          Start-Service $s.Name
-          "$env:PGBIN" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
-          "DB_STOP=net stop $($s.Name)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
-          "DB_START=net start $($s.Name)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+  proof:
+    needs: version
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/install-proof-run.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+      ref: ${{ needs.version.outputs.ref }}
 
-      - name: Vault binary, checked against its published checksum
+  # One open issue with the label install-proof; a further failure is a comment on it. Not for a run stopped by hand.
+  issue:
+    name: failure issue
+    needs: [version, proof]
+    if: ${{ !cancelled() && (needs.version.result != 'success' || needs.proof.result != 'success') }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    concurrency: install-proof-issue
+    steps:
+      - name: Open the issue, or comment on the open one
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          os=linux; [ "$RUNNER_OS" = Windows ] && os=windows
-          zip="vault_${VAULT_VERSION}_${os}_amd64.zip"
-          mkdir -p "$RUNNER_TEMP/vault" && cd "$RUNNER_TEMP/vault"
-          curl -fsSLO "https://releases.hashicorp.com/vault/${VAULT_VERSION}/${zip}"
-          curl -fsSLO "https://releases.hashicorp.com/vault/${VAULT_VERSION}/vault_${VAULT_VERSION}_SHA256SUMS"
-          grep " ${zip}\$" "vault_${VAULT_VERSION}_SHA256SUMS" | sha256sum -c -
-          unzip -q "$zip"
-          if [ "$RUNNER_OS" = Windows ]; then cygpath -w "$PWD" >> "$GITHUB_PATH"; else echo "$PWD" >> "$GITHUB_PATH"; fi
-
-      - name: The install guides, step by step
-        run: |
-          export APP_JAR="$PWD/examples/sample-app/app/target/sample-app.jar" MOCKS_JAR="$PWD/examples/sample-app/mocks/target/sample-mocks.jar"
-          bash examples/sample-app/install/install-proof.sh
+          set -o pipefail
+          repo="repos/${GITHUB_REPOSITORY}"
+          version="${VERSION:-unknown (no release found)}"
+          # The failed jobs and steps. A problem here never stops the issue.
+          failed="$(gh api --paginate "${repo}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}/jobs" --jq '
+            .jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out")
+            | "- job: \(.name), step: \([.steps[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out") | .name] | first // "none named")"')" || failed=""
+          {
+            echo "The install proof of platform-core ${version} failed (trigger: ${GITHUB_EVENT_NAME}, attempt ${GITHUB_RUN_ATTEMPT})."
+            echo
+            echo "${failed:-"- failed job and step: see the run"}"
+            echo
+            echo "Run: ${RUN_URL}"
+          } > "${RUNNER_TEMP}/body.md"
+          cat "${RUNNER_TEMP}/body.md"
+          gh api "${repo}/labels/install-proof" --silent \
+            || gh api "${repo}/labels" -f name=install-proof -f color=d73a4a -f description="The install proof failed" --silent
+          open="$(gh api "${repo}/issues?state=open&labels=install-proof&per_page=100&sort=created&direction=asc" \
+            --jq '[.[] | select(has("pull_request") | not) | .number] | first // empty')"
+          if [ -n "${open}" ]; then
+            gh api "${repo}/issues/${open}/comments" -F body=@"${RUNNER_TEMP}/body.md" --jq .html_url
+          else
+            gh api "${repo}/issues" -f title="Install proof failed: platform-core ${version}" -f 'labels[]=install-proof' \
+              -F body=@"${RUNNER_TEMP}/body.md" --jq .html_url
+          fi
