@@ -9,8 +9,8 @@ Outcome: DONE
 | Step | PR | CI runs | Merged as |
 |---|---|---|---|
 | Workflow, script, Dependabot | #72 | 45341686627 (one run, full build) | `94f5c8c` (task file), `9c38f8a` |
-| Main after the merge | — | @MAIN@ | — |
-| This report (documentation only) | this PR | @DOCS@ | — |
+| Main after the merge | — | 45342555451 (push, full: 1524 tests, 0 skipped) | — |
+| This report (documentation only) | this PR | 45342630196 (short: 40 tests, 0 skipped), then one more for these numbers | — |
 
 No release.
 
@@ -19,8 +19,8 @@ No release.
 | | Before | After |
 |---|---|---|
 | Pull request, full | two runs of 5 to 7½ min (#68: 45332671753 7:29, 45332679361 5:23) | one run, 6:48 (#72) |
-| Pull request, documentation only | two full runs | one short run, @DOCSTIME@ |
-| Main | 5½ to 7 min (45334531950: 5½) | full build, @MAINTIME@ |
+| Pull request, documentation only | two full runs | one short run, 55 s (#73) |
+| Main | 5½ to 7 min (45334531950: 5½) | full build, 6:17 (45342555451) |
 
 ## Independence
 
