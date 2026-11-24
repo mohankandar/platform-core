@@ -1,0 +1,94 @@
+name: Install proof
+
+# Installs the sample app from the published artifacts of one version, as the install guides say, on Linux and on Windows
+# (P047). By hand with a version, and for every release candidate from the release workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The released platform-core version, for example 1.0.0-rc.1
+        required: true
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+  push:
+    branches: [release/install-proof]
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  proof:
+    name: install proof (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      PLATFORM_VERSION: ${{ inputs.version || '0.8.1' }}
+      VAULT_VERSION: 1.21.14
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: root
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          server-id: github-platform-core
+          server-username: GITHUB_ACTOR
+          server-password: GITHUB_TOKEN
+
+      - name: Build the sample app from the published artifacts
+        run: mvn -B -f examples/sample-app/pom.xml package "-Dplatform.version=${PLATFORM_VERSION}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The runner images carry PostgreSQL as the operating system's own package / installer.
+      - name: PostgreSQL (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo systemctl start postgresql
+          sudo -u postgres psql -c "alter user postgres password 'root'"
+          echo "DB_STOP=sudo systemctl stop postgresql" >> "$GITHUB_ENV"
+          echo "DB_START=sudo systemctl start postgresql" >> "$GITHUB_ENV"
+
+      - name: PostgreSQL (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $s = Get-Service 'postgresql*' | Select-Object -First 1
+          Set-Service $s.Name -StartupType Manual
+          Start-Service $s.Name
+          "$env:PGBIN" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+          "DB_STOP=net stop $($s.Name)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "DB_START=net start $($s.Name)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - name: Vault binary, checked against its published checksum
+        run: |
+          os=linux; [ "$RUNNER_OS" = Windows ] && os=windows
+          zip="vault_${VAULT_VERSION}_${os}_amd64.zip"
+          mkdir -p "$RUNNER_TEMP/vault" && cd "$RUNNER_TEMP/vault"
+          curl -fsSLO "https://releases.hashicorp.com/vault/${VAULT_VERSION}/${zip}"
+          curl -fsSLO "https://releases.hashicorp.com/vault/${VAULT_VERSION}/vault_${VAULT_VERSION}_SHA256SUMS"
+          grep " ${zip}\$" "vault_${VAULT_VERSION}_SHA256SUMS" | sha256sum -c -
+          unzip -q "$zip"
+          if [ "$RUNNER_OS" = Windows ]; then cygpath -w "$PWD" >> "$GITHUB_PATH"; else echo "$PWD" >> "$GITHUB_PATH"; fi
+
+      - name: The install guides, step by step
+        run: |
+          export APP_JAR="$PWD/examples/sample-app/app/target/sample-app.jar" MOCKS_JAR="$PWD/examples/sample-app/mocks/target/sample-mocks.jar"
+          bash examples/sample-app/install/install-proof.sh

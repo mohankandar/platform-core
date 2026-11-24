@@ -1,0 +1,37 @@
+# The settings every install guide asks for. Values that differ per installation come from the installation's own
+# sample-install.properties and platform-tenant.properties (written by setup).
+spring:
+  application:
+    name: sample-app
+  config:
+    import: optional:file:./platform-tenant.properties,optional:file:./sample-install.properties
+  autoconfigure:
+    exclude: org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration
+server:
+  address: 127.0.0.1
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: when-authorized
+      roles: MONITORING
+sample:
+  # read-only: the licence state is shown, nothing is refused. enforce: new work is refused when intake is not allowed.
+  licensing: read-only
+platform:
+  licensing:
+    product-code: PRODUCT_A
+    notifications:
+      enabled: false
+  identity:
+    push:
+      product-code: PRODUCT_A
+  monitoring:
+    product-code: PRODUCT_A
+    customer-keys-required: true
+  model-governance:
+    approver-roles: [MODEL_APPROVER]
+    forbidden-roles: [BUSINESS_ADMIN]
