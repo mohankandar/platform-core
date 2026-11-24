@@ -52,16 +52,16 @@ class SignInTest {
 
     @Test
     void basic() {
-        fx.secrets.put(SecretRef.of("int/basic"), "pa55-word");
+        fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/basic"), "pa55-word");
         fx.mock.expectBasic("sender", "pa55-word");
-        AttemptResult r = send(Fx.twoStep(fx.mock.address(), new SignIn.Basic("sender", SecretRef.of("int/basic"))));
+        AttemptResult r = send(Fx.twoStep(fx.mock.address(), new SignIn.Basic("sender", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/basic"))));
         assertEquals(Outcome.SENT, r.outcome(), r.toString());
         assertEquals(3, fx.mock.calls().size());
         assertTrue(fx.mock.calls().stream().allMatch(x -> "BASIC".equals(x.signIn())));
 
-        fx.secrets.put(SecretRef.of("int/basic"), "wrong");
+        fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/basic"), "wrong");
         AttemptResult refused = send(Fx.twoStep(fx.mock.address(), new SignIn.Basic("sender",
-                SecretRef.of("int/basic"))));
+                SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/basic"))));
         assertEquals(Outcome.SIGN_IN_FAILED, refused.outcome());
         assertEquals(IntegrationCode.INT_SIGN_IN_REFUSED, refused.code());
         assertEquals("MOCK-AUTH-REQUIRED", refused.destinationCode());
@@ -70,9 +70,9 @@ class SignInTest {
 
     @Test
     void apiKeyGoesInTheHeaderNeverTheAddress() {
-        fx.secrets.put(SecretRef.of("int/key"), "k-123456789");
+        fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/key"), "k-123456789");
         fx.mock.expectApiKey("X-Api-Key", "k-123456789");
-        AttemptResult r = send(Fx.twoStep(fx.mock.address(), new SignIn.ApiKey("X-Api-Key", SecretRef.of("int/key"))));
+        AttemptResult r = send(Fx.twoStep(fx.mock.address(), new SignIn.ApiKey("X-Api-Key", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/key"))));
         assertEquals(Outcome.SENT, r.outcome());
         for (MockDestination.Received x : fx.mock.calls()) {
             assertEquals("API_KEY", x.signIn());
@@ -84,19 +84,19 @@ class SignInTest {
 
     @Test
     void fixedBearer() {
-        fx.secrets.put(SecretRef.of("int/bearer"), "fixed-token-abc");
+        fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/bearer"), "fixed-token-abc");
         fx.mock.expectBearer("fixed-token-abc");
-        AttemptResult r = send(Fx.twoStep(fx.mock.address(), new SignIn.BearerFixed(SecretRef.of("int/bearer"))));
+        AttemptResult r = send(Fx.twoStep(fx.mock.address(), new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/bearer"))));
         assertEquals(Outcome.SENT, r.outcome());
         assertTrue(fx.mock.calls().stream().allMatch(x -> "BEARER".equals(x.signIn())));
     }
 
     @Test
     void oauth2ClientSecretInTheFormIsFetchedOnceAndCached() {
-        fx.secrets.put(SecretRef.of("int/client"), "client-secret-xyz");
+        fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), "client-secret-xyz");
         fx.mock.expectOAuth2().registerClient("sender-app", "client-secret-xyz").requireScope("ingest");
         IntegrationConfig c = Fx.twoStep(fx.mock.address(), OAuth2ClientCredentials.secret(fx.mock.tokenAddress(),
-                "sender-app", SecretRef.of("int/client"), "ingest"));
+                "sender-app", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), "ingest"));
         assertEquals(Outcome.SENT, send(c).outcome());
         assertEquals(Outcome.SENT, send(c).outcome());
         assertEquals(1, fx.mock.tokensIssued(), "the token is kept until shortly before it expires");
@@ -110,11 +110,11 @@ class SignInTest {
     @Test
     void aTokenWithoutTheRequiredClaimsIsNeverUsed() {
         // integration-module-46: token.requiredClaims; checked before anything is sent.
-        fx.secrets.put(SecretRef.of("int/client"), "client-secret-xyz");
+        fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), "client-secret-xyz");
         fx.mock.expectOAuth2().registerClient("sender-app", "client-secret-xyz")
                 .tokenClaims(java.util.Map.of("tenant", "t-1"));
         IntegrationConfig c = Fx.twoStep(fx.mock.address(), OAuth2ClientCredentials.secret(fx.mock.tokenAddress(),
-                "sender-app", SecretRef.of("int/client"), null));
+                "sender-app", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), null));
         AttemptResult missing = send(c.withSetting(IntegrationConfig.REQUIRED_TOKEN_CLAIMS, "tenant, roles"));
         assertEquals(Outcome.SIGN_IN_FAILED, missing.outcome(), missing.toString());
         assertEquals(IntegrationCode.INT_TOKEN_CLAIMS_MISSING, missing.code());
@@ -130,10 +130,10 @@ class SignInTest {
     void aHeldTokenIsDroppedWhenTheClientCertificateInUseChanges() {
         // P027 B0.2: the token is bound to the certificate in use when it was fetched (a switch by the admin, at its
         // set time, or on another instance); with another certificate it is never used again.
-        fx.secrets.put(SecretRef.of("int/client"), "client-secret-xyz");
+        fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), "client-secret-xyz");
         fx.mock.expectOAuth2().registerClient("sender-app", "client-secret-xyz");
         OAuth2ClientCredentials client = OAuth2ClientCredentials.secret(fx.mock.tokenAddress(), "sender-app",
-                SecretRef.of("int/client"), null);
+                SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), null);
         com.documentplatform.integration.signin.ClientCredentialsTokens tokens =
                 new com.documentplatform.integration.signin.ClientCredentialsTokens(
                         new com.documentplatform.outbound.Outbound(fx.installation), java.time.Clock.systemUTC());
@@ -152,10 +152,10 @@ class SignInTest {
 
     @Test
     void oauth2ClientSecretAsBasicWithAudience() {
-        fx.secrets.put(SecretRef.of("int/client"), "s3cret:with&odd=chars");
+        fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), "s3cret:with&odd=chars");
         fx.mock.expectOAuth2().registerClient("sender-app", "s3cret:with&odd=chars").requireAudience("api://dest");
         IntegrationConfig c = Fx.twoStep(fx.mock.address(), OAuth2ClientCredentials.secret(fx.mock.tokenAddress(),
-                        "sender-app", SecretRef.of("int/client"), null).withAudience("api://dest")
+                        "sender-app", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), null).withAudience("api://dest")
                 .withClientAuth(OAuth2ClientCredentials.ClientAuth.BASIC));
         assertEquals(Outcome.SENT, send(c).outcome());
         MockDestination.TokenRequest t = fx.mock.tokenRequests().get(0);
@@ -166,10 +166,10 @@ class SignInTest {
     @Test
     void oauth2CertificateClientAssertion(@TempDir Path dir) throws Exception {
         TestCertificates.Credential cred = TestCertificates.credential(dir, "sender-cert", -1, 30);
-        fx.secrets.put(SecretRef.of("int/cert"), cred.pem());
+        fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/cert"), cred.pem());
         fx.mock.expectOAuth2().registerCertificateClient("sender-app", cred.certificate());
         IntegrationConfig c = Fx.twoStep(fx.mock.address(), OAuth2ClientCredentials.certificate(
-                fx.mock.tokenAddress(), "sender-app", SecretRef.of("int/cert"), "ingest"));
+                fx.mock.tokenAddress(), "sender-app", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/cert"), "ingest"));
         AttemptResult r = send(c);
         assertEquals(Outcome.SENT, r.outcome(), r.toString());
         assertEquals("private_key_jwt", fx.mock.tokenRequests().get(0).clientAuth());
@@ -178,25 +178,25 @@ class SignInTest {
     @Test
     void oauth2CertificateExpiredOrUnusable(@TempDir Path dir) throws Exception {
         TestCertificates.Credential old = TestCertificates.credential(dir, "old-cert", -40, 10);
-        fx.secrets.put(SecretRef.of("int/cert"), old.pem());
-        fx.secrets.put(SecretRef.of("int/bad"), "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n");
+        fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/cert"), old.pem());
+        fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/bad"), "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n");
         fx.mock.expectOAuth2();
         AttemptResult expired = send(Fx.twoStep(fx.mock.address(), OAuth2ClientCredentials.certificate(
-                fx.mock.tokenAddress(), "sender-app", SecretRef.of("int/cert"), null)));
+                fx.mock.tokenAddress(), "sender-app", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/cert"), null)));
         assertEquals(Outcome.SIGN_IN_FAILED, expired.outcome());
         assertEquals(IntegrationCode.INT_TOKEN_CREDENTIAL_EXPIRED, expired.code());
         AttemptResult bad = send(Fx.twoStep(fx.mock.address(), OAuth2ClientCredentials.certificate(
-                fx.mock.tokenAddress(), "sender-app", SecretRef.of("int/bad"), null)));
+                fx.mock.tokenAddress(), "sender-app", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/bad"), null)));
         assertEquals(IntegrationCode.INT_TOKEN_CREDENTIAL_INVALID, bad.code());
         assertTrue(fx.mock.tokenRequests().isEmpty(), "nothing is sent with an unusable credential");
     }
 
     @Test
     void tokenEndpointFailuresHaveSpecificCodes() {
-        fx.secrets.put(SecretRef.of("int/client"), "client-secret-xyz");
+        fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), "client-secret-xyz");
         fx.mock.expectOAuth2().registerClient("sender-app", "client-secret-xyz");
         IntegrationConfig c = Fx.twoStep(fx.mock.address(), OAuth2ClientCredentials.secret(fx.mock.tokenAddress(),
-                "sender-app", SecretRef.of("int/client"), null));
+                "sender-app", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), null));
 
         fx.mock.tokenMode(MockDestination.TokenMode.REFUSE_CLIENT);
         AttemptResult refused = send(c);
@@ -218,10 +218,10 @@ class SignInTest {
 
     @Test
     void aTokenTheDestinationRefusesIsDroppedSoTheNextAttemptGetsANewOne() {
-        fx.secrets.put(SecretRef.of("int/client"), "client-secret-xyz");
+        fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), "client-secret-xyz");
         fx.mock.expectOAuth2().registerClient("sender-app", "client-secret-xyz");
         IntegrationConfig c = Fx.twoStep(fx.mock.address(), OAuth2ClientCredentials.secret(fx.mock.tokenAddress(),
-                "sender-app", SecretRef.of("int/client"), null));
+                "sender-app", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), null));
         assertEquals(Outcome.SENT, send(c).outcome());
         fx.mock.revokeTokens();
         AttemptResult refused = send(c);
@@ -233,10 +233,10 @@ class SignInTest {
 
     @Test
     void shortLivedTokensAreRenewed() {
-        fx.secrets.put(SecretRef.of("int/client"), "client-secret-xyz");
+        fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), "client-secret-xyz");
         fx.mock.expectOAuth2().registerClient("sender-app", "client-secret-xyz").tokenLifetime(Duration.ofSeconds(2));
         IntegrationConfig c = Fx.oneStep(fx.mock.address(), OAuth2ClientCredentials.secret(fx.mock.tokenAddress(),
-                "sender-app", SecretRef.of("int/client"), null));
+                "sender-app", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), null));
         assertEquals(Outcome.SENT, send(c).outcome());
         // A 2-second token is kept for half its life at most.
         try {
@@ -251,7 +251,7 @@ class SignInTest {
     @Test
     void missingOrUnreachableSecrets() {
         fx.mock.expectBearer("x");
-        IntegrationConfig c = Fx.oneStep(fx.mock.address(), new SignIn.BearerFixed(SecretRef.of("int/none")));
+        IntegrationConfig c = Fx.oneStep(fx.mock.address(), new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/none")));
         AttemptResult missing = send(c);
         assertEquals(Outcome.NOT_CONFIGURED, missing.outcome());
         assertEquals(IntegrationCode.INT_SECRET_NOT_FOUND, missing.code());
@@ -266,7 +266,7 @@ class SignInTest {
     void microsoftPresetBuildsTheEntraTokenAddress() {
         OAuth2ClientCredentials m = OAuth2ClientCredentials.microsoft("contoso.onmicrosoft.com",
                 "11111111-2222-3333-4444-555555555555", OAuth2ClientCredentials.CredentialType.CERTIFICATE,
-                SecretRef.of("int/ms"), "api://dest/.default");
+                SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/ms"), "api://dest/.default");
         assertEquals("https://login.microsoftonline.com/contoso.onmicrosoft.com/oauth2/v2.0/token",
                 m.tokenAddress().toString());
         assertEquals("api://dest/.default", m.scope());

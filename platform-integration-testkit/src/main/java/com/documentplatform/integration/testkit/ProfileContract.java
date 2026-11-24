@@ -45,6 +45,12 @@ import java.util.UUID;
  */
 public final class ProfileContract {
 
+    /**
+     * The entity the contract check completes a profile for. The sign-in given to {@code checkAgainstServer} names its
+     * secrets under it ({@code int/<this UUID>/<name>}, P044 SEC-10); {@link ProfileMock#signIn()} does.
+     */
+    public static final java.util.UUID ENTITY = java.util.UUID.fromString("6a1f2e3d-4c5b-4a69-8877-665544332211");
+
     public static final String CODES_EXTENSION = "x-error-codes";
     private static final Set<String> AUTOMATIC_HEADERS = Set.of("content-type", "accept", "x-correlation-id",
             "authorization");
@@ -306,7 +312,7 @@ public final class ProfileContract {
             profile.fields().expected().stream().filter(IntegrationProfile.ExpectedField::required)
                     .forEach(f -> mapping.put(f.name(), "contract_check_field"));
         }
-        IntegrationConfig c = profile.complete(new IntegrationProfile.Completion(UUID.randomUUID(), "CONTRACT_CHECK",
+        IntegrationConfig c = profile.complete(new IntegrationProfile.Completion(ENTITY, "CONTRACT_CHECK",
                 "contract check", new Endpoint(baseUrl, true), signIn, mapping, Set.of(), Map.of()));
         try (CallEngine engine = new CallEngine(new Outbound(installation), secrets, Clock.systemUTC())) {
             StoredIntegration stored = new StoredIntegration(c, 1, "contract-check", Instant.now());

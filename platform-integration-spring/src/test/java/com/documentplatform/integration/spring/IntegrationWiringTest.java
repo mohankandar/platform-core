@@ -214,15 +214,15 @@ class IntegrationWiringTest {
     void withTheProxyCallsGoThroughItWithItsSignIn() {
         try (MockDestination mock = MockDestination.start();
              MockProxy proxy = MockProxy.start().requireBasic("svc-app", "proxy-pass")) {
-            InMemorySecretResolver secrets = new InMemorySecretResolver().put(SecretRef.of("int/proxy"), "proxy-pass")
-                    .put(SecretRef.of("int/t"), "tok-1");
+            InMemorySecretResolver secrets = new InMemorySecretResolver().put(SecretRef.of("int/f37edbed-e772-5553-adf3-cef5c4d8d511/proxy"), "proxy-pass")
+                    .put(SecretRef.of("int/f37edbed-e772-5553-adf3-cef5c4d8d511/t"), "tok-1");
             app(secrets, new Audit(), "platform.outbound.installation=ON_PREMISES",
                     "platform.outbound.allow-internal-addresses=true",
                     "platform.outbound.proxy.host=" + proxy.host(),
                     "platform.outbound.proxy.port=" + proxy.port(),
                     "platform.outbound.proxy.bypass=.corp.example,files01",
                     "platform.outbound.proxy.user=svc-app",
-                    "platform.outbound.proxy.password-secret=int/proxy")
+                    "platform.outbound.proxy.password-secret=int/f37edbed-e772-5553-adf3-cef5c4d8d511/proxy")
                     .run(ctx -> {
                         assertNull(ctx.getStartupFailure(), () -> String.valueOf(ctx.getStartupFailure()));
                         Installation inst = ctx.getBean(Installation.class);
@@ -231,7 +231,7 @@ class IntegrationWiringTest {
                         assertTrue(inst.proxy().bypasses("a.corp.example"));
                         IntegrationConfig c = IntegrationConfig.apiPush(ENTITY, "PRODUCT_A", "API",
                                         new Endpoint(mock.addressByName(), true),
-                                        new SignIn.BearerFixed(SecretRef.of("int/t")))
+                                        new SignIn.BearerFixed(SecretRef.of("int/f37edbed-e772-5553-adf3-cef5c4d8d511/t")))
                                 .withSteps(List.of(CallStep.of("send", HttpMethod.POST, "/api/notice")
                                         .withJsonBody("{\"packageId\":\"{package.id}\"}")))
                                 .withHealth(HealthCheck.get(MockDestination.HEALTH_PATH, false));
@@ -240,7 +240,7 @@ class IntegrationWiringTest {
                                 Map.of()));
                         assertEquals(Outcome.SENT, r.outcome(), r.toString());
                         assertEquals(1, proxy.signInsAccepted());
-                        secrets.put(SecretRef.of("int/proxy"), "rotated-wrong");
+                        secrets.put(SecretRef.of("int/f37edbed-e772-5553-adf3-cef5c4d8d511/proxy"), "rotated-wrong");
                         Health h = ((HealthIndicator) ((CompositeHealthContributor) ctx.getBean(
                                 "integrationsHealthContributor")).getContributor(s.id().toString())).health();
                         assertEquals(Status.DOWN, h.getStatus());
@@ -393,7 +393,7 @@ class IntegrationWiringTest {
                     StoredIntegration hooks = configs.create(IntegrationConfig.callback(ENTITY, "PRODUCT_A", "Hooks",
                             com.documentplatform.integration.config.Endpoint.of("https://hooks.example/cases"),
                             new com.documentplatform.integration.config.SignIn.None(),
-                            com.documentplatform.notifications.secret.SecretRef.of("int/hooks")), "it-admin");
+                            com.documentplatform.notifications.secret.SecretRef.of("int/f37edbed-e772-5553-adf3-cef5c4d8d511/hooks")), "it-admin");
                     java.util.UUID id = callbacks.enqueue(hooks.id(), "{\"case\":\"C-1\"}");
                     ctx.getBean(IntegrationWorker.class).runOnce(); // the secret is missing: tried, kept for later
                     var entry = callbacks.find(id).orElseThrow();

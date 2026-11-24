@@ -140,8 +140,8 @@ class OmitWhenMissingTest {
     }
 
     private static IntegrationConfig config(String body) {
-        return IntegrationConfig.apiPush(UUID.randomUUID(), "PRODUCT_A", "Omit test",
-                        Endpoint.of("https://api.example.test"), new SignIn.BearerFixed(SecretRef.of("int/t")))
+        return IntegrationConfig.apiPush(UUID.fromString("5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f"), "PRODUCT_A", "Omit test",
+                        Endpoint.of("https://api.example.test"), new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t")))
                 .withSteps(List.of(CallStep.of("s", HttpMethod.POST, "/x").withJsonBody(body)));
     }
 

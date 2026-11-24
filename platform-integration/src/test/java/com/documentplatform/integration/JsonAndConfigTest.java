@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class JsonAndConfigTest {
 
     static IntegrationConfig sample(SignIn signIn) {
-        return IntegrationConfig.apiPush(UUID.randomUUID(), "DEMO", "Sample",
+        return IntegrationConfig.apiPush(UUID.fromString("5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f"), "DEMO", "Sample",
                         new Endpoint(URI.create("https://api.example/base"), true), signIn)
                 .withSteps(List.of(
                         CallStep.of("create", HttpMethod.POST, "/s").withJsonBody("{\"id\":\"{package.id}\"}")

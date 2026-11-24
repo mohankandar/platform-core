@@ -55,7 +55,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class CallbackTest {
 
-    static final SecretRef SECRET = SecretRef.of("int/callback-secret");
+    static final SecretRef SECRET = SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/callback-secret");
     static final String BODY = "{\"case\":\"C-1\",\"state\":\"DONE\"}";
 
     /** A clock the test moves. */
@@ -284,7 +284,7 @@ class CallbackTest {
         String big = "{\"x\":\"" + "a".repeat(Callbacks.MAX_BODY_BYTES) + "\"}";
         assertEquals(IntegrationCode.INT_CALLBACK_BODY_INVALID, assertThrows(Callbacks.Refused.class,
                 () -> callbacks.enqueue(integration.id(), big)).code());
-        IntegrationConfig push = Fx.oneStep(receiver.address(), new SignIn.BearerFixed(SecretRef.of("int/t")));
+        IntegrationConfig push = Fx.oneStep(receiver.address(), new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t")));
         StoredIntegration p = store.create(push, new ConfigChange(push.id(), push.entity(), push.product(), 1, "t",
                 clock.instant(), ConfigJson.fields(push), List.of()));
         assertEquals(IntegrationCode.INT_KIND_NOT_SUPPORTED, assertThrows(Callbacks.Refused.class,
@@ -396,7 +396,7 @@ class CallbackTest {
         assertTrue(ConfigCheck.check(c.withCallback(null), hosted).errors().stream()
                 .anyMatch(p -> p.code() == IntegrationCode.INT_CONFIG_CALLBACK_INVALID));
         IntegrationConfig push = Fx.oneStep(URI.create("https://api.example"),
-                new SignIn.BearerFixed(SecretRef.of("int/t"))).withCallback(c.callback());
+                new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t"))).withCallback(c.callback());
         assertTrue(ConfigCheck.check(push, hosted).errors().stream()
                 .anyMatch(p -> p.code() == IntegrationCode.INT_CONFIG_CALLBACK_INVALID));
         // The same safety rules: a metadata address is refused.

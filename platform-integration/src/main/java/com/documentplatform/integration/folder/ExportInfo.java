@@ -1,5 +1,6 @@
 package com.documentplatform.integration.folder;
 
+import com.documentplatform.integration.internal.SlotIds;
 import com.documentplatform.integration.json.internal.Json;
 
 import java.util.Map;

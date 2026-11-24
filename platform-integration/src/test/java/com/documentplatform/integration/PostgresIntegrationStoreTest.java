@@ -47,7 +47,7 @@ class PostgresIntegrationStoreTest {
         IntegrationConfigs configs = new IntegrationConfigs(new PostgresIntegrationStore(app), audit,
                 Installation.onPremises().withSignInNone(true), Clock.systemUTC());
 
-        IntegrationConfig c = JsonAndConfigTest.sample(new SignIn.BearerFixed(SecretRef.of("int/t1")));
+        IntegrationConfig c = JsonAndConfigTest.sample(new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t1")));
         StoredIntegration v1 = configs.create(c, "alice");
         assertEquals(1, v1.version());
         StoredIntegration v2 = configs.update(c.withSignIn(new SignIn.None()).withName("Renamed"), 1, "bob");
@@ -109,7 +109,7 @@ class PostgresIntegrationStoreTest {
         DataSource app = db.appUser();
         IntegrationConfigs configs = new IntegrationConfigs(new PostgresIntegrationStore(app), IntegrationAudit.NONE,
                 Installation.onPremises(), Clock.systemUTC());
-        IntegrationConfig c = JsonAndConfigTest.sample(new SignIn.BearerFixed(SecretRef.of("int/t1")));
+        IntegrationConfig c = JsonAndConfigTest.sample(new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t1")));
         configs.create(c, "alice");
         // Even the owner cannot change or delete a stored version, skip a version or delete an integration.
         assertThrows(IllegalStateException.class, () -> db.exec("update int_integration_version set changed_by = 'x'"));

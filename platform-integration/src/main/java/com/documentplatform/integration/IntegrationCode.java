@@ -318,6 +318,11 @@ public enum IntegrationCode implements com.documentplatform.errors.PlatformCode 
     /** Callback: no signing secret, a callback setting on another kind, or steps on a callback. */
     INT_CONFIG_CALLBACK_INVALID,
     /**
+     * A secret reference is not under the integration's own entity ({@code int/<entity UUID or slot ID>/<name>}, P044
+     * SEC-10): refused at save, and at use before the secret store is asked.
+     */
+    INT_CONFIG_SECRET_SCOPE,
+    /**
      * "Accepted, check later": not on the last step run once, a pointer that is not valid, no status path (or one
      * with a Location reference), no done or failed values, or the same value in two lists.
      */

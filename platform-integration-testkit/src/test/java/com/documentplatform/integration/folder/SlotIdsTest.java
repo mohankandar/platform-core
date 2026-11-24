@@ -1,5 +1,6 @@
 package com.documentplatform.integration.folder;
 
+import com.documentplatform.integration.internal.SlotIds;
 import com.documentplatform.identity.EntityUuid;
 import org.junit.jupiter.api.Test;
 

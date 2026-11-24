@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assumptions.assumeFalse;
  */
 class ProxySignInTunnelTest {
 
-    static final SecretRef PROXY_PASSWORD = SecretRef.of("int/proxy-password");
+    static final SecretRef PROXY_PASSWORD = SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/proxy-password");
 
     @TempDir
     static Path dir;
@@ -68,7 +68,7 @@ class ProxySignInTunnelTest {
         mock.reset();
         mock.expectBearer("tok-1");
         proxy = MockProxy.start().requireBasic("svc-proxy", "proxy-pass-1");
-        secrets.put(SecretRef.of("int/t"), "tok-1").put(PROXY_PASSWORD, "proxy-pass-1");
+        secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t"), "tok-1").put(PROXY_PASSWORD, "proxy-pass-1");
     }
 
     @org.junit.jupiter.api.AfterEach
@@ -82,7 +82,7 @@ class ProxySignInTunnelTest {
     }
 
     private static IntegrationConfig config() {
-        return Fx.twoStep(mock.addressByName(), new SignIn.BearerFixed(SecretRef.of("int/t")))
+        return Fx.twoStep(mock.addressByName(), new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t")))
                 .withEndpoint(new Endpoint(mock.addressByName(), true));
     }
 

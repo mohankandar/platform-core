@@ -112,12 +112,12 @@ class FolderConfigTest {
         IntegrationConfig steps = folder(FolderTarget.of("D:\\e"))
                 .withSteps(List.of(CallStep.of("s", HttpMethod.POST, "/x")));
         assertEquals(List.of(IntegrationCode.INT_CONFIG_STEPS_INVALID), codes(steps, onPrem, null));
-        IntegrationConfig signIn = folder(FolderTarget.of("D:\\e")).withSignIn(new SignIn.BearerFixed(SecretRef.of("x")));
+        IntegrationConfig signIn = folder(FolderTarget.of("D:\\e")).withSignIn(new SignIn.BearerFixed(com.documentplatform.integration.config.SecretScope.of(ENTITY, "x")));
         assertEquals(List.of(IntegrationCode.INT_CONFIG_INVALID), codes(signIn, onPrem, null));
         // A folder target on another kind.
         IntegrationConfig api = IntegrationConfig.apiPush(ENTITY, "PRODUCT_A", "x",
                         com.documentplatform.integration.config.Endpoint.of("https://api.example.test"),
-                        new SignIn.BearerFixed(SecretRef.of("x")))
+                        new SignIn.BearerFixed(com.documentplatform.integration.config.SecretScope.of(ENTITY, "x")))
                 .withSteps(List.of(CallStep.of("s", HttpMethod.POST, "/x"))).withFolder(FolderTarget.of("D:\\e"));
         assertEquals(List.of(IntegrationCode.INT_CONFIG_INVALID), codes(api, onPrem, null));
     }

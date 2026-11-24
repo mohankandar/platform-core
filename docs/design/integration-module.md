@@ -327,3 +327,19 @@ SHA-256 of the ID (`intake.LogRef.of`). The same ID always gives the same refere
 to a drop or item from its real name. The real name stays where the customer and the app see it: `problem.json` in the
 customer's own `_problem` (or `_quarantine`) folder, `WatchResult` / `PollResult`, `ScanEvents.Infected` and the
 handler's `Drop` / `PolledItem`, which the app must not log as they are either.
+
+## Fix (P044): secret references under the integration's own entity (SEC-10)
+
+- **The rule:** every secret reference in an integration's configuration is `int/<entity>/<name>`, where `<entity>` is
+  the integration's entity UUID or its slot ID (`config.SecretScope`). This covers sign-in passwords, keys, tokens and
+  client credentials (inside mutual TLS too), the callback signing secret, and a keystore's password.
+- **At save:** `ConfigCheck` reports every out-of-scope field with `INT_CONFIG_SECRET_SCOPE`. It runs for saves, for
+  profile checks (with placeholder references under the check's own entity), and in the engines at every use.
+- **At use:** the engines stop with that code (attempt, status check, callback, poll, health), and the credential
+  store refuses a keystore password reference out of scope. All of this happens before the `SecretResolver` is asked.
+- **Why it is enough:** entity slot IDs are unique across customers, so the rule keeps customers apart on a shared
+  service as well.
+- **The token cache:** references now differ per entity, so the cache, keyed by the sign-in settings, can no longer
+  hand one entity's token to another's identical configuration.
+- **Testkit:** `ProfileContract.ENTITY` is the entity `checkAgainstServer` completes a profile for, and
+  `ProfileMock.SECRET_REF` is under it.

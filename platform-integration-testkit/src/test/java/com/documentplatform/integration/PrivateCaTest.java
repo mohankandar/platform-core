@@ -117,14 +117,14 @@ class PrivateCaTest {
     private Fx fx(Installation inst) {
         Fx fx = new Fx(mock, inst);
         mock.reset();
-        fx.secrets.put(SecretRef.of("int/t"), "tok-1");
+        fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t"), "tok-1");
         mock.expectBearer("tok-1");
         return fx;
     }
 
     private static IntegrationConfig config(boolean byName) {
         return Fx.twoStep(byName ? mock.addressByName() : mock.address(),
-                new SignIn.BearerFixed(SecretRef.of("int/t")));
+                new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t")));
     }
 
     private static Installation onPrem() {

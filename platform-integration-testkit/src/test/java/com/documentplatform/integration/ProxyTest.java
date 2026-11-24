@@ -40,12 +40,12 @@ class ProxyTest {
 
     private Fx fx(ProxySettings p) {
         Fx fx = new Fx(mock, Installation.onPremises().withInternalAddresses(true).withProxy(p));
-        fx.secrets.put(SecretRef.of("int/t"), "tok-1").put(SecretRef.of("int/client"), "client-secret");
+        fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t"), "tok-1").put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), "client-secret");
         return fx;
     }
 
     private IntegrationConfig config(URI base, boolean useProxy) {
-        return Fx.twoStep(base, new SignIn.BearerFixed(SecretRef.of("int/t")))
+        return Fx.twoStep(base, new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t")))
                 .withEndpoint(new Endpoint(base, useProxy));
     }
 
@@ -54,7 +54,7 @@ class ProxyTest {
         Fx fx = fx(ProxySettings.of(proxy.host(), proxy.port()));
         mock.expectOAuth2().registerClient("app", "client-secret");
         IntegrationConfig c = config(mock.addressByName(), true).withSignIn(OAuth2ClientCredentials.secret(
-                mock.tokenAddressByName(), "app", SecretRef.of("int/client"), null));
+                mock.tokenAddressByName(), "app", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), null));
         AttemptResult r = fx.engine.attempt(Fx.stored(c), Fx.delivery(2));
         assertEquals(Outcome.SENT, r.outcome(), r.toString());
         // The token request and the three calls.

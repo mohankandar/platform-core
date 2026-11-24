@@ -86,7 +86,7 @@ class ProfileMockTest {
         CallEngine engine = new CallEngine(new Outbound(inst), secrets, Clock.systemUTC());
         Map<String, String> mapping = name.equals(ACME) ? Map.of("caseNumber", "case_number", "amount", "amount")
                 : Map.of("caseNo", "case_number");
-        IntegrationConfig c = p.complete(new IntegrationProfile.Completion(UUID.randomUUID(), "DEMO", "x",
+        IntegrationConfig c = p.complete(new IntegrationProfile.Completion(com.documentplatform.integration.testkit.ProfileContract.ENTITY, "DEMO", "x",
                 new Endpoint(mock.address(), true), mock.signIn(), mapping, Set.of(), Map.of("senderIdentity", "LOOKUP")
                 .entrySet().stream().filter(e -> p.settings().containsKey(e.getKey()))
                 .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue))));

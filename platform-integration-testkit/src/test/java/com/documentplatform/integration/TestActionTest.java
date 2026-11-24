@@ -29,10 +29,10 @@ class TestActionTest {
         fx = new Fx();
         audit = new ConfigVersioningTest.RecordingAudit();
         action = new TestAction(fx.engine, audit);
-        fx.secrets.put(SecretRef.of("int/client"), "client-secret");
+        fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), "client-secret");
         fx.mock.expectOAuth2().registerClient("app", "client-secret");
         config = Fx.twoStep(fx.mock.address(), OAuth2ClientCredentials.secret(fx.mock.tokenAddress(), "app",
-                SecretRef.of("int/client"), null));
+                SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), null));
     }
 
     @AfterEach
@@ -75,7 +75,7 @@ class TestActionTest {
 
         fx.mock.healthFailing(false).tokenMode(MockDestination.TokenMode.REFUSE_CLIENT);
         IntegrationConfig fresh = Fx.twoStep(fx.mock.address(), OAuth2ClientCredentials.secret(
-                fx.mock.tokenAddress(), "other-app", SecretRef.of("int/client"), null))
+                fx.mock.tokenAddress(), "other-app", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/client"), null))
                 .withTestMode(IntegrationConfig.TestMode.CHECK_ONLY);
         AttemptResult badSignIn = action.run(Fx.stored(fresh), "it");
         assertEquals(Outcome.SIGN_IN_FAILED, badSignIn.outcome());

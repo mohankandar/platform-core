@@ -64,7 +64,7 @@ class AddressGuardTest {
 
     @Test
     void theEngineRefusesBlockedAddressesWithoutConnecting() {
-        InMemorySecretResolver secrets = new InMemorySecretResolver().put(SecretRef.of("int/t"), "t");
+        InMemorySecretResolver secrets = new InMemorySecretResolver().put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t"), "t");
         // A resolver that maps a public-looking name to the metadata address, as DNS rebinding would.
         AddressGuard rebinding = new AddressGuard(true, host -> host.equals("files.example")
                 ? new InetAddress[]{InetAddress.getByName("169.254.169.254")}
@@ -72,14 +72,14 @@ class AddressGuardTest {
         Installation inst = Installation.onPremises().withInternalAddresses(true);
         try (CallEngine engine = new CallEngine(new Outbound(inst, rebinding), secrets, Clock.systemUTC())) {
             IntegrationConfig c = Fx.oneStep(URI.create("https://files.example"),
-                    new SignIn.BearerFixed(SecretRef.of("int/t")));
+                    new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t")));
             AttemptResult r = engine.attempt(Fx.stored(c), Fx.delivery(1));
             assertEquals(Outcome.CANT_CONNECT, r.outcome());
             assertEquals(IntegrationCode.INT_ADDRESS_BLOCKED, r.code());
 
             // The token address is guarded too.
             IntegrationConfig o = Fx.oneStep(URI.create("https://api.example"), OAuth2ClientCredentials.secret(
-                    URI.create("https://files.example/token"), "c", SecretRef.of("int/t"), null));
+                    URI.create("https://files.example/token"), "c", SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t"), null));
             AttemptResult t = engine.attempt(Fx.stored(o), Fx.delivery(1));
             assertEquals(Outcome.CANT_CONNECT, t.outcome());
             assertEquals(IntegrationCode.INT_ADDRESS_BLOCKED, t.code());
@@ -90,9 +90,9 @@ class AddressGuardTest {
     void hostedRefusesTheMockOnLoopback() {
         try (Fx fx = new Fx(com.documentplatform.integration.testkit.MockDestination.start(),
                 Installation.hostedService())) {
-            fx.secrets.put(SecretRef.of("int/t"), "t");
+            fx.secrets.put(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t"), "t");
             IntegrationConfig c = Fx.oneStep(URI.create("https://localhost:" + fx.mock.port()),
-                    new SignIn.BearerFixed(SecretRef.of("int/t")));
+                    new SignIn.BearerFixed(SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t")));
             AttemptResult r = fx.engine.attempt(Fx.stored(c), Fx.delivery(1));
             assertEquals(Outcome.NOT_CONFIGURED, r.outcome(), "the saved configuration is not valid when hosted");
             assertTrue(fx.mock.received().isEmpty());
@@ -102,11 +102,11 @@ class AddressGuardTest {
     @Test
     void savingRefusesLiteralMetadataAddressesAndPlainHttpWhereNotAllowed() {
         IntegrationConfig meta = Fx.oneStep(URI.create("https://169.254.169.254"), new SignIn.BearerFixed(
-                SecretRef.of("int/t")));
+                SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t")));
         assertTrue(ConfigCheck.check(meta, Installation.onPremises().withInternalAddresses(true)).errors().stream()
                 .anyMatch(p -> p.code() == IntegrationCode.INT_CONFIG_ADDRESS_INVALID));
         IntegrationConfig http = Fx.oneStep(URI.create("http://api.example"), new SignIn.BearerFixed(
-                SecretRef.of("int/t")));
+                SecretRef.of("int/5f0c8a52-2f7e-4c1b-9d6e-0a1b2c3d4e5f/t")));
         assertTrue(ConfigCheck.check(http, Installation.hostedService()).errors().stream()
                 .anyMatch(p -> p.code() == IntegrationCode.INT_CONFIG_ADDRESS_NOT_SECURE));
         assertTrue(ConfigCheck.check(http, Installation.onPremises().withInternalAddresses(true)).ok());
