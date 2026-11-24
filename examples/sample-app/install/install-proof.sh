@@ -163,11 +163,10 @@ smoke bundle "$(printf '%s\n' "$runtime_password" "$owner_password" "$secret_id"
 smoke intake
 
 step "9. Erasure, database restore, replay (docs/install/erase-log.md section 5)"
-PGUSER=app_owner PGPASSWORD="$owner_password" pg_dump -Fc -n app -f backup.dump sampledb
+pg_dump -Fc -f backup.dump sampledb
 smoke erase
 stop_app
-psql -v ON_ERROR_STOP=1 -q -d postgres -c "select pg_terminate_backend(pid) from pg_stat_activity where datname='sampledb'" >/dev/null
-psql -v ON_ERROR_STOP=1 -q -d sampledb -c "drop schema app cascade"
+psql -v ON_ERROR_STOP=1 -q -d postgres -c "drop database sampledb with (force)" -c "create database sampledb owner app_owner"
 pg_restore --exit-on-error -d sampledb backup.dump
 start_app
 as_monitoring "$base/actuator/health/eraseLog" | tee erase.json; echo
