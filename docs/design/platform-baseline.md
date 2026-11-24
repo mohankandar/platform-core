@@ -18,3 +18,14 @@
 - **The plain Java modules have no Spring dependency.** Only the `-spring` modules use it.
 - **Boot's split modules:** the health classes are in `spring-boot-health` (optional in every `-spring` module that has a
   health view; every app with Actuator has it), `DataSourceAutoConfiguration` is in `spring-boot-jdbc` (named by text only).
+
+## Install proof on CI (P047, P053)
+
+- **When:** every `-rc` tag (from `release.yml`), by hand, and monthly (`install-proof.yml`, the 3rd, 06:17 UTC) against the newest
+  published release, with the sample app and the guides of that release's own tag.
+- **Where:** `ubuntu-latest` and `windows-latest`, so the runner images' PostgreSQL changes are met as they come. Vault is the
+  version named in `install-proof-run.yml`; moving it is a change of that file.
+- **Rights:** the proof's jobs only read. Only the job that reports a failure has `issues: write`, and nothing else. The proof is a
+  file of its own (`install-proof-run.yml`) because a workflow that calls another must grant every right its jobs ask for, and the
+  release workflow grants no `issues: write`.
+- **A failure** is a red run and one open issue labelled `install-proof`; it gets a fix task (`docs/work/README.md`).

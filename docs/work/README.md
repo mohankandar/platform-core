@@ -86,3 +86,11 @@ Releases are tags `platform-core-vX.Y.Z` on main. Tags are never moved or reused
    - deploys to GitHub Packages;
    - creates the GitHub release from `docs/releases/platform-core-vX.Y.Z.md`.
 3. A second PR moves main to the next `-SNAPSHOT` (`mvn versions:set -DnewVersion=X.Y+1.0-SNAPSHOT`).
+
+## Monthly install proof
+
+On the 3rd of every month `.github/workflows/install-proof.yml` installs the sample app of the newest published release (never
+a candidate or a snapshot) on Linux and Windows, with the same steps as for a release candidate, so that a change of the runner
+images, PostgreSQL or Vault is noticed early. A failed run opens one issue labelled `install-proof`, or comments on the open one.
+**A red run or an `install-proof` issue gets a fix task**; the issue is closed when the proof passes again. By hand: start the
+workflow with a version, or without one for the newest release.
