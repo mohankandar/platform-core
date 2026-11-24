@@ -60,7 +60,8 @@ a tax ID or a phone number): the log refuses the obvious forms (`ERASE_ENTRY_VAL
 The schema step creates the table `erl_position` (where the database stands in the log), like the other platform
 tables:
 
-- Flyway location `classpath:db/platform/erase-log`, history table `erl_schema_history`, run as the schema owner.
+- Flyway location `classpath:db/platform/erase-log`, history table `erl_schema_history`, run as the schema owner. Set `baselineOnMigrate=true` and `baselineVersion=0` for the run when
+  the schema already holds other tables; Flyway refuses a schema it has no history for otherwise.
 - Grant the app's everyday database user: `SELECT, INSERT, UPDATE` on `erl_position`, `SELECT` on
   `erl_schema_version`. No DELETE, no DDL.
 

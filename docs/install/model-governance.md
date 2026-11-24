@@ -15,7 +15,8 @@ only as its fingerprint (a SHA-256 hash), and free-text notes are refused when t
 The tables are created only by the app's schema step, never at app startup.
 
 - **Schema step:** a separate Flyway run with location `classpath:db/platform/modelgov` and history table
-  `mg_schema_history`, run as the schema owner, in the same database schema the app uses. Files today:
+  `mg_schema_history`, run as the schema owner, in the same database schema the app uses. Set `baselineOnMigrate=true` and `baselineVersion=0` for the run when
+  the schema already holds other tables; Flyway refuses a schema it has no history for otherwise. Files today:
   `V1__modelgov.sql` (register, validations, approvals, live versions), `V2__modelgov_monitoring.sql`
   (monitoring, re-validation) and `V3__modelgov_purge_guard.sql` (the retention purge as the schema owner, since
   0.6.0) and

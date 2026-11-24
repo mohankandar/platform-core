@@ -61,7 +61,8 @@ every problem at once, for example `platform.outbound.installation is required: 
 
 The integration tables are created only by a schema step, never at startup: a separate Flyway run with location
 `classpath:db/platform/integration` and history table `int_schema_history`, run as the schema owner in the app's
-database schema (schema version 3: `V1__integration.sql`, `V2__credentials_callbacks.sql`, `V3__integration_search_path.sql`). The app's
+database schema (schema version 3: `V1__integration.sql`, `V2__credentials_callbacks.sql`, `V3__integration_search_path.sql`). When the schema already holds other tables, set
+`baselineOnMigrate=true` and `baselineVersion=0` for the run; Flyway refuses a schema it has no history for otherwise. The app's
 database user needs only these rights on them:
 
 | Table | Rights |
