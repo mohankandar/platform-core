@@ -3,8 +3,8 @@ package com.documentplatform.monitoring.spring;
 import com.documentplatform.monitoring.CheckResult;
 import com.documentplatform.monitoring.CheckState;
 import com.documentplatform.monitoring.DependencyStatus;
-import org.springframework.boot.actuate.health.Health;
-import org.springframework.boot.actuate.health.HealthIndicator;
+import org.springframework.boot.health.contributor.Health;
+import org.springframework.boot.health.contributor.HealthIndicator;
 
 import java.util.LinkedHashMap;
 import java.util.List;

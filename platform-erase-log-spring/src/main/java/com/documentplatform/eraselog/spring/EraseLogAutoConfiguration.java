@@ -41,7 +41,7 @@ import java.lang.System.Logger.Level;
  *
  * <p>Every bean backs off when the app defines its own (for example the in-memory store and position in tests).
  */
-@AutoConfiguration(afterName = {"org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration",
+@AutoConfiguration(afterName = {"org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration",
         "com.documentplatform.crypto.spring.CryptoAutoConfiguration"})
 @ConditionalOnProperty(prefix = EraseLogProperties.PREFIX, name = "enabled", havingValue = "true",
         matchIfMissing = true)
@@ -168,7 +168,7 @@ public class EraseLogAutoConfiguration {
     }
 
     @Configuration(proxyBeanMethods = false)
-    @ConditionalOnClass(name = "org.springframework.boot.actuate.health.HealthIndicator")
+    @ConditionalOnClass(name = "org.springframework.boot.health.contributor.HealthIndicator")
     static class Health {
 
         @Bean(name = "eraseLogHealthIndicator")

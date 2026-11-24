@@ -33,14 +33,14 @@ import java.util.function.Supplier;
  * the informational {@code dependencies} contributor; with
  * Micrometer: the metrics; in a servlet app: the request filter. Every bean backs off for the app's own.
  */
-@AutoConfiguration(afterName = {"org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration",
+@AutoConfiguration(afterName = {"org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration",
         "com.documentplatform.licensing.spring.LicensingAutoConfiguration",
         "com.documentplatform.crypto.spring.CryptoAutoConfiguration",
         "com.documentplatform.notifications.spring.NotificationsAutoConfiguration",
         "com.documentplatform.identity.spring.IdentityIssuerFetchAutoConfiguration",
         "com.documentplatform.identity.spring.IdentityLoginConnectionStoreAutoConfiguration",
         "com.documentplatform.integration.spring.IntegrationAutoConfiguration"},
-        beforeName = "org.springframework.boot.actuate.autoconfigure.availability.AvailabilityHealthContributorAutoConfiguration")
+        beforeName = "org.springframework.boot.health.autoconfigure.application.AvailabilityHealthContributorAutoConfiguration")
 @ConditionalOnProperty(prefix = MonitoringProperties.PREFIX, name = "enabled", havingValue = "true",
         matchIfMissing = true)
 @EnableConfigurationProperties(MonitoringProperties.class)
@@ -87,7 +87,7 @@ public class MonitoringAutoConfiguration {
 
     /** Readiness and the dependency list, with Actuator. */
     @Configuration(proxyBeanMethods = false)
-    @ConditionalOnClass(name = "org.springframework.boot.actuate.health.HealthIndicator")
+    @ConditionalOnClass(name = "org.springframework.boot.health.contributor.HealthIndicator")
     static class Health {
 
         /**
@@ -96,7 +96,7 @@ public class MonitoringAutoConfiguration {
          */
         @Bean
         @ConditionalOnMissingBean(name = "readinessStateHealthIndicator")
-        org.springframework.boot.actuate.health.HealthIndicator readinessStateHealthIndicator(
+        org.springframework.boot.health.contributor.HealthIndicator readinessStateHealthIndicator(
                 DependencyStatus status, ObjectProvider<org.springframework.boot.availability.ApplicationAvailability>
                         availability) {
             return DependencyHealth.readiness(status, availability.getIfAvailable());
@@ -104,7 +104,7 @@ public class MonitoringAutoConfiguration {
 
         @Bean
         @ConditionalOnMissingBean(name = "dependenciesHealthIndicator")
-        org.springframework.boot.actuate.health.HealthIndicator dependenciesHealthIndicator(DependencyStatus status) {
+        org.springframework.boot.health.contributor.HealthIndicator dependenciesHealthIndicator(DependencyStatus status) {
             return DependencyHealth.all(status);
         }
     }

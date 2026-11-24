@@ -1,5 +1,7 @@
 # Model governance — install guide for IT and the model-risk team
 
+**Needs:** Spring Boot 4.2 and Java 21 in the app (`docs/design/platform-baseline.md`).
+
 The app's AI features run only models that passed a recorded validation and were approved by your **Model
 approver**. This page says what that check does, who approves, what a refusal at start means and how to fix it, how
 re-validation and monitoring work, and how to export the documentation pack for your model-risk team. Everything is

@@ -11,12 +11,13 @@ import com.documentplatform.licensing.jdbc.PostgresLastSeenStore;
 import com.documentplatform.licensing.jdbc.PostgresLicenceStore;
 import com.documentplatform.licensing.jdbc.PostgresUsageLedger;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.actuate.autoconfigure.health.HealthContributorAutoConfiguration;
-import org.springframework.boot.actuate.autoconfigure.health.HealthEndpointAutoConfiguration;
-import org.springframework.boot.actuate.health.HealthComponent;
-import org.springframework.boot.actuate.health.HealthEndpoint;
-import org.springframework.boot.actuate.health.HttpCodeStatusMapper;
-import org.springframework.boot.actuate.health.Status;
+import org.springframework.boot.health.autoconfigure.contributor.HealthContributorAutoConfiguration;
+import org.springframework.boot.health.autoconfigure.registry.HealthContributorRegistryAutoConfiguration;
+import org.springframework.boot.health.autoconfigure.actuate.endpoint.HealthEndpointAutoConfiguration;
+import org.springframework.boot.health.actuate.endpoint.HealthDescriptor;
+import org.springframework.boot.health.actuate.endpoint.HealthEndpoint;
+import org.springframework.boot.health.actuate.endpoint.HttpCodeStatusMapper;
+import org.springframework.boot.health.contributor.Status;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -45,7 +46,7 @@ class LicensingActuatorHealthTest {
     private ApplicationContextRunner app(DataSource ds, Instant now) {
         return new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(LicensingAutoConfiguration.class,
-                        HealthContributorAutoConfiguration.class, HealthEndpointAutoConfiguration.class))
+                        HealthContributorRegistryAutoConfiguration.class, HealthContributorAutoConfiguration.class,                        HealthEndpointAutoConfiguration.class))
                 .withBean(DataSource.class, () -> ds)
                 .withBean(LicensingClock.class, () -> new LicensingClock(Clock.fixed(now, ZoneOffset.UTC)))
                 .withBean(com.documentplatform.licensing.LicenceBuild.class, licences::licenceBuild)
@@ -67,8 +68,8 @@ class LicensingActuatorHealthTest {
         assertNull(ctx.getStartupFailure());
         HealthEndpoint endpoint = ctx.getBean(HealthEndpoint.class);
         HttpCodeStatusMapper http = ctx.getBean(HttpCodeStatusMapper.class);
-        HealthComponent overall = endpoint.health();
-        HealthComponent licensing = endpoint.healthForPath("licensing");
+        HealthDescriptor overall = endpoint.health();
+        HealthDescriptor licensing = endpoint.healthForPath("licensing");
         return new Seen(overall.getStatus(), http.getStatusCode(overall.getStatus()), licensing.getStatus(),
                 http.getStatusCode(licensing.getStatus()));
     }

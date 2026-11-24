@@ -44,7 +44,7 @@ import java.util.List;
  * <p>Every bean backs off when the app defines its own of the same type (for example in-memory stores in tests).
  * {@code platform.licensing.enabled=false} switches the module off.
  */
-@AutoConfiguration(afterName = "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration")
+@AutoConfiguration(afterName = "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration")
 @ConditionalOnProperty(prefix = LicensingProperties.PREFIX, name = "enabled", havingValue = "true", matchIfMissing = true)
 @EnableConfigurationProperties(LicensingProperties.class)
 public class LicensingAutoConfiguration {
@@ -128,7 +128,7 @@ public class LicensingAutoConfiguration {
     }
 
     @Configuration(proxyBeanMethods = false)
-    @ConditionalOnClass(name = "org.springframework.boot.actuate.health.HealthIndicator")
+    @ConditionalOnClass(name = "org.springframework.boot.health.contributor.HealthIndicator")
     static class HealthConfiguration {
         @Bean
         @ConditionalOnMissingBean

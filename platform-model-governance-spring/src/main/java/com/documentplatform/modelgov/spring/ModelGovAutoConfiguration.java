@@ -36,7 +36,7 @@ import java.time.Clock;
  * <p>At startup the settings are checked (every problem listed) and, for the Postgres store, the {@code mg_} tables
  * ({@link ModelGovSchema#verify}; never created). Every bean backs off for the app's own.
  */
-@AutoConfiguration(afterName = "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration")
+@AutoConfiguration(afterName = "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration")
 @ConditionalOnProperty(prefix = ModelGovProperties.PREFIX, name = "enabled", havingValue = "true",
         matchIfMissing = true)
 @EnableConfigurationProperties(ModelGovProperties.class)

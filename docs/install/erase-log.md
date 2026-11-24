@@ -1,5 +1,7 @@
 # Erase log — install guide for IT
 
+**Needs:** Spring Boot 4.2 and Java 21 in the app (`docs/design/platform-baseline.md`).
+
 The app removes erased data from its live database at once. Backups are kept only for the backup retention period.
 If a backup of the database is ever restored, the erasures made after that backup must be applied again before the
 app takes any work. The **erase log** makes this possible: one line per erasure (ids only, never the data), kept

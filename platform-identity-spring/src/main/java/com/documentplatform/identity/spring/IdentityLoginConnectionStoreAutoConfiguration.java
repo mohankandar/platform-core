@@ -22,7 +22,7 @@ import javax.sql.DataSource;
  * (from platform-licensing-spring's licence service when the app has it; else never, so http issuers are refused).
  * Both back off for app-defined beans.
  */
-@AutoConfiguration(afterName = {"org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration",
+@AutoConfiguration(afterName = {"org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration",
         "com.documentplatform.licensing.spring.LicensingAutoConfiguration"})
 @ConditionalOnClass(name = "com.documentplatform.identity.jdbc.PostgresLoginConnectionStore")
 public class IdentityLoginConnectionStoreAutoConfiguration {

@@ -38,11 +38,11 @@ import com.documentplatform.notifications.secret.SecretRef;
 import com.documentplatform.notifications.secret.SecretResolver;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.springframework.boot.actuate.health.CompositeHealthContributor;
-import org.springframework.boot.actuate.health.Health;
-import org.springframework.boot.actuate.health.HealthIndicator;
-import org.springframework.boot.actuate.health.NamedContributor;
-import org.springframework.boot.actuate.health.Status;
+import org.springframework.boot.health.contributor.CompositeHealthContributor;
+import org.springframework.boot.health.contributor.Health;
+import org.springframework.boot.health.contributor.HealthIndicator;
+import org.springframework.boot.health.contributor.HealthContributors;
+import org.springframework.boot.health.contributor.Status;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -187,11 +187,11 @@ class IntegrationWiringTest {
                     // Health: one contributor per enabled integration, outcome and code only.
                     CompositeHealthContributor health = (CompositeHealthContributor) ctx.getBean(
                             "integrationsHealthContributor");
-                    List<NamedContributor<?>> all = new ArrayList<>();
+                    List<HealthContributors.Entry> all = new ArrayList<>();
                     health.forEach(all::add);
                     assertEquals(1, all.size());
-                    assertEquals(saved.id().toString(), all.get(0).getName());
-                    Health h = ((HealthIndicator) all.get(0).getContributor()).health();
+                    assertEquals(saved.id().toString(), all.get(0).name());
+                    Health h = ((HealthIndicator) all.get(0).contributor()).health();
                     assertEquals(Status.UP, h.getStatus());
                     assertEquals(Map.of("outcome", "SENT", "code", "INT_HEALTHY"), h.getDetails());
                     folder.unreachable(true);
@@ -202,7 +202,7 @@ class IntegrationWiringTest {
                     assertEquals(Status.DOWN, down.getStatus(), "a new version is checked again");
                     assertEquals(Map.of("outcome", "CANT_CONNECT", "code", "INT_FOLDER_UNREACHABLE"), down.getDetails());
                     configs.setEnabled(saved.id(), false, v2.version(), "it-admin");
-                    List<NamedContributor<?>> none = new ArrayList<>();
+                    List<HealthContributors.Entry> none = new ArrayList<>();
                     health.forEach(none::add);
                     assertEquals(List.of(), none, "switched off: not checked");
                     assertNull(health.getContributor(saved.id().toString()));
@@ -356,7 +356,7 @@ class IntegrationWiringTest {
     @Test
     void withoutActuatorThereIsNoHealthContributor() {
         app(new InMemorySecretResolver(), new Audit(), "platform.outbound.installation=ON_PREMISES")
-                .withClassLoader(new FilteredClassLoader("org.springframework.boot.actuate"))
+                .withClassLoader(new FilteredClassLoader("org.springframework.boot.health"))
                 .run(ctx -> {
                     assertNull(ctx.getStartupFailure(), () -> String.valueOf(ctx.getStartupFailure()));
                     assertFalse(ctx.containsBean("integrationsHealthContributor"));

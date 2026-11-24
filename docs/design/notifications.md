@@ -178,7 +178,7 @@ apps; each app's real catalogue lives in that app.
     not get the app restarted or taken out of a load balancer. Confirmed (B2).
 14. **Missing app beans give a specific startup message.** `SecretResolver` is required only when a channel is
     configured. The table check runs only when the module's Postgres stores are used.
-15. **Built against Spring Boot 3.3.2**, the lowest line the products run; the suite also passes on 3.5.16.
+15. **Built against Spring Boot 3.3.2** at the time; since P046 Spring Boot 4.2 (`platform-baseline.md`).
     `spring-boot-autoconfigure` is compile scope and `spring-boot-actuator` is optional. The app's own Boot version
     wins.
 16. **New dependencies, all Apache-2.0:** `spring-boot-autoconfigure` (compile), `spring-boot-actuator` (optional),

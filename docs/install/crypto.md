@@ -1,5 +1,7 @@
 # Encryption and keys — install guide for IT
 
+**Needs:** Spring Boot 4.2 and Java 21 in the app (`docs/design/platform-baseline.md`).
+
 The app encrypts sensitive case field values (and, in apps that also encrypt documents, the documents) with keys that stay in your key service,
 HashiCorp Vault (Transit engine). Each customer has its own two keys there; nothing secret is ever stored in the
 app's database, files or logs. This page lists what the app needs (module `platform-crypto-spring`).

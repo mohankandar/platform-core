@@ -1,5 +1,7 @@
 # Monitoring — install guide for IT
 
+**Needs:** Spring Boot 4.2 and Java 21 in the app (`docs/design/platform-baseline.md`).
+
 The app checks the things it depends on (its database, the key service, your login system, the licence, mail,
 folders, other services, the integrations) on its own, all the time. This page says what each check means, why the
 app may refuse to start, where IT sees the list, how to send support a diagnostic bundle, and which health addresses
