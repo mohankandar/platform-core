@@ -14,7 +14,7 @@ name only; a check past its time limit is DOWN with `MON_CHECK_TIMEOUT`. Nothing
 | Built-in check | Tells apart | Required at start-up |
 |---|---|---|
 | `DatabaseCheck` | can't reach (`MON_DB_UNREACHABLE`); login refused (`MON_DB_LOGIN_REFUSED`, SQL state 28…); each platform schema in use at its version (the module's own `…Schema.verify`: `IDN_TABLES_MISSING`, `IDN_VERSION_OLDER`, …) | yes |
-| `KeyServiceCheck` | from `KeyService.health()`: can't reach, login refused, a customer key missing, permission denied, key disabled (`CRYPTO_*`) | when the product's `customerKeys` is `required` |
+| `KeyServiceCheck` | from `KeyService.health()` and, with the app's `CustomerId`, that customer's two keys in use (P047): can't reach, login refused, a customer key missing, permission denied, key disabled (`CRYPTO_*`) | when the product's `customerKeys` is `required` |
 | `SecretStoreCheck` | each configured reference resolves (`MON_SECRET_MISSING`, `MON_SECRET_UNAVAILABLE`); names only | no |
 | `LoginSystemCheck` | the customer's ACTIVE connection's discovery and keys, through `OutboundIssuerFetch` (`IDN_TEST_*`); no connection is HAVING_PROBLEMS | no |
 | `LicenceCheck` | missing, signature invalid, another customer's (`LICENCE_*`), not started, expiring (days), in grace, expired (`MON_LICENCE_*`); read only, never enforces | no |
