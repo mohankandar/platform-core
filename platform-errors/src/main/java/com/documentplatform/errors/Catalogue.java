@@ -138,7 +138,7 @@ public final class Catalogue {
             return dir.substring(dir.lastIndexOf('/') + 1);
         }
         String file = path.substring(path.lastIndexOf('/') + 1);
-        return file.replaceAll("-\\d+\\.\\d+\\.\\d+(-SNAPSHOT)?\\.jar$", "").replaceAll("\\.jar$", "");
+        return file.replaceAll("-\\d+\\.\\d+\\.\\d+(-[A-Za-z][A-Za-z0-9.]*)?\\.jar$", "").replaceAll("\\.jar$", "");
     }
 
     private static String cell(String s) {
