@@ -134,7 +134,7 @@ public final class FieldSchema {
             }
         } catch (SQLException e) {
             throw new FieldSchemaException(FLD_CHECK_FAILED, "Field tables could not be checked: the database "
-                    + "refused the check (SQL state " + e.getSQLState() + ").", e);
+                    + "could not be reached or refused the check (SQL state " + e.getSQLState() + ").", e);
         }
     }
 

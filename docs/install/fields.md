@@ -13,8 +13,8 @@ Admin marks sensitive) are never stored readably: only encrypted, with keys held
 The tables are created only by the app's schema step, never at app startup.
 
 - **Schema step:** a separate Flyway run with location `classpath:db/platform/fields` and history table
-  `fld_schema_history`, run as the schema owner, in the same database schema the app uses. One file today:
-  `V1__fields.sql`.
+  `fld_schema_history`, run as the schema owner, in the same database schema the app uses. Files today:
+  `V1__fields.sql`, `V2__fields_search_path.sql` (since 0.7.0).
 - **Tables:** `fld_schema_version`, `fld_field_definition`, `fld_field_definition_history`, `fld_field_extension`,
   `fld_record` (one row per record of the app that has field values), `fld_value` (one row per value).
 - **Runtime user:** data rights only:

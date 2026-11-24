@@ -116,7 +116,7 @@ public final class NotificationSchema {
             }
         } catch (SQLException e) {
             throw new NotificationSchemaException(CHECK_FAILED, "Notifications tables could not be checked: the "
-                    + "database refused the check (SQL state " + e.getSQLState() + ").", e);
+                    + "database could not be reached or refused the check (SQL state " + e.getSQLState() + ").", e);
         }
     }
 

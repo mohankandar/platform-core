@@ -13,8 +13,6 @@ on:
       version:
         type: string
         required: true
-  push:
-    branches: [release/install-proof]
 
 permissions:
   contents: read

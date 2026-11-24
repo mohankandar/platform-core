@@ -98,7 +98,7 @@ public final class EraseLogSchema {
             require(c, "erl_position", RIGHTS);
         } catch (SQLException e) {
             throw new EraseLogSchemaException(ERL_CHECK_FAILED, "Erase log table could not be checked: the database "
-                    + "refused the check (SQL state " + e.getSQLState() + ").");
+                    + "could not be reached or refused the check (SQL state " + e.getSQLState() + ").");
         }
     }
 

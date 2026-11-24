@@ -118,7 +118,7 @@ public final class LicensingSchema {
             }
         } catch (SQLException e) {
             throw new LicensingSchemaException(LIC_CHECK_FAILED, "Licensing tables could not be checked: the database "
-                    + "refused the check (SQL state " + e.getSQLState() + ").", e);
+                    + "could not be reached or refused the check (SQL state " + e.getSQLState() + ").", e);
         }
     }
 

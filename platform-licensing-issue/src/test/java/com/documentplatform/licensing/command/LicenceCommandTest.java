@@ -243,7 +243,7 @@ class LicenceCommandTest {
         platform.setLevel(java.util.logging.Level.ALL); // and everything the platform logs
         try {
             assertEquals(1, runWith(db.jdbcUrl(), wrong, "status"));
-            assertTrue(err().startsWith("Licensing tables could not be checked: the database refused the check "
+            assertTrue(err().startsWith("Licensing tables could not be checked: the database could not be reached or refused the check "
                     + "(SQL state 28P01)."), err());
             outputs.add(out() + err());
 

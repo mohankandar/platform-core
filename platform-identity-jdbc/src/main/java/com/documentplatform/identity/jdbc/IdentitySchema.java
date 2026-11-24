@@ -117,7 +117,7 @@ public final class IdentitySchema {
             }
         } catch (SQLException e) {
             throw new IdentitySchemaException(IDN_CHECK_FAILED, "Identity tables could not be checked: the database "
-                    + "refused the check (SQL state " + e.getSQLState() + ").", e);
+                    + "could not be reached or refused the check (SQL state " + e.getSQLState() + ").", e);
         }
     }
 

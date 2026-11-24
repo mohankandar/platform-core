@@ -38,3 +38,9 @@ test (`platform-error-catalogue` `PublicApiTest`):
   notifications module for history; moving them is a package rename and its own task.
 - The licence-issuing side is our own tool: it is the module `platform-licensing-issue`, which is not in the BOM and is
   never on a customer's classpath.
+
+## Since 1.0.0: recorded signatures (P047)
+
+`docs/api/public-api-1.txt` holds every public type outside `.internal` packages of every published module, with its public and
+protected members, as of 1.0.0 and what was added since. `StableApiTest` (platform-app-check) fails the build when a line is gone
+or changed, or when an abstract method is added to a recorded type. New API is added with `-Dplatform.api.write=true`.

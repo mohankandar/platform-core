@@ -1,5 +1,6 @@
 package com.documentplatform.integration.spring;
 
+import com.documentplatform.errors.HasPlatformCode;
 import org.springframework.boot.diagnostics.FailureAnalysis;
 import org.springframework.boot.diagnostics.FailureAnalyzer;
 
@@ -13,6 +14,12 @@ final class IntegrationFailureAnalyzer implements FailureAnalyzer {
                 return new FailureAnalysis(e.getMessage(), "Correct the platform.integration settings listed above in "
                         + "the install config (docs/install/integration.md), or give the app the beans named above, "
                         + "and start the app again.", e);
+            }
+            if (t instanceof HasPlatformCode e && e.platformCode().code().startsWith("INT_")) { // tables not ready (P047)
+                String code = e.platformCode().code();
+                String message = String.valueOf(t.getMessage());
+                return new FailureAnalysis(message.startsWith(code) ? message : code + ": " + message,
+                        e.platformCode().fix(), t);
             }
         }
         return null;

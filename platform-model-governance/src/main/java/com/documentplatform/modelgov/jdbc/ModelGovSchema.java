@@ -130,7 +130,7 @@ public final class ModelGovSchema {
             requireExecute(c);
         } catch (SQLException e) {
             throw new ModelGovSchemaException(MG_CHECK_FAILED, "Model-governance tables could not be checked: the database "
-                    + "refused the check (SQL state " + e.getSQLState() + ").", e);
+                    + "could not be reached or refused the check (SQL state " + e.getSQLState() + ").", e);
         }
     }
 
