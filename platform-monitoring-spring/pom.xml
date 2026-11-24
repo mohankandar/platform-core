@@ -34,19 +34,19 @@
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-core</artifactId>
-            <version>1.13.2</version>
+            <version>1.18.0</version>
             <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>jakarta.servlet</groupId>
             <artifactId>jakarta.servlet-api</artifactId>
-            <version>6.0.0</version>
+            <version>6.1.0</version>
             <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
-            <version>2.0.13</version>
+            <version>2.0.20</version>
             <optional>true</optional>
         </dependency>
         <dependency>
@@ -151,7 +151,7 @@
             <!-- A real MDC for the request filter test (Spring Boot apps have Logback). -->
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
-            <version>1.5.18</version>
+            <version>1.6.8</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -169,7 +169,7 @@
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-test</artifactId>
-            <version>6.1.11</version>
+            <version>6.1.21</version>
             <scope>test</scope>
         </dependency>
         <dependency>
