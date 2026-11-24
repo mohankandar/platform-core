@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.documentplatform.platform</groupId>
         <artifactId>platform-core</artifactId>
-        <version>0.8.1</version>
+        <version>0.9.0-SNAPSHOT</version>
     </parent>
     <artifactId>platform-identity-jdbc</artifactId>
     <description>Identity storage: the idn_ tables (customers, entity slots, login connections and their history, group
