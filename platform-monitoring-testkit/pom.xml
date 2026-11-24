@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.documentplatform.platform</groupId>
         <artifactId>platform-core</artifactId>
-        <version>0.9.0-SNAPSHOT</version>
+        <version>0.8.1</version>
     </parent>
     <artifactId>platform-monitoring-testkit</artifactId>
     <description>Test support for monitoring: SwitchableCheck (a check whose state a test sets, or that throws or
