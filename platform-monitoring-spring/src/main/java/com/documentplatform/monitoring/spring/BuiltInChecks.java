@@ -106,7 +106,7 @@ final class BuiltInChecks {
         static void add(List<DependencyCheck> out, ListableBeanFactory beans, MonitoringProperties p) {
             com.documentplatform.crypto.KeyService keys = unique(beans, com.documentplatform.crypto.KeyService.class);
             if (keys != null) out.add(new com.documentplatform.monitoring.checks.KeyServiceCheck(keys,
-                    p.isCustomerKeysRequired()));
+                    unique(beans, com.documentplatform.crypto.CustomerId.class), p.isCustomerKeysRequired()));
         }
     }
 

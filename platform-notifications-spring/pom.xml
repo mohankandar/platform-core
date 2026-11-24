@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.documentplatform.platform</groupId>
         <artifactId>platform-core</artifactId>
-        <version>1.0.0-rc.1</version>
+        <version>1.0.0-rc.2</version>
     </parent>
     <artifactId>platform-notifications-spring</artifactId>
     <description>Spring Boot wiring for platform-notifications: auto-configuration of the Notifier from the app's

@@ -6381,6 +6381,7 @@ com.documentplatform.monitoring.checks.KeyServiceCheck method boolean requiredAt
 com.documentplatform.monitoring.checks.KeyServiceCheck method com.documentplatform.monitoring.Verdict check[]
 com.documentplatform.monitoring.checks.KeyServiceCheck method java.lang.String name[]
 com.documentplatform.monitoring.checks.KeyServiceCheck new [com.documentplatform.crypto.KeyService, boolean]
+com.documentplatform.monitoring.checks.KeyServiceCheck new [com.documentplatform.crypto.KeyService, com.documentplatform.crypto.CustomerId, boolean]
 com.documentplatform.monitoring.checks.KeyServiceCheck type class final extends java.lang.Object implements [com.documentplatform.monitoring.DependencyCheck]
 com.documentplatform.monitoring.checks.LicenceCheck method com.documentplatform.monitoring.Verdict check[]
 com.documentplatform.monitoring.checks.LicenceCheck method java.lang.String name[]

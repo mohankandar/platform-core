@@ -193,8 +193,9 @@ stop_app
 
 step "11. Start-up refusals"
 refused() { # code
-  if timeout 180 java -jar "$(native "$APP_JAR")" > refused.log 2>&1; then fail "the app started; $1 expected"; fi
-  grep -n "APPLICATION FAILED TO START" refused.log; grep -nE "$1" refused.log | head -3 || { grep -vE '^[[:space:]]*(at |[.][.][.])' refused.log | tail -40 | cut -c1-600; fail "no $1 in the refusal"; }
+  local rc=0; timeout 180 java -jar "$(native "$APP_JAR")" > refused.log 2>&1 || rc=$?
+  [ "$rc" != 0 ] && [ "$rc" != 124 ] || fail "the app started; $1 expected"
+  grep -n "APPLICATION FAILED TO START" refused.log || fail "no failure report"; grep -nE "$1" refused.log | head -3 || { grep -vE '^[[:space:]]*(at |[.][.][.])' refused.log | tail -40 | cut -c1-600; fail "no $1 in the refusal"; }
 }
 hex="$(vault list -format=json transit/keys | jq -r '.[]' | grep -v -- '-fp$' | head -1)"
 eval "$DB_STOP"; refused "(IDN|LIC|ERL|INT|MG)_CHECK_FAILED|MON_DB_UNREACHABLE"; eval "$DB_START"

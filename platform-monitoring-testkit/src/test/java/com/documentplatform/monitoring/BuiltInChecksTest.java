@@ -168,6 +168,19 @@ class BuiltInChecksTest {
         }
     }
 
+    /** P047: the customer's own keys are looked at, not the key service only. */
+    @Test
+    void customerKeysMissingOrUnusable() {
+        com.documentplatform.crypto.CustomerId customer = com.documentplatform.crypto.CustomerId.fromTenantId("TEN-TEST-0001");
+        InMemoryKeyService keys = new InMemoryKeyService();
+        assertResult(CheckState.DOWN, CryptoError.CRYPTO_KEY_MISSING, run(new KeyServiceCheck(keys, customer, true)));
+        assertResult(CheckState.WORKING, MonitoringCode.MON_WORKING, run(new KeyServiceCheck(keys, customer, false)));
+        keys.createKeys(customer);
+        assertResult(CheckState.WORKING, MonitoringCode.MON_WORKING, run(new KeyServiceCheck(keys, customer, true)));
+        keys.denied(true);
+        assertEquals(CheckState.DOWN, run(new KeyServiceCheck(keys, customer, false)).state());
+    }
+
     @Test
     void secretStore() {
         InMemorySecretResolver secrets = new InMemorySecretResolver();
