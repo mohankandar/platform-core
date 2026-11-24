@@ -23,9 +23,15 @@ public record ModelGovSettings(Set<String> approverRoles, Set<String> forbiddenR
             ModelUse.Materiality.LOW, Period.ofDays(365));
 
     public ModelGovSettings {
-        approverRoles = Set.copyOf(Objects.requireNonNull(approverRoles, "approverRoles"));
-        forbiddenRoles = Set.copyOf(Objects.requireNonNull(forbiddenRoles, "forbiddenRoles"));
+        // P045, SEC-32: role names compared as one form (trimmed, lower case), blanks refused, and separation of
+        // duties needs at least one forbidden role in the core too, not only in the Spring settings.
+        approverRoles = normalised(Objects.requireNonNull(approverRoles, "approverRoles"), "approver");
+        forbiddenRoles = normalised(Objects.requireNonNull(forbiddenRoles, "forbiddenRoles"), "forbidden");
         if (approverRoles.isEmpty()) throw new IllegalArgumentException("at least one approver role is needed");
+        if (forbiddenRoles.isEmpty()) {
+            throw new IllegalArgumentException("at least one forbidden role is needed (the role an approver may never "
+                    + "also hold)");
+        }
         for (String r : approverRoles) {
             if (forbiddenRoles.contains(r)) throw new IllegalArgumentException("a role cannot be both approver and forbidden");
         }
@@ -37,5 +43,34 @@ public record ModelGovSettings(Set<String> approverRoles, Set<String> forbiddenR
 
     public static ModelGovSettings of(Set<String> approverRoles, Set<String> forbiddenRoles) {
         return new ModelGovSettings(approverRoles, forbiddenRoles, DEFAULT_REVIEW);
+    }
+
+    /** Whether {@code roles} hold an approver role (compared trimmed and in lower case). */
+    public boolean holdsApproverRole(Set<String> roles) {
+        return roles.stream().map(ModelGovSettings::form).anyMatch(approverRoles::contains);
+    }
+
+    /** The first of {@code roles} that is forbidden for an approver, if any (compared trimmed and in lower case). */
+    public java.util.Optional<String> forbiddenRole(Set<String> roles) {
+        return roles.stream().filter(r -> forbiddenRoles.contains(form(r))).findFirst();
+    }
+
+    /** Whether an approval made with {@code roles} counts: an approver role and no forbidden one. */
+    public boolean permitted(Set<String> roles) {
+        return holdsApproverRole(roles) && forbiddenRole(roles).isEmpty();
+    }
+
+    static String form(String role) {
+        return role == null ? "" : role.strip().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private static Set<String> normalised(Set<String> roles, String what) {
+        Set<String> out = new java.util.HashSet<>();
+        for (String r : roles) {
+            String f = form(r);
+            if (f.isEmpty()) throw new IllegalArgumentException("a " + what + " role name is blank");
+            out.add(f);
+        }
+        return Set.copyOf(out);
     }
 }

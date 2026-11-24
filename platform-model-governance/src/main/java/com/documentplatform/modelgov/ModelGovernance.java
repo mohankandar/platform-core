@@ -209,6 +209,7 @@ public final class ModelGovernance {
     public Decisions.Acceptance accept(UUID validationId, Approver approver, String reason) {
         ValidationRecord v = store.validation(validationId).orElseThrow(() -> unknown("validation", validationId));
         checkApprover(approver);
+        notTheOneWhoRan(v, approver);
         ModelUse use = store.use(v.useId()).orElseThrow(() -> unknown("use", v.useId()));
         if (v.passed()) throw notApplicable("the validation passed");
         if (v.provider() != Model.Provider.CUSTOMER) throw notApplicable("the model is the vendor's");
@@ -235,6 +236,7 @@ public final class ModelGovernance {
     public Decisions.Approval approve(UUID validationId, Approver approver) {
         ValidationRecord v = store.validation(validationId).orElseThrow(() -> unknown("validation", validationId));
         checkApprover(approver);
+        notTheOneWhoRan(v, approver);
         if (store.approval(validationId).isPresent()) {
             throw new ModelGovException(MOD_ALREADY_APPROVED, Map.of("validation", validationId));
         }
@@ -340,14 +342,21 @@ public final class ModelGovernance {
                 .ifPresent(x -> audit.useChanged(x, by, List.of("nextReviewDue")));
     }
 
+    /** P045, SEC-31: four eyes. The person who ran the validation never approves or accepts it as well. */
+    private static void notTheOneWhoRan(ValidationRecord v, Approver a) {
+        if (a != null && v.ranBy() != null && v.ranBy().strip().equalsIgnoreCase(a.id().strip())) {
+            throw new ModelGovException(MOD_APPROVER_SAME_PERSON, Map.of("validation", v.validationId(),
+                    "approver", a.id()));
+        }
+    }
+
     private void checkApprover(Approver a) {
         Objects.requireNonNull(a, "approver");
-        for (String r : a.roles()) {
-            if (settings.forbiddenRoles().contains(r)) {
-                throw new ModelGovException(MOD_APPROVER_CONFLICT, Map.of("approver", a.id(), "role", r));
-            }
+        Optional<String> forbidden = settings.forbiddenRole(a.roles());
+        if (forbidden.isPresent()) {
+            throw new ModelGovException(MOD_APPROVER_CONFLICT, Map.of("approver", a.id(), "role", forbidden.get()));
         }
-        if (a.roles().stream().noneMatch(settings.approverRoles()::contains)) {
+        if (!settings.holdsApproverRole(a.roles())) {
             throw new ModelGovException(MOD_APPROVER_ROLE, Map.of("approver", a.id()));
         }
     }

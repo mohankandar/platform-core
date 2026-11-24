@@ -33,7 +33,7 @@ public final class FieldSchema {
     public static final String HISTORY_TABLE = "fld_schema_history";
 
     /** The table version this code needs: the number of the last migration file. */
-    public static final int VERSION = 1;
+    public static final int VERSION = 2;
 
     /** The tables the code reads and writes at runtime. */
     public static final List<String> TABLES = List.of("fld_field_definition", "fld_field_definition_history",
@@ -54,7 +54,7 @@ public final class FieldSchema {
     /** The rights the code uses on each table (the install guide grants all four DML rights on every table). */
     private static final Map<String, List<String>> RIGHTS = rights();
 
-    private static final List<String> SCRIPTS = List.of("V1__fields.sql");
+    private static final List<String> SCRIPTS = List.of("V1__fields.sql", "V2__fields_search_path.sql");
     private static final String RUN_STEP = "run the fields schema step (Flyway location " + LOCATION
             + ", history table " + HISTORY_TABLE + ") before starting the app";
 

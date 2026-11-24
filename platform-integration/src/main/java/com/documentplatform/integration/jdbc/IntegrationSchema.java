@@ -30,7 +30,7 @@ public final class IntegrationSchema {
 
     public static final String LOCATION = "db/platform/integration";
     public static final String HISTORY_TABLE = "int_schema_history";
-    public static final int VERSION = 2;
+    public static final int VERSION = 3;
     public static final String VERSION_TABLE = "int_schema_version";
     /** Table → the rights the app's database user needs on it. */
     public static final Map<String, List<String>> RIGHTS;
@@ -45,7 +45,8 @@ public final class IntegrationSchema {
         RIGHTS = java.util.Collections.unmodifiableMap(r);
     }
 
-    private static final List<String> SCRIPTS = List.of("V1__integration.sql", "V2__credentials_callbacks.sql");
+    private static final List<String> SCRIPTS = List.of("V1__integration.sql", "V2__credentials_callbacks.sql",
+            "V3__integration_search_path.sql");
     private static final String RUN_STEP = "run the integration schema step (Flyway location " + LOCATION
             + ", history table " + HISTORY_TABLE + ") before starting the app";
 

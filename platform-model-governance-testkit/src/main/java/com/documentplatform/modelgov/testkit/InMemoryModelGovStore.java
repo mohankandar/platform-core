@@ -185,6 +185,12 @@ public final class InMemoryModelGovStore implements ModelGovStore {
     @Override
     public synchronized boolean switchLive(Decisions.Live next, long expectedVersion, Decisions.LiveChange change) {
         if (!validations.containsKey(next.validationId())) throw new Refused("live names an unknown validation");
+        // The same rules as schema V5 (P045, SEC-6): the validation is this use's and entity's, and approved.
+        ValidationRecord v = validations.get(next.validationId());
+        if (!v.useId().equals(next.useId()) || !v.entity().equals(next.entity())) {
+            throw new Refused("live names a validation of another use or entity");
+        }
+        if (!approvals.containsKey(next.validationId())) throw new Refused("live names a validation that is not approved");
         LiveKey k = new LiveKey(next.useId(), next.entity());
         Decisions.Live now = live.get(k);
         long version = now == null ? 0 : now.version();

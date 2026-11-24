@@ -27,12 +27,13 @@ public final class EraseLogSchema {
 
     public static final String LOCATION = "db/platform/erase-log";
     public static final String HISTORY_TABLE = "erl_schema_history";
-    public static final int VERSION = 2;
+    public static final int VERSION = 3;
     public static final String VERSION_TABLE = "erl_schema_version";
     public static final List<String> TABLES = List.of("erl_position");
     public static final List<String> RIGHTS = List.of("SELECT", "INSERT", "UPDATE");
 
-    private static final List<String> SCRIPTS = List.of("V1__erase_log.sql", "V2__erase_log_replay_guard.sql");
+    private static final List<String> SCRIPTS = List.of("V1__erase_log.sql", "V2__erase_log_replay_guard.sql",
+            "V3__erase_log_search_path.sql");
     private static final String RUN_STEP = "run the erase log schema step (Flyway location " + LOCATION
             + ", history table " + HISTORY_TABLE + ") before starting the app";
 

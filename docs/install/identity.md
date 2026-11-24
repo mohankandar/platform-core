@@ -42,8 +42,9 @@ The identity tables all start with `idn_`:
    - history table `idn_schema_history`
    - run it as the schema owner, in the same schema the app connects to.
 2. **Grant the app's database user** SELECT, INSERT, UPDATE and DELETE on the `idn_` tables, and SELECT on
-   `idn_schema_version`. Nothing more is needed (the history tables' ID columns need no sequence grant). On
-   `idn_grant_history`, SELECT and INSERT are enough; the table refuses UPDATE and DELETE anyway.
+   `idn_schema_version`. Nothing more is needed (the history tables' ID columns need no sequence grant). On the
+   history tables `idn_grant_history`, `idn_login_connection_history` and `idn_machine_binding_history`, SELECT and
+   INSERT are enough; they refuse UPDATE, DELETE and TRUNCATE anyway (the last two since schema version 5, 0.7.0).
 
 If the tables are missing, at another version, or the rights are short, the app does not start. It names the exact
 problem and what to do:
