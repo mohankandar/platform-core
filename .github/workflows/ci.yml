@@ -1,14 +1,22 @@
 name: CI
 
+# Once per pull request; on push only for main, whose own run every release tag needs (P052).
 on:
   push:
+    branches: [main]
   pull_request:
 
 # Read only (P043, SEC-40): CI never writes to the repository or its packages.
 permissions:
   contents: read
 
+# A newer push to a pull request stops the older run. Runs on main are never stopped.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # The required check. One job, so its name never changes; it chooses its path from the whole pull request's files.
   verify:
     name: verify
     runs-on: ubuntu-latest
@@ -16,6 +24,24 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
+
+      - name: Documentation only?
+        id: paths
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          docs=false
+          if [ "${EVENT}" = "pull_request" ]; then
+            # Every file of the whole pull request, renames as both names; an error here fails the job, never skips tests.
+            git diff --no-renames --name-only "${BASE}...${HEAD}" > "${RUNNER_TEMP}/changed.txt"
+            cat "${RUNNER_TEMP}/changed.txt"
+            docs="$(bash scripts/ci-docs-only.sh < "${RUNNER_TEMP}/changed.txt")"
+          fi
+          echo "documentation only: ${docs}"
+          echo "docs=${docs}" >> "${GITHUB_OUTPUT}"
 
       - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
@@ -26,10 +52,19 @@ jobs:
       # Compile and all tests, including the PostgreSQL tests (Testcontainers, Docker on the runner), the end-to-end
       # TLS tests and the product-name guard.
       - name: mvn -B verify
+        if: steps.paths.outputs.docs != 'true'
         # The scanner tests use the real EICAR test file here (a placeholder by default; testkit Eicar).
         env:
           RUN_EICAR_TESTS: "true"
         run: mvn -B verify
+
+      # Documentation only: the product-name guard and every test that reads documentation.
+      - name: Tests that read documentation
+        if: steps.paths.outputs.docs == 'true'
+        run: >-
+          mvn -B verify -Dsurefire.failIfNoSpecifiedTests=false
+          -Dtest=NoProductNamesGuardTest,CatalogueTest,PublicApiTest,ReleasedSqlFilesTest,PolicyTextInDocsTest,VaultTransitSignerTest,ModelGovSchemaTest
+          -pl platform-identity-core,platform-crypto,platform-licensing-issue,platform-model-governance-testkit,platform-error-catalogue -am
 
       # On this runner nothing may be skipped: the TLS tests skip only where TLS to 127.0.0.1 is intercepted.
       - name: No test skipped
