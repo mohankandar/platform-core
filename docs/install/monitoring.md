@@ -80,7 +80,7 @@ prefixes with `platform.monitoring.bundle-properties` (for example `myapp.`); ne
 | `/actuator/health/readiness` | the readiness probe (send traffic) | the app is ready **and** every required check works; integrations never count |
 | `/actuator/health/dependencies` | a dashboard | always up; lists every check with its state and code |
 
-Probes need `management.endpoint.health.probes.enabled=true` outside Kubernetes. Expose the health endpoint only to
+The probe addresses are on by default in Spring Boot 4 (`management.endpoint.health.probes.enabled`). Expose the health endpoint only to
 your monitoring network. Probes need no details: set `management.endpoint.health.show-details=when-authorized` with
 `management.endpoint.health.roles` for your monitoring users, so nobody else sees the names and codes of your systems.
 

@@ -42,6 +42,7 @@
         <module>platform-model-governance</module>
         <module>platform-model-governance-testkit</module>
         <module>platform-model-governance-spring</module>
+        <module>platform-app-check</module>
         <module>platform-error-catalogue</module>
     </modules>
     <properties>
