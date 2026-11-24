@@ -61,9 +61,14 @@ Do what the line says, then start the app again.
 
 The app's Support screen lists every check with its state, code, cause and fix. From there IT can download a
 **diagnostic bundle** (a zip) to send to support when the app cannot reach us. It holds the versions, Java and the
-operating system, the configuration **with every secret removed** (passwords, keys, tokens; secret references and
-addresses stay), the latest check results, the last failures (code, reference, cause, time) and the database table
+operating system, part of the configuration **with every secret removed** (passwords, keys, tokens; secret references
+and addresses stay), the latest check results, the last failures (code, reference, cause, time) and the database table
 versions, with a checksum of each part. It never holds document content, field values, tokens or secrets.
+
+The configuration part is an allow-list. Only application files, the command line and `spring.application.json` are
+read, never mounted secret files (config trees), a vault or config server, the environment or system properties. Only
+names starting with `platform.`, `spring.application.`, `server.` or `management.` are included. The app adds its own
+prefixes with `platform.monitoring.bundle-properties` (for example `myapp.`); never list a prefix that holds secrets.
 
 ## 5. Health addresses for your probes
 
@@ -74,7 +79,8 @@ versions, with a checksum of each part. It never holds document content, field v
 | `/actuator/health/dependencies` | a dashboard | always up; lists every check with its state and code |
 
 Probes need `management.endpoint.health.probes.enabled=true` outside Kubernetes. Expose the health endpoint only to
-your monitoring network.
+your monitoring network. Probes need no details: set `management.endpoint.health.show-details=when-authorized` with
+`management.endpoint.health.roles` for your monitoring users, so nobody else sees the names and codes of your systems.
 
 ## 6. Metrics and logs
 

@@ -71,8 +71,8 @@ the fields up with their key=value extraction (Splunk: automatic `KV_MODE=auto`;
 
 `DiagnosticBundle.build(sink, inputs)` (Spring: `DiagnosticBundles.write`) writes a zip: `versions.txt` (platform
 modules from the released jars, the app's own through `AppVersions`), `system.txt` (Java, OS), `configuration.properties`
-(the app's own property sources; secret-named values and secret-looking values removed, references and addresses
-kept), `checks.txt`, `failures.txt` (the last 50: time, code, reference, cause), `schemas.txt` (the version tables),
+(an allow-list of sources and property names, `platform.monitoring.bundle-properties` adds prefixes; secret-named and
+secret-looking values removed, references and addresses kept), `checks.txt`, `failures.txt` (the last 50: time, code, reference, cause), `schemas.txt` (the version tables),
 `manifest.txt` (SHA-256 of each entry). Never document content, field values, tokens or secrets: it reads no log and
 no exception text, only codes, causes and results. Size limit 5 MiB: entries that do not fit are left out and the
 manifest says `MON_BUNDLE_TOO_LARGE`.

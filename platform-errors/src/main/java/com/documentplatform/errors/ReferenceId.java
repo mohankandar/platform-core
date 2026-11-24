@@ -22,29 +22,29 @@ public final class ReferenceId {
 
     private static final int RANDOM_BITS = 25;
     private static long lastTenths = -1;
-    private static long lastRandom;
+
+    /** The random parts already given in the current tenth of a second. */
+    private static final java.util.Set<Integer> USED = new java.util.HashSet<>();
+    private static final int MAX_PER_TENTH = 1 << 20;
 
     /**
-     * A new reference, never the same twice in this process: within the same tenth of a second the random part
-     * steps on by a random amount (so references stay time-ordered and hard to guess); when it would overflow, the
-     * time part moves on by one tenth.
+     * A new reference, never the same twice in this process: 25 fresh random bits each time (P045, SEC-22), so the next
+     * one is not near the last one. References sort by the tenth of a second they were made in.
      */
     public static String next() {
         long tenths = Math.max(0, (clock.millis() - EPOCH) / 100);
-        long random;
+        int random;
         synchronized (ReferenceId.class) {
-            if (tenths <= lastTenths) { // same tenth, or the clock went back: stay after the last one
-                tenths = lastTenths;
-                random = lastRandom + 1 + RANDOM.nextInt(1 << 10);
-                if (random >= 1L << RANDOM_BITS) {
-                    tenths++;
-                    random = RANDOM.nextInt(1 << (RANDOM_BITS - 1));
-                }
-            } else {
-                random = RANDOM.nextInt(1 << (RANDOM_BITS - 1));
+            // A clock that went back keeps the last time; a tenth with a million references moves on by one.
+            if (tenths < lastTenths) tenths = lastTenths;
+            if (tenths == lastTenths && USED.size() >= MAX_PER_TENTH) tenths++;
+            if (tenths != lastTenths) {
+                USED.clear();
+                lastTenths = tenths;
             }
-            lastTenths = tenths;
-            lastRandom = random;
+            do {
+                random = RANDOM.nextInt(1 << RANDOM_BITS);
+            } while (!USED.add(random));
         }
         StringBuilder sb = new StringBuilder("R-");
         append(sb, tenths, 7);

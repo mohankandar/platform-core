@@ -78,9 +78,11 @@ public class MonitoringAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     DiagnosticBundles platformDiagnosticBundles(DependencyStatus status, Environment env,
-                                                ObjectProvider<DataSource> ds, ObjectProvider<AppVersions> app) {
+                                                ObjectProvider<DataSource> ds, ObjectProvider<AppVersions> app,
+                                                MonitoringProperties properties) {
         AppVersions none = java.util.Map::of;
-        return new DiagnosticBundles(status, env, ds.getIfUnique(), app.getIfAvailable(() -> none));
+        return new DiagnosticBundles(status, env, ds.getIfUnique(), app.getIfAvailable(() -> none),
+                properties.getBundleProperties());
     }
 
     /** Readiness and the dependency list, with Actuator. */

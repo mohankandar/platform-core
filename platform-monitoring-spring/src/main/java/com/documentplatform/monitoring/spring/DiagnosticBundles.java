@@ -38,8 +38,11 @@ public final class DiagnosticBundles {
     private final Environment env;
     private final DataSource ds;
     private final AppVersions app;
+    private final List<String> appPrefixes;
 
-    DiagnosticBundles(DependencyStatus status, Environment env, DataSource ds, AppVersions app) {
+    DiagnosticBundles(DependencyStatus status, Environment env, DataSource ds, AppVersions app,
+                      List<String> appPrefixes) {
+        this.appPrefixes = appPrefixes.stream().filter(p -> !p.isBlank()).toList();
         this.status = status;
         this.env = env;
         this.ds = ds;
@@ -52,23 +55,41 @@ public final class DiagnosticBundles {
                 FailureLog.recent(FAILURES), schemaVersions()));
     }
 
-    /** The app's configuration (property sources other than the JVM's system properties and the OS environment). */
+    /** The property names the bundle may hold; the app adds its own with platform.monitoring.bundle-properties. */
+    static final List<String> PROPERTY_PREFIXES = List.of("platform.", "spring.application.", "server.", "management.");
+
+    /**
+     * The app's configuration, by an allow-list of sources and of names (P045, SEC-11): application files, the command
+     * line and spring.application.json only; never a config tree (mounted secret files), a vault or config server, the
+     * system properties or the environment; and only names under {@link #PROPERTY_PREFIXES} or the app's own prefixes.
+     * What is left is scrubbed as well.
+     */
     Map<String, String> configuration() {
         Map<String, String> out = new TreeMap<>();
         if (env instanceof ConfigurableEnvironment c) {
             for (PropertySource<?> s : c.getPropertySources()) {
-                String n = s.getName();
-                if (n.equals("systemProperties") || n.equals("systemEnvironment")) continue;
-                if (s instanceof EnumerablePropertySource<?> e) {
-                    for (String key : e.getPropertyNames()) {
-                        if (out.containsKey(key)) continue;
-                        Object v = e.getProperty(key);
-                        out.put(key, v == null ? "" : String.valueOf(v));
-                    }
+                if (!allowedSource(s) || !(s instanceof EnumerablePropertySource<?> e)) continue;
+                for (String key : e.getPropertyNames()) {
+                    if (out.containsKey(key) || !allowedName(key)) continue;
+                    Object v = e.getProperty(key);
+                    out.put(key, v == null ? "" : String.valueOf(v));
                 }
             }
         }
         return out;
+    }
+
+    static boolean allowedSource(PropertySource<?> s) {
+        String n = s.getName().toLowerCase(java.util.Locale.ROOT);
+        if (n.contains("vault") || n.contains("configtree") || n.contains("config tree") || n.contains("secret")) {
+            return false;
+        }
+        return s instanceof org.springframework.boot.env.OriginTrackedMapPropertySource
+                || n.equals("commandlineargs") || n.equals("spring.application.json");
+    }
+
+    private boolean allowedName(String key) {
+        return PROPERTY_PREFIXES.stream().anyMatch(key::startsWith) || appPrefixes.stream().anyMatch(key::startsWith);
     }
 
     Map<String, String> schemaVersions() {

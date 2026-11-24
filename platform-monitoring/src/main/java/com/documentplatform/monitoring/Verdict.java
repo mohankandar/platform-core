@@ -40,4 +40,10 @@ public record Verdict(CheckState state, PlatformCode code, Map<String, ?> detail
     public static Verdict down(PlatformCode code) {
         return down(code, Map.of());
     }
+
+    /** P045, SEC-54: the state and code only; details are scrubbed when the result is built, not here. */
+    @Override
+    public String toString() {
+        return "Verdict[" + state + " " + code.code() + "]";
+    }
 }

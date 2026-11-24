@@ -165,7 +165,6 @@ class EraseLogWiringTest {
                     failure.put("seq", 1L);
                     failure.put("kind", "document");
                     failure.put("recordType", "case");
-                    failure.put("recordId", record);
                     failure.put("handlerCode", "DOC_STORE_DOWN");
                     failure.put("code", "ERASE_HANDLER_FAILED");
                     failure.put("at", s.lastFailure().at().toString());

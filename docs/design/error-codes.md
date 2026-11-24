@@ -37,9 +37,10 @@ released; the write mode only adds to it).
 ## 2. Failures: `PlatformError`, `ReferenceId`, `FailureLog`
 
 - `ReferenceId.next()`: `R-` plus 12 characters of Crockford base32, time-ordered (tenths of a second) and
-  unguessable (random bits), never the same twice in one process (within a tenth the random part steps on by a
-  random amount). Inside a request handled with platform-monitoring-spring's filter, the request's
-  reference (`ReferenceId.current()`, from `X-Request-Id`) is used.
+  unguessable (random bits), never the same twice in one process. The 25 random bits are drawn fresh each time, so one reference
+  does not lead to the next; references sort by tenth of a second, not within it. Inside a request handled with
+  platform-monitoring-spring's filter, the request's reference (`ReferenceId.current()`, always made by the filter) is
+  used.
 - `PlatformError`: code, the user message with `(reference R-…)`, the cause with its safe details filled in, the
   reference, the time. A detail named like a secret (`password`, `secret`, `token`, `key`, `credential`, …) loses its
   value; so does any value that looks like a JWT, a PEM block, a `password=…` pair, a Bearer or Basic value, or a long
@@ -83,8 +84,9 @@ Every error answer of an app's API:
 - `code`: the code; `message`: its `userMessage()`; `reference`: the failure's reference; `details` (optional):
   safe values only (names of fields, limits), never a value the caller sent.
 - The HTTP status is the code's `httpStatus()` where it has one; else 4xx for REFUSED, 5xx for FAILED.
-- The `X-Request-Id` request header is echoed back; when it is missing (or not a short safe token) one is made, and
-  it is the failure's reference (platform-monitoring-spring's `RequestReferenceFilter`).
+- Every answer carries `X-Request-Id`: the reference platform-monitoring-spring's `RequestReferenceFilter` made for the
+  request (it runs before Spring Security, so refusals have one too). A caller never chooses it. An `X-Request-Id` the
+  caller sent (a short safe token) is only kept in the logging MDC as `requestId`.
 
 **Versioning of an app's API:** the version is in the path (`/v1/…`). Within a version only additions (new
 operations, new optional fields, new codes). Anything else is a new version (`/v2/…`), and an old version ends only
