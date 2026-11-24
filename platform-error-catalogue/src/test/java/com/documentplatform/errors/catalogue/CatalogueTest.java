@@ -190,7 +190,8 @@ class CatalogueTest {
         int checked = 0;
         while (m.find()) {
             String module = m.group(1).strip();
-            if (module.equals("platform-bom") || module.endsWith("-testkit") || module.equals("platform-error-catalogue")) {
+            if (module.equals("platform-bom") || module.endsWith("-testkit") || module.equals("platform-error-catalogue")
+                    || module.equals("platform-app-check")) {
                 continue;
             }
             checked++;

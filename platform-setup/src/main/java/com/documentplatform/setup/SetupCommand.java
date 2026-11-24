@@ -149,6 +149,10 @@ public final class SetupCommand {
     }
 
     public int run(List<String> args, PrintStream out, PrintStream err) {
+        if (args.equals(List.of("--help"))) {
+            out.println(usage());
+            return EXIT_DONE;
+        }
         Outcome o = new Outcome();
         Path runLog = null;
         try {
