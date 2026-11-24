@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The sample app (P047): a made-up app that uses every platform module as its install guide says. Not in the reactor, not
+     published, not in the BOM. It takes platform-core only from GitHub Packages, at -Dplatform.version. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.2.0</version>
+        <relativePath/>
+    </parent>
+    <groupId>com.example.sample</groupId>
+    <artifactId>sample-app-parent</artifactId>
+    <version>1</version>
+    <packaging>pom</packaging>
+    <modules>
+        <module>app</module>
+        <module>mocks</module>
+    </modules>
+    <properties>
+        <java.version>21</java.version>
+        <platform.version>0.8.1</platform.version>
+    </properties>
+    <repositories>
+        <repository>
+            <id>github-platform-core</id>
+            <url>https://maven.pkg.github.com/mohankandar/platform-core</url>
+        </repository>
+    </repositories>
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.documentplatform.platform</groupId>
+                <artifactId>platform-bom</artifactId>
+                <version>${platform.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+</project>

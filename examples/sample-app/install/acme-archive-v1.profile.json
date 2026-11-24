@@ -1,0 +1,86 @@
+{
+  "format": "platform-integration-profile/1",
+  "name": "acme-archive-v1",
+  "version": "1.2.0",
+  "description": "A made-up archive API for tests: create a batch, then upload each PDF.",
+  "api": {"title": "Acme Archive API", "version": "1.0.0"},
+  "direction": "OUTBOUND",
+  "kind": "API_PUSH",
+  "steps": [
+    {
+      "name": "create",
+      "method": "POST",
+      "path": "/v1/batches",
+      "body": "JSON",
+      "bodyTemplate": "{\"batchRef\":\"{package.id}\",\"count\":{package.documentCount},\"items\":[{#each doc}{\"ref\":\"{doc.sourceDocumentId}\"}{/each}],\"label\":\"{value.batchLabel}\",\"attributes\":{}}",
+      "repeat": "ONCE",
+      "read": {"batchId": "/batchId"},
+      "required": ["batchId"]
+    },
+    {
+      "name": "upload",
+      "method": "POST",
+      "path": "/v1/batches/{step.create.batchId}/files",
+      "headers": {
+        "Content-Type": "application/pdf",
+        "X-Acme-File-Name": "{doc.fileName}",
+        "X-Acme-Item-Ref": "{doc.sourceDocumentId}",
+        "X-Acme-Class": "{doc.attr.classification}"
+      },
+      "body": "FILE",
+      "repeat": "EACH_DOCUMENT",
+      "read": {"fileId": "/fileId", "checksum": "/sha256", "bytes": "/size", "state": "/state"},
+      "required": ["fileId", "checksum", "bytes"],
+      "integrity": {"sha256Value": "checksum", "sizeValue": "bytes"}
+    }
+  ],
+  "signIn": {
+    "types": ["OAUTH2_CLIENT_CREDENTIALS"],
+    "installationSupplies": ["tokenAddress", "clientId", "credential", "scope"]
+  },
+  "health": {
+    "method": "GET",
+    "path": "/ready",
+    "signIn": false,
+    "rules": [
+      {"status": "503", "code": "ACME-BUSY", "outcome": "BUSY", "platformCode": "INT_DESTINATION_BUSY", "attemptUsed": false},
+      {"status": "503", "retryAfter": true, "outcome": "BUSY", "platformCode": "INT_DESTINATION_BUSY", "attemptUsed": false},
+      {"status": "503", "outcome": "OUTAGE"}
+    ]
+  },
+  "rules": [
+    {"status": "200", "pointer": "/replay", "equals": "true", "outcome": "ALREADY_RECEIVED"},
+    {"status": "400", "code": "ACME-BAD-REQUEST", "outcome": "REFUSED"},
+    {"status": "401", "code": "ACME-TOKEN", "outcome": "SIGN_IN_FAILED"},
+    {"status": "409", "code": "ACME-CONFLICT", "outcome": "REFUSED"},
+    {"status": "503", "code": "ACME-BUSY", "outcome": "BUSY", "attemptUsed": false},
+    {"status": "503", "code": "ACME-DOWN", "outcome": "OUTAGE"}
+  ],
+  "errorCodePointer": "/code",
+  "sendCorrelationId": true,
+  "testMode": "CHECK_ONLY",
+  "limits": {"maxDocuments": 50, "maxFileBytes": 104857600},
+  "values": [
+    {"name": "batchLabel", "required": true, "description": "A label for the batch, shown in the archive."}
+  ],
+  "fields": {
+    "step": "create",
+    "object": "attributes",
+    "expected": [{"name": "caseNumber", "required": true}, {"name": "amount", "required": false}],
+    "others": false
+  },
+  "documentAttributes": [
+    {"name": "classification", "values": ["PUBLIC", "INTERNAL", "RESTRICTED"], "default": "INTERNAL"}
+  ],
+  "settings": {
+    "senderIdentity": {
+      "default": "CLAIMS",
+      "description": "CLAIMS: the login server adds acme_tenant and acme_sender to the token. LOOKUP: the archive finds them from the client ID.",
+      "values": {"CLAIMS": {"token.requiredClaims": "acme_tenant,acme_sender"}, "LOOKUP": {}}
+    }
+  },
+  "notes": [
+    "Register one client per sending system in your login server.",
+    "The archive answers 503 ACME-BUSY with Retry-After when it is busy."
+  ]
+}

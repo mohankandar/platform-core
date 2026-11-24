@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The other systems of the install proof, in a process of their own: login system, API destination, mail server. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.example.sample</groupId>
+        <artifactId>sample-app-parent</artifactId>
+        <version>1</version>
+    </parent>
+    <artifactId>sample-mocks</artifactId>
+    <dependencies>
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-identity-testkit</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-integration-testkit</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.icegreen</groupId>
+            <artifactId>greenmail</artifactId>
+            <version>2.1.15</version>
+        </dependency>
+    </dependencies>
+    <build>
+        <finalName>sample-mocks</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>com.example.sample.mocks.Mocks</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
