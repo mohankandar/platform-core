@@ -34,7 +34,7 @@ jobs:
         shell: bash
     env:
       PLATFORM_VERSION: ${{ inputs.version || '0.8.1' }}
-      VAULT_VERSION: 1.21.14
+      VAULT_VERSION: 1.21.4
       PGHOST: 127.0.0.1
       PGPORT: "5432"
       PGUSER: postgres
