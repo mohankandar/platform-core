@@ -21,7 +21,7 @@ class FieldSchemaTest {
         Pg empty = Pg.empty();
         FieldSchemaException e = assertThrows(FieldSchemaException.class, () -> FieldSchema.verify(empty.owner));
         assertEquals(FLD_TABLES_MISSING, e.problem());
-        assertEquals("Field tables missing (expected version 1): none of the fld_ tables exist in the database "
+        assertEquals("Field tables missing (expected version 2): none of the fld_ tables exist in the database "
                 + "schema the app connects to; run the fields schema step (Flyway location db/platform/fields, "
                 + "history table fld_schema_history) before starting the app.", e.getMessage());
         assertEquals(List.of(), empty.tables(), "the startup check created nothing");
@@ -29,7 +29,7 @@ class FieldSchemaTest {
         Pg migrated = Pg.migrated();
         assertEquals(List.of("fld_field_definition", "fld_field_definition_history", "fld_field_extension",
                 "fld_record", "fld_schema_version", "fld_value"), migrated.tables());
-        assertEquals(1, migrated.count("select max(version) from fld_schema_version"));
+        assertEquals(2, migrated.count("select max(version) from fld_schema_version"));
         assertEquals(0, migrated.count("select count(*) from fld_field_definition"), "no data from the schema run");
         assertEquals("db/platform/fields", FieldSchema.LOCATION);
         assertEquals("fld_schema_history", FieldSchema.HISTORY_TABLE);
@@ -43,10 +43,10 @@ class FieldSchemaTest {
         assertEquals(FLD_VERSION_OLDER, problem(older.owner));
 
         Pg newer = Pg.migrated();
-        newer.exec("update fld_schema_version set version = 2");
+        newer.exec("update fld_schema_version set version = 3");
         FieldSchemaException n = assertThrows(FieldSchemaException.class, () -> FieldSchema.verify(newer.owner));
         assertEquals(FLD_VERSION_NEWER, n.problem());
-        assertTrue(n.getMessage().startsWith("Field tables at version 2, newer than this app expects (version 1)"));
+        assertTrue(n.getMessage().startsWith("Field tables at version 3, newer than this app expects (version 2)"));
 
         Pg noVersion = Pg.migrated();
         noVersion.exec("drop table fld_schema_version");
@@ -60,7 +60,7 @@ class FieldSchemaTest {
         incomplete.exec("drop table fld_field_extension");
         FieldSchemaException i = assertThrows(FieldSchemaException.class, () -> FieldSchema.verify(incomplete.owner));
         assertEquals(FLD_TABLES_INCOMPLETE, i.problem());
-        assertEquals("Field tables incomplete at version 1, missing: fld_field_extension; run the fields schema step "
+        assertEquals("Field tables incomplete at version 2, missing: fld_field_extension; run the fields schema step "
                 + "(Flyway location db/platform/fields, history table fld_schema_history) before starting the app.",
                 i.getMessage());
 

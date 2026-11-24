@@ -144,6 +144,7 @@ class MachineBindingsTest {
         assertEquals(IdentitySchemaException.Problem.IDN_VERSION_OLDER,
                 assertThrows(IdentitySchemaException.class, () -> IdentitySchema.verify(db.owner)).problem());
         db.exec(IdentitySchema.script("V4__platform_grants.sql"));
+        db.exec(IdentitySchema.script("V5__identity_history_and_search_path.sql"));
         IdentitySchema.verify(db.owner);
     }
 }

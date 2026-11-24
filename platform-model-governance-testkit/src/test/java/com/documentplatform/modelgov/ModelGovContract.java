@@ -1011,4 +1011,96 @@ public abstract class ModelGovContract {
         assertFalse(everything.contains("example prompt"), "configuration text never stored or shown");
         assertTrue(everything.contains(ConfigFingerprint.of(CONFIG)));
     }
+
+    // ---- P045: the gate re-checks the approval (SEC-6), four eyes (SEC-31), role spelling (SEC-32)
+
+    Decisions.Live liveRow(ModelUse u, UUID e, ValidationRecord v) {
+        return new Decisions.Live(u.useId(), e, v.validationId(), null, 1, "by-hand", clock.instant());
+    }
+
+    Decisions.LiveChange liveChange(ModelUse u, UUID e, ValidationRecord v) {
+        return new Decisions.LiveChange(u.useId(), e, Decisions.LiveChange.Kind.WENT_LIVE, null, v.validationId(),
+                "by-hand", clock.instant());
+    }
+
+    @Test
+    void thePersonWhoRanTheValidationNeverApprovesOrAcceptsIt() {
+        ModelUse u = use(model(vendorModel()), null, ModelUse.Materiality.MEDIUM);
+        ValidationRecord v = pass(u, entity); // recorded by validator-1
+        refuses(MOD_APPROVER_SAME_PERSON, () -> gov.approve(v.validationId(),
+                new Approver(" Validator-1 ", Set.of(APPROVER_ROLE))));
+        assertTrue(store.approval(v.validationId()).isEmpty());
+        gov.approve(v.validationId(), approver()); // someone else: fine
+    }
+
+    @Test
+    void aForbiddenRoleSpelledAnotherWayIsStillForbidden() {
+        ModelUse u = use(model(vendorModel()), null, ModelUse.Materiality.MEDIUM);
+        ValidationRecord v = pass(u, entity);
+        refuses(MOD_APPROVER_CONFLICT, () -> gov.approve(v.validationId(), new Approver("pat",
+                Set.of(" " + APPROVER_ROLE.toLowerCase(java.util.Locale.ROOT), FORBIDDEN_ROLE.toLowerCase(java.util.Locale.ROOT) + " "))));
+        ModelGovSettings s = ModelGovSettings.of(Set.of(" Model-Approver "), Set.of("Business-Admin"));
+        assertTrue(s.holdsApproverRole(Set.of("model-approver")));
+        assertTrue(s.forbiddenRole(Set.of("business-admin ")).isPresent());
+        assertThrows(IllegalArgumentException.class, () -> ModelGovSettings.of(Set.of("a"), Set.of()),
+                "no forbidden role: no separation of duties");
+        assertThrows(IllegalArgumentException.class, () -> ModelGovSettings.of(Set.of("a", " "), Set.of("b")));
+    }
+
+    @Test
+    void anUnapprovedLiveRowWrittenPastTheServiceIsRefused() {
+        ModelUse u = use(model(vendorModel()), null, ModelUse.Materiality.MEDIUM);
+        ValidationRecord v = pass(u, entity);
+        // The store (the database, for Postgres) refuses it outright.
+        assertThrows(RuntimeException.class, () -> store.switchLive(liveRow(u, entity, v), 0, liveChange(u, entity, v)));
+        assertTrue(store.live(u.useId(), entity).isEmpty());
+    }
+
+    @Test
+    void anApprovalWrittenPastTheServiceByAForbiddenRoleDoesNotCountAtTheGate() {
+        Model m = model(vendorModel());
+        ModelUse u = use(m, null, ModelUse.Materiality.MEDIUM);
+        ValidationRecord v = pass(u, entity);
+        // Straight into the store: no approver role check on the way, a forbidden role held.
+        store.insertApproval(new Decisions.Approval(v.validationId(), "business-admin-1", Set.of(FORBIDDEN_ROLE),
+                clock.instant()));
+        assertTrue(store.switchLive(liveRow(u, entity, v), 0, liveChange(u, entity, v)));
+        refuses(MOD_NOT_APPROVED, () -> gate.requireLive(u.useId(), entity, m.digest(), ConfigFingerprint.of(CONFIG)));
+    }
+
+    @Test
+    void aLiveRowPointingAtAnotherEntitysValidationIsRefusedByTheStoreAndTheGate() {
+        Model m = model(vendorModel());
+        ModelUse u = use(m, null, ModelUse.Materiality.MEDIUM);
+        ValidationRecord theirs = pass(u, otherEntity);
+        gov.approve(theirs.validationId(), approver());
+        assertThrows(RuntimeException.class, () -> store.switchLive(liveRow(u, entity, theirs), 0,
+                liveChange(u, entity, theirs)), "the store keeps live and its validation to one use and entity");
+        // A store that hands the gate such a row anyway (a database changed by hand): the gate refuses it.
+        ModelGovStore forged = (ModelGovStore) java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),
+                new Class<?>[]{ModelGovStore.class}, (proxy, method, args) -> {
+                    if (method.getName().equals("live") && entity.equals(args[1])) {
+                        return Optional.of(liveRow(u, entity, theirs));
+                    }
+                    try {
+                        return method.invoke(store, args);
+                    } catch (java.lang.reflect.InvocationTargetException x) {
+                        throw x.getCause();
+                    }
+                });
+        refuses(MOD_WRONG_USE, () -> new ModelGate(forged, settings(), clock).requireLive(u.useId(), entity,
+                m.digest(), ConfigFingerprint.of(CONFIG)));
+    }
+
+    @Test
+    void aFailedValidationMadeLivePastTheServiceIsRefusedAtTheGate() {
+        Model m = model(vendorModel());
+        ModelUse u = use(m, null, ModelUse.Materiality.MEDIUM);
+        ValidationRecord v = fail(u, entity);
+        store.insertApproval(new Decisions.Approval(v.validationId(), "approver-1", Set.of(APPROVER_ROLE),
+                clock.instant()));
+        assertTrue(store.switchLive(liveRow(u, entity, v), 0, liveChange(u, entity, v)));
+        refuses(MOD_VALIDATION_FAILED, () -> gate.requireLive(u.useId(), entity, m.digest(),
+                ConfigFingerprint.of(CONFIG)));
+    }
 }

@@ -17,14 +17,16 @@ The tables are created only by the app's schema step, never at app startup.
   `V1__modelgov.sql` (register, validations, approvals, live versions), `V2__modelgov_monitoring.sql`
   (monitoring, re-validation) and `V3__modelgov_purge_guard.sql` (the retention purge as the schema owner, since
   0.6.0) and
-  `V4__modelgov_validation_location.sql` (where the model ran, recorded with each validation; since 0.6.0).
+  `V4__modelgov_validation_location.sql` (where the model ran, recorded with each validation; since 0.6.0) and
+  `V5__modelgov_gate_and_history.sql` (since 0.7.0: only an approved validation of the same use and entity can be
+  live; the register's history tables are insert-only; every function's `search_path` fixed).
 - **Runtime user:** data rights only:
 
   ```sql
-  grant select, insert, update, delete on mg_model, mg_model_history, mg_model_use, mg_model_use_history,
-      mg_threshold, mg_live, mg_monitor_threshold to app_runtime;
-  grant select, insert on mg_validation, mg_validation_measure, mg_approval, mg_acceptance, mg_live_history,
-      mg_drift, mg_drift_action, mg_review_notice to app_runtime;
+  grant select, insert, update, delete on mg_model, mg_model_use, mg_threshold, mg_live, mg_monitor_threshold
+      to app_runtime;
+  grant select, insert on mg_model_history, mg_model_use_history, mg_validation, mg_validation_measure, mg_approval,
+      mg_acceptance, mg_live_history, mg_drift, mg_drift_action, mg_review_notice to app_runtime;
   grant select, insert on mg_measure to app_runtime;
   grant execute on function mg_purge_measures(timestamptz) to app_runtime;
   grant select on mg_schema_version to app_runtime;

@@ -31,7 +31,7 @@ public final class ModelGovSchema {
     public static final String HISTORY_TABLE = "mg_schema_history";
 
     /** The table version this code needs: the number of the last migration file. */
-    public static final int VERSION = 4;
+    public static final int VERSION = 5;
 
     /** The tables the code reads and writes at runtime. */
     public static final List<String> TABLES = List.of("mg_model", "mg_model_history", "mg_model_use",
@@ -40,7 +40,8 @@ public final class ModelGovSchema {
             "mg_drift_action", "mg_review_notice");
 
     /** Insert-only tables (their triggers refuse UPDATE and DELETE): the app's user needs SELECT and INSERT only. */
-    public static final List<String> INSERT_ONLY_TABLES = List.of("mg_validation", "mg_validation_measure",
+    public static final List<String> INSERT_ONLY_TABLES = List.of("mg_model_history", "mg_model_use_history",
+            "mg_validation", "mg_validation_measure",
             "mg_approval", "mg_acceptance", "mg_live_history", "mg_drift", "mg_drift_action", "mg_review_notice");
 
     /** Readings: insert only; removed only by {@link #PURGE_FUNCTION} (schema V3). */
@@ -56,7 +57,7 @@ public final class ModelGovSchema {
     public static final String VERSION_TABLE = "mg_schema_version";
 
     private static final List<String> SCRIPTS = List.of("V1__modelgov.sql", "V2__modelgov_monitoring.sql",
-            "V3__modelgov_purge_guard.sql", "V4__modelgov_validation_location.sql");
+            "V3__modelgov_purge_guard.sql", "V4__modelgov_validation_location.sql", "V5__modelgov_gate_and_history.sql");
     private static final List<String> RIGHTS = List.of("SELECT", "INSERT", "UPDATE", "DELETE");
     private static final String RUN_STEP = "run the model-governance schema step (Flyway location " + LOCATION
             + ", history table " + HISTORY_TABLE + ") before starting the app";

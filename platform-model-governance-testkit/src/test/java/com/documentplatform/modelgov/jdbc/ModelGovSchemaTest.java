@@ -177,6 +177,34 @@ class ModelGovSchemaTest {
      * than 30 days; the app's user cannot delete them itself, even with DELETE and mg.purge_before set.
      */
     @Test
+    void aTemporaryTableNamedLikeTheCatalogCannotFoolTheMeasureGuard() throws Exception {
+        // P045, SEC-34, the review's sketch: with the old DELETE grant still in place, a temporary pg_roles saying the
+        // caller is the table's owner made the guard let a delete of young readings through.
+        Pg db = Pg.migrated();
+        DataSource app = db.appUser("select, insert, update, delete");
+        PostgresModelGovStore st = new PostgresModelGovStore(app);
+        Scenario s = Scenario.write(st);
+        Instant now = Instant.now();
+        st.insertReading(new com.documentplatform.modelgov.Monitoring.Reading(UUID.randomUUID(), s.use.useId(),
+                s.entity, "correction_rate", new BigDecimal("0.2"),
+                new com.documentplatform.modelgov.Monitoring.MeasurePeriod(now, now, 60), "app", now));
+        try (java.sql.Connection c = app.getConnection()) {
+            c.setAutoCommit(false);
+            try (java.sql.Statement x = c.createStatement()) {
+                x.execute("create temp table pg_roles (oid oid, rolname name)");
+                x.execute("insert into pg_roles select relowner, current_user from pg_catalog.pg_class "
+                        + "where relname = 'mg_measure'");
+                x.execute("select set_config('mg.purge_before', 'infinity', true)");
+                java.sql.SQLException e = assertThrows(java.sql.SQLException.class,
+                        () -> x.executeUpdate("delete from mg_measure"));
+                assertTrue(e.getMessage().contains("insert-only"), e.getMessage());
+            }
+            c.rollback();
+        }
+        assertEquals(1, db.count("select count(*) from mg_measure"));
+    }
+
+    @Test
     void onlyTheOwnersPurgeRemovesReadingsAndNeverOneYoungerThan30Days() throws Exception {
         Pg db = Pg.migrated();
         DataSource app = db.appUser("select, insert, update, delete");

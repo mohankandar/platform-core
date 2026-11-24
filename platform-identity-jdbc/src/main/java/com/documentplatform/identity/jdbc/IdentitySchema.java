@@ -31,7 +31,7 @@ public final class IdentitySchema {
     public static final String HISTORY_TABLE = "idn_schema_history";
 
     /** The table version this code needs: the number of the last migration file. */
-    public static final int VERSION = 4;
+    public static final int VERSION = 5;
 
     /** The tables the code reads and writes at runtime. */
     public static final List<String> TABLES = List.of("idn_customer", "idn_entity", "idn_login_connection",
@@ -39,13 +39,14 @@ public final class IdentitySchema {
             "idn_grant_history", "idn_platform_grant");
 
     /** Insert-only tables (their triggers refuse UPDATE and DELETE): the app's user needs SELECT and INSERT only. */
-    public static final List<String> INSERT_ONLY_TABLES = List.of("idn_grant_history");
+    public static final List<String> INSERT_ONLY_TABLES = List.of("idn_grant_history", "idn_login_connection_history",
+            "idn_machine_binding_history");
 
     /** Holds the version of the files that were run. */
     public static final String VERSION_TABLE = "idn_schema_version";
 
     private static final List<String> SCRIPTS = List.of("V1__identity.sql", "V2__machine_binding.sql",
-            "V3__grant_history.sql", "V4__platform_grants.sql");
+            "V3__grant_history.sql", "V4__platform_grants.sql", "V5__identity_history_and_search_path.sql");
     private static final List<String> RIGHTS = List.of("SELECT", "INSERT", "UPDATE", "DELETE");
     private static final String RUN_STEP = "run the identity schema step (Flyway location " + LOCATION
             + ", history table " + HISTORY_TABLE + ") before starting the app";

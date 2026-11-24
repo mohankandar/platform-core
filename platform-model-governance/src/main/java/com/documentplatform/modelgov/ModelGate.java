@@ -27,10 +27,14 @@ public final class ModelGate {
     private final ModelGovStore store;
     private final Clock clock;
     private final ReviewDates dates;
+    private final ModelGovSettings settings; // null only through the deprecated constructor
 
-    /** @param settings the app's settings: their {@code reviewEvery} intervals date each entity's review */
+    /**
+     * @param settings the app's settings: their {@code reviewEvery} intervals date each entity's review, and their
+     *                 approver and forbidden roles decide whether the live validation's approval counts (P045)
+     */
     public ModelGate(ModelGovStore store, ModelGovSettings settings, Clock clock) {
-        this(store, Objects.requireNonNull(settings, "settings").reviewEvery(), clock);
+        this(store, Objects.requireNonNull(settings, "settings").reviewEvery(), clock, settings);
     }
 
     /**
@@ -40,14 +44,44 @@ public final class ModelGate {
      */
     @Deprecated
     public ModelGate(ModelGovStore store, Clock clock) {
-        this(store, ModelGovSettings.DEFAULT_REVIEW, clock);
+        this(store, ModelGovSettings.DEFAULT_REVIEW, clock, null);
     }
 
     private ModelGate(ModelGovStore store, java.util.Map<ModelUse.Materiality, java.time.Period> reviewEvery,
-                      Clock clock) {
+                      Clock clock, ModelGovSettings settings) {
+        this.settings = settings;
         this.store = Objects.requireNonNull(store, "store");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.dates = new ReviewDates(store, reviewEvery);
+    }
+
+    /**
+     * P045, SEC-6: the live record alone proves nothing (app code or a direct database write can point it anywhere).
+     * The live validation must be this use's and entity's, approved by someone who then held an approver role and no
+     * forbidden one, not by the person who ran it, and, when it failed, documented as accepted (a medium-materiality
+     * customer model only). Otherwise {@code MOD_WRONG_USE}, {@code MOD_NOT_APPROVED} or {@code MOD_VALIDATION_FAILED}.
+     */
+    private void approvedHere(ValidationRecord v, UUID useId, UUID entity) {
+        if (!v.useId().equals(useId) || !v.entity().equals(entity)) {
+            throw new ModelGovException(MOD_WRONG_USE, Map.of("validation", v.validationId(), "use", useId,
+                    "entity", entity));
+        }
+        Decisions.Approval a = store.approval(v.validationId()).orElseThrow(() -> new ModelGovException(
+                MOD_NOT_APPROVED, Map.of("use", useId, "entity", entity)));
+        boolean byRanBy = v.ranBy() != null && v.ranBy().strip().equalsIgnoreCase(a.approvedBy().strip());
+        if (byRanBy || settings != null && !settings.permitted(a.roles())) {
+            throw new ModelGovException(MOD_NOT_APPROVED, Map.of("use", useId, "entity", entity));
+        }
+        if (!v.passed()) {
+            ModelUse use = store.use(useId).orElseThrow(() -> new ModelGovException(MOD_UNKNOWN,
+                    Map.of("what", "use", "id", String.valueOf(useId))));
+            boolean accepted = v.provider() == Model.Provider.CUSTOMER
+                    && use.materiality() == ModelUse.Materiality.MEDIUM && store.acceptance(v.validationId()).isPresent();
+            if (!accepted) {
+                throw new ModelGovException(MOD_VALIDATION_FAILED, Map.of("validation", v.validationId(),
+                        "failed", v.failedSummary()));
+            }
+        }
     }
 
     public LiveModel requireLive(UUID useId, UUID entity, ModelDigest observedDigest, String observedConfigFingerprint) {
@@ -66,6 +100,7 @@ public final class ModelGate {
         }
         ValidationRecord v = store.validation(live.get().validationId()).orElseThrow(() -> new ModelGovException(
                 MOD_UNKNOWN, Map.of("what", "validation", "id", String.valueOf(live.get().validationId()))));
+        approvedHere(v, useId, entity);
         if (!v.digest().equals(observedDigest)) {
             throw new ModelGovException(MOD_DIGEST_MISMATCH, Map.of("use", useId, "observed", observedDigest,
                     "expected", v.digest()));
