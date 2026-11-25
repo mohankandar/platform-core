@@ -42,6 +42,21 @@ public interface LoginConnectionStore {
     Optional<LoginConnection> update(LoginConnection connection, long expectedVersion, ChangeSource source,
                                      String changedBy);
 
+    /**
+     * {@link #update}, and in the same transaction records that a test sign-in with a real token passed for the version
+     * this writes ({@link #testSignInPassed}). The default only updates: a store that does not record it can never
+     * replace an ACTIVE connection.
+     */
+    default Optional<LoginConnection> updateTested(LoginConnection connection, long expectedVersion,
+                                                   ChangeSource source, String changedBy) {
+        return update(connection, expectedVersion, source, changedBy);
+    }
+
+    /** Whether a test sign-in with a real token passed for exactly this version of the connection. */
+    default boolean testSignInPassed(UUID connectionId, long version) {
+        return false;
+    }
+
     /** The connection's history, oldest first. */
     List<ConnectionChange> history(UUID connectionId);
 

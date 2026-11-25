@@ -72,6 +72,9 @@ public enum SetupRefusal implements com.documentplatform.errors.PlatformCode {
             + "stored; ask us for the correct licence file."),
     SETUP_CONFIG_OTHER_TENANT(SetupCommand.EXIT_REFUSED, "The config fragment names another customer; check --config-out "
             + "points to this installation's file."),
+    /** {@code identity rollback-login-connection}: the customer has no earlier ACTIVE connection for the product. */
+    SETUP_NO_PREVIOUS_CONNECTION(SetupCommand.EXIT_REFUSED, "There is no earlier active login connection to go back "
+            + "to. Correct the sign-in file and run setup apply --replace-connection."),
     /** No (or more than one) key service login, or no key service address. */
     SETUP_KEY_SERVICE_SETTINGS_MISSING(SetupCommand.EXIT_REFUSED, "Set " + SetupKeys.VAULT_ADDR + " and one login ("
             + SetupKeys.VAULT_TOKEN + ", " + SetupKeys.VAULT_TOKEN_FILE + ", or " + SetupKeys.VAULT_ROLE_ID + " with "

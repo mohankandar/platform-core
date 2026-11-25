@@ -377,7 +377,9 @@ final class SetupRun {
         }
         List<ConnectionChange> history = connections.history(now.connectionId());
         ChangeSource lastSource = history.isEmpty() ? null : history.get(history.size() - 1).source();
-        boolean changedInApp = lastSource != ChangeSource.SETUP;
+        // A rollback made by the setup command is the customer's choice, as a change in the app is: never undone silently.
+        boolean changedInApp = lastSource != ChangeSource.SETUP
+                || history.get(history.size() - 1).changedBy().startsWith(SetupRollback.CHANGED_BY);
         if (changedInApp && !in.replaceConnection()) {
             p.add(CONFLICT, label + " was changed in the app since the last setup (" + String.join(", ", differs)
                     + " differ from the sign-in file); left as it is. Run again with --replace-connection to replace "

@@ -136,9 +136,10 @@ class GrantHistoryTest {
                 assertThrows(IdentitySchemaException.class, () -> IdentitySchema.verify(db.owner)).problem());
         db.exec(IdentitySchema.script("V4__platform_grants.sql"));
         db.exec(IdentitySchema.script("V5__identity_history_and_search_path.sql"));
+        db.exec(IdentitySchema.script("V6__test_sign_in.sql"));
         IdentitySchema.verify(db.owner);
         assertEquals(1, db.count("select count(*) from idn_customer"));
         assertEquals(1, db.count("select count(*) from idn_grant_history where scope = 'ENTITY'"));
-        assertEquals(5, IdentitySchema.VERSION);
+        assertEquals(6, IdentitySchema.VERSION);
     }
 }
