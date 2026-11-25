@@ -171,6 +171,11 @@ erasures stop with the same handler code and are not logged.
    - What was applied stays applied; a rerun goes on from there.
 3. **Verify:** every handler checks every kept entry. Anything `READABLE`, or a check that fails, is
    `ERASE_VERIFY_FAILED`, and the system stays blocked.
+   An entry the database had applied before, whose data can be read again (the app's file storage restored without the
+   database, 1.1.1), goes through its handler once more without moving the position, and is checked again. While
+   anything is readable the restore is recorded, so every instance takes no work. A restore of the file storage alone
+   cannot be seen at startup: the position and the log are in step, and asking every handler for every entry at each
+   start would cost too much; the guide says to run the replay.
 4. Only then is `replay_required` cleared, and the guard lifts.
 
 Running it twice is safe. The report (`Report.describe()`) holds the code and the handler's code, entry numbers
@@ -225,7 +230,7 @@ From the independent security review (`docs/work/security-findings.md` SEC-3, SE
     `platform-erase-log/mac/1` NUL log ID NUL seq NUL hash. The hash already covers every field and `prev`.
   - `erase-log.seal` (`Seal`) says from which entry on MACs are required, and fixes the hash just before it, so older,
     unkeyed entries are fixed through the hash chain.
-  - A new log is sealed at its first entry. An existing one is sealed once by the explicit migration
+  - A new log is sealed at its first entry; until then there is nothing to verify and nothing pending (1.1.1). An existing one is sealed once by the explicit migration
     (`EraseLog.seal()`, `--erase-log-seal`), which rewrites no entry.
   - The chain check (`EraseLog.verify`) and the entries the eraser and the replay act on (`EraseLog.pending`) require
     the seal and every MAC from it on. The message names the first bad entry.
