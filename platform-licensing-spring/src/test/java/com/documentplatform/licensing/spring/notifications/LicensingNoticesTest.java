@@ -15,6 +15,8 @@ import com.documentplatform.licensing.inmemory.InMemoryLicenceStore;
 import com.documentplatform.licensing.inmemory.InMemoryNoticeLog;
 import com.documentplatform.licensing.inmemory.InMemoryUsageLedger;
 import com.documentplatform.licensing.inmemory.TestLicences;
+import com.documentplatform.notifications.EventTypeId;
+import com.documentplatform.notifications.EventSettings;
 import com.documentplatform.notifications.AppLink;
 import com.documentplatform.notifications.ChannelKind;
 import com.documentplatform.notifications.DestinationId;
@@ -189,6 +191,42 @@ class LicensingNoticesTest {
         String text = sent.get(1).message().text();
         assertTrue(text.contains("Licence expiring"), text);
         assertTrue(text.contains("LIC-TEST-0001"), text);
+    }
+
+    /** P056 (LV-24.4): the admin's own warning days, within their range; the defaults are 60, 30, 7 and 1. */
+    @Test
+    void theAdminSetsTheWarningDays() {
+        App app = new App(Instant.parse("2026-10-07T09:00:00Z")); // 100 days before 2027-01-15
+        app.store(subscription(app, "2027-01-15"));
+        assertEquals(0, app.check().published(), "not yet with the defaults");
+        EventTypeId type = LicensingEvents.LICENCE_EXPIRING;
+        EventSettings s = EventSettings.defaultsFor(app.catalogue.require(type));
+        assertEquals(Map.of("warnDaysFirst", 60L, "warnDaysSecond", 30L, "warnDaysThird", 7L, "warnDaysLast", 1L),
+                s.thresholds());
+        app.settings.setBusinessEvent(TenantId.of(TENANT), ENTITY, type, s.withThreshold("warnDaysFirst", 120)
+                .withThreshold("warnDaysSecond", 14).withThreshold("warnDaysThird", 0).withThreshold("warnDaysLast", 2));
+        assertEquals(1, app.check().published(), "120 days, although the licence is not EXPIRING yet");
+        app.clock.set(Instant.parse("2026-12-16T09:00:00Z")); // 30 days before: no longer a warning day
+        assertEquals(0, app.check().published());
+        app.clock.set(Instant.parse("2027-01-01T09:00:00Z"));
+        assertEquals(1, app.check().published(), "14");
+        app.clock.set(Instant.parse("2027-01-08T09:00:00Z"));
+        assertEquals(0, app.check().published(), "the third is off");
+        app.clock.set(Instant.parse("2027-01-13T09:00:00Z"));
+        assertEquals(1, app.check().published(), "2");
+        assertEquals(0, app.check().published(), "once");
+        assertTrue(app.noticeLog.claimed().contains("expiring|" + TENANT + "|LIC-TEST-0001|v1|" + SLOT_ON + "|120"));
+    }
+
+    @Test
+    void warningDaysOutsideTheirRangeAreRefused() {
+        App app = new App(Instant.parse("2026-10-07T09:00:00Z"));
+        EventSettings s = EventSettings.defaultsFor(app.catalogue.require(LicensingEvents.LICENCE_EXPIRING));
+        for (EventSettings bad : List.of(s.withThreshold("warnDaysFirst", 0), s.withThreshold("warnDaysFirst", 181),
+                s.withThreshold("warnDaysLast", -1))) {
+            assertThrows(com.documentplatform.notifications.NotificationException.class, () -> app.settings
+                    .setBusinessEvent(TenantId.of(TENANT), ENTITY, LicensingEvents.LICENCE_EXPIRING, bad));
+        }
     }
 
     @Test

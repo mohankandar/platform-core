@@ -20,6 +20,15 @@ public interface ApprovalAudit {
 
     void record(Entry entry);
 
+    /**
+     * A decision the app made outside the links and told through {@link Approvals#decidedElsewhere}: the entry, and
+     * where it was decided, as the app named it. The default records the entry only; an app that uses
+     * {@code decidedElsewhere} overrides this to keep the place.
+     */
+    default void recordElsewhere(Entry entry, String where) {
+        record(entry);
+    }
+
     enum Outcome {
         DECIDED,
         ALREADY_DECIDED,

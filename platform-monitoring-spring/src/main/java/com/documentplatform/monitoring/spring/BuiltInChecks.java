@@ -118,9 +118,14 @@ final class BuiltInChecks {
     static final class Mail {
         static void add(List<DependencyCheck> out, ListableBeanFactory beans) {
             var config = unique(beans, com.documentplatform.notifications.spring.internal.NotificationsConfig.class);
-            if (config == null || config.mail().isEmpty()) return;
-            var m = config.mail().get();
-            out.add(com.documentplatform.monitoring.checks.ChannelCheck.mail("mail", Map.of("host", m.host(),
+            if (config == null) return;
+            config.mail().ifPresent(m -> add(out, "mail", m));
+            config.mailServers().forEach((name, m) -> add(out, "mail-" + name, m.server())); // P056
+        }
+
+        private static void add(List<DependencyCheck> out, String name,
+                                com.documentplatform.notifications.email.MailServer m) {
+            out.add(com.documentplatform.monitoring.checks.ChannelCheck.mail(name, Map.of("host", m.host(),
                     "from-address", m.fromAddress() == null ? "" : m.fromAddress()), m.host(), m.port()));
         }
     }

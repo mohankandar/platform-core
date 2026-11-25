@@ -39,7 +39,10 @@ public final class LicenceBuild {
     private final TrustedKeys keys;
     private final Instant builtAt;
 
-    private LicenceBuild(TrustedKeys keys, Instant builtAt) {
+    private final boolean development;
+
+    private LicenceBuild(TrustedKeys keys, Instant builtAt, boolean development) {
+        this.development = development;
         this.keys = keys;
         this.builtAt = builtAt;
     }
@@ -59,7 +62,7 @@ public final class LicenceBuild {
             throw new Invalid("The app's build lists no licence key it may trust" + (keys.keyIds().isEmpty() ? "."
                     : ": all its keys are development keys, and this is not a development build."));
         }
-        return new LicenceBuild(trusted, builtAt);
+        return new LicenceBuild(trusted, builtAt, developmentKeys);
     }
 
     /** @throws Invalid naming what is wrong with the app's build */
@@ -99,6 +102,16 @@ public final class LicenceBuild {
             throw new Invalid(BUILD + " in the app's build: built-at must be a time such as 2026-11-21T10:00:00Z.");
         }
         return of(keys, development.equals("true"), builtAt);
+    }
+
+    /** Whether this is a development build: one that trusts development keys, so never one for a customer's use. */
+    public boolean isDevelopment() {
+        return development;
+    }
+
+    /** Whether the licence is signed by a development key this build trusts; always false in a production build. */
+    public boolean isDevelopmentLicence(Licence licence) {
+        return development && keys.isDevelopmentKey(licence.keyId());
     }
 
     /** The keys this build trusts. */

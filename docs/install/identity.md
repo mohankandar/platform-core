@@ -38,7 +38,7 @@ The identity tables all start with `idn_`:
 
 1. **Run the identity schema step as its own Flyway run,** apart from the app's other tables:
    - location `classpath:db/platform/identity` (files `V1__identity.sql`, `V2__machine_binding.sql`,
-     `V3__grant_history.sql`, `V4__platform_grants.sql`, `V5__identity_history_and_search_path.sql`; a database that ran only the earlier files gets the later ones
+     `V3__grant_history.sql`, `V4__platform_grants.sql`, `V5__identity_history_and_search_path.sql`, `V6__test_sign_in.sql`; a database that ran only the earlier files gets the later ones
      at the next schema step,
      and the app refuses to start with `IDN_VERSION_OLDER` until then)
    - history table `idn_schema_history`
@@ -123,6 +123,10 @@ active connection keeps working the whole time; the change is prepared, tested, 
    - optionally, it checks a token the admin pastes or gets from a test sign-in: its signature, issuer, the API
      audience the product expects, that it has not expired, and that it carries the groups claim.
 
+   **To replace an active connection, the token is required** (1.2.0): sign in at the new login system with a test
+   user and give that token. Only the fact that it passed is kept, for this version of the draft; an edit or a later
+   failed test takes it away. A draft validated before 1.2.0 has no such pass: run its test sign-in once more.
+
    The token is checked and forgotten: never stored, logged or shown. A pass marks the draft **validated**; any later
    edit makes it a draft again. A failure names the exact cause:
 
@@ -138,14 +142,31 @@ active connection keeps working the whole time; the change is prepared, tested, 
    | `IDN_TEST_EXPIRED` | The token has expired (or is not valid yet: check the server clock) |
    | `IDN_TEST_GROUPS_CLAIM_MISSING` | The token carries no groups: set the login system to send them |
 
-3. **Activate.** Only a validated draft can be activated. It becomes the active connection and the old one is
+3. **Activate.** Only a validated draft can be activated, and when a connection is active already, only one whose test
+   sign-in passed with a token (`IDN_TEST_SIGN_IN_REQUIRED` otherwise; nothing is switched, people keep signing in, and
+   the admin runs the test with a token). It becomes the active connection and the old one is
    switched off, in one step.
 4. **Rollback.** If people cannot sign in after the switch, the admin goes back: the previous active version is made
    active again (as a new version). There must be one; drafts are left as they are.
+5. **Rollback when nobody can sign in any more**, the admin included: on the server, with the setup command and its
+   database login, no session needed (1.2.0):
+
+   ```
+   setup identity rollback-login-connection --tenant-id TEN-... --product PRODUCT_A           shows what it would do
+   setup identity rollback-login-connection --tenant-id TEN-... --product PRODUCT_A --apply   does it
+   ```
+
+   It is the same step as the admin's rollback. Restart the app afterwards if it reads its login connection only at start.
+
+**For the app's developers.** Use the calls with the customer and product (`updateDraft(tenantId, productCode, …)`,
+`validate`, `activate`, `discardDraft`, 1.2.0): another customer's draft is then `IDN_CONNECTION_UNKNOWN`. The calls
+without them stay for compatibility and cannot check it. An app whose token decoder is fixed to one issuer at start must
+take the new issuer's token from a separate test page (the new login system's own sign-in, not the app's session), and must
+restart, or build its decoder per connection, when the active connection changes; its `connections.active` tells.
 
 Every step is kept in `idn_login_connection_history` with who and when (source `APP`; the setup command writes
 `SETUP`). Two admins never overwrite each other: a step made on an out-of-date screen is refused
-(`IDN_VERSION_CONFLICT`); reload and try again. Other refusals: `IDN_DRAFT_EXISTS`, `IDN_NOT_VALIDATED`,
+(`IDN_VERSION_CONFLICT`); reload and try again. Other refusals: `IDN_DRAFT_EXISTS`, `IDN_NOT_VALIDATED`, `IDN_TEST_SIGN_IN_REQUIRED`,
 `IDN_NOT_A_DRAFT`, `IDN_NO_PREVIOUS_CONNECTION`, `IDN_VALUES_INVALID`, `IDN_VALUES_REQUIRED`,
 `IDN_CONNECTION_UNKNOWN`, `IDN_CUSTOMER_UNKNOWN`, `IDN_HTTP_ISSUER_NOT_ALLOWED`. A test sign-in that does not pass
 is `IDN_TEST_FAILED`: its report names the check that failed (one of the `IDN_TEST_*` codes above), and the draft is

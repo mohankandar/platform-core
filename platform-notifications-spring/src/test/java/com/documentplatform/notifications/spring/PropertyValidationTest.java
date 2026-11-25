@@ -67,6 +67,70 @@ class PropertyValidationTest {
         assertEquals(Duration.ofMinutes(1), c.tickInterval());
     }
 
+    // ---- P056 (LV-24.2): several mail servers
+
+    private static com.documentplatform.notifications.email.MailServer server(NotificationsConfig c, String tenant,
+                                                                              String destination) {
+        return c.mailServer(com.documentplatform.notifications.TenantId.of(tenant), DestinationId.of(destination))
+                .orElse(null);
+    }
+
+    private static String[] relay(String id, String host, String... more) {
+        return concat(new String[]{P + "mail-servers." + id + ".host=" + host, P + "mail-servers." + id
+                + ".from-address=n@customer.example"}, more);
+    }
+
+    @Test
+    void aMailServerIsChosenPerTenantAndDestination() {
+        NotificationsConfig c = config(concat(GOOD_MAIL, concat(
+                relay("east", "east.example", P + "mail-servers.east.tenants=T1,T2"), concat(
+                relay("legal", "legal.example", P + "mail-servers.legal.destinations[0]=legal-mail"),
+                relay("t1-legal", "t1-legal.example", P + "mail-servers.t1-legal.tenants=T1",
+                        P + "mail-servers.t1-legal.destinations=legal-mail", P + "mail-servers.t1-legal.security=TLS")))));
+        assertEquals("east.example", server(c, "T1", "mail").host());
+        assertEquals("east.example", server(c, "T2", "other").host());
+        assertEquals("t1-legal.example", server(c, "T1", "legal-mail").host(), "tenant and destination first");
+        assertEquals(465, server(c, "T1", "legal-mail").port());
+        assertEquals("east.example", server(c, "T2", "legal-mail").host(), "the tenant before the destination");
+        assertEquals("legal.example", server(c, "T3", "legal-mail").host());
+        assertEquals("smtp.customer.example", server(c, "T3", "mail").host(), "the one server of before");
+        assertEquals(java.util.Set.of("east", "legal", "t1-legal"), c.mailServers().keySet());
+    }
+
+    @Test
+    void withOnlyOneServerNothingChangesAndWithoutADefaultTheOthersHaveNone() {
+        NotificationsConfig one = config(GOOD_MAIL);
+        assertEquals("smtp.customer.example", server(one, "any", "any").host());
+        assertTrue(one.mailServers().isEmpty());
+        NotificationsConfig none = config(relay("east", "east.example", P + "mail-servers.east.tenants=T1"));
+        assertTrue(none.mail().isEmpty());
+        assertEquals("east.example", server(none, "T1", "mail").host());
+        assertEquals(null, server(none, "T2", "mail"));
+    }
+
+    @Test
+    void eachMistakeOfAMailServerIsNamed() {
+        assertEquals(List.of(P + "mail-servers.a: give tenants, destinations or both (which messages it sends); the server "
+                        + "for all others is " + P + "mail.*"),
+                problems(relay("a", "a.example")));
+        assertEquals(List.of(P + "mail-servers.b: serves the same tenant and destination as " + P + "mail-servers.a"),
+                problems(concat(relay("a", "a.example", P + "mail-servers.a.tenants=T1"),
+                        relay("b", "b.example", P + "mail-servers.b.tenants=T2,T1"))));
+        assertEquals(List.of(P + "mail-servers.a.host: missing; give the mail server's host name, or remove the other "
+                        + P + "mail-servers.a.* settings"),
+                problems(P + "mail-servers.a.tenants=T1", P + "mail-servers.a.from-address=n@customer.example"));
+        assertEquals(List.of(P + "mail-servers.a.tenants: not a tenant ID (letters, digits, '.', '_' and '-', at most 128 "
+                        + "characters)"),
+                problems(relay("a", "a.example", P + "mail-servers.a.tenants[0]=not valid!")));
+        List<String> secret = problems(relay("a", "a.example", P + "mail-servers.a.tenants=T1",
+                P + "mail-servers.a.username=u", P + "mail-servers.a.password-secret=my pass@word//x"));
+        assertEquals(1, secret.size());
+        assertTrue(secret.get(0).startsWith(P + "mail-servers.a.password-secret: not a valid secret reference"), secret.get(0));
+        assertTrue(!secret.get(0).contains("my pass"));
+        assertTrue(problems(relay("a", "a.example", P + "mail-servers.a.tenants=T1", P
+                + "mail-servers.a.read-timeout=10m")).get(0).startsWith(P + "lease: must be longer"));
+    }
+
     @Test
     void noChannelsAtAllIsValid() {
         NotificationsConfig c = config();

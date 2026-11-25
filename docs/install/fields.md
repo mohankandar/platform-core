@@ -96,6 +96,10 @@ FieldDefinitions definitions = new FieldDefinitions(fieldStore, valueStore);   /
 FieldValues values = new FieldValues(customerId, fieldStore, valueStore, keyService, Clock.systemUTC(), legalHolds);
 ```
 
+An app none of whose fields is sensitive needs no key service (1.2.0): `FieldValues.withoutKeyService(customerId, fieldStore,
+valueStore, Clock.systemUTC(), legalHolds)`. For results pages: `values.read(refs)` and `values.readSensitive(refs)`, up to 100
+records, one database query each (and one key service call for the sensitive ones).
+
 `legalHolds` is the app's own `LegalHolds` (leave it out when the app has none). To erase case fields, the app also
 registers `new CaseFieldsEraseHandler(values, valueStore, legalHolds)` as an `EraseHandler` bean for the erase log
 (`docs/install/erase-log.md`). Codes: `docs/errors/platform-error-codes.md`.

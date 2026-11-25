@@ -201,8 +201,15 @@ Built in P019 in `platform-fields` (package `com.documentplatform.fields.values`
   `SensitiveRead` per record in the order given, **one** batched key service call for all (none when there is nothing to
   open). Each result is what the single read gives: the values, or its exception (`VALUES_RECORD_UNKNOWN`,
   `VALUES_WRONG_CUSTOMER`, `CRYPTO_CIPHERTEXT_INVALID`, `CRYPTO_KEY_DISABLED`, …). Key service away, permission, missing
-  customer key or a store failure throws for the whole page. The store is still asked record by record. Values never appear in a
+  customer key or a store failure throws for the whole page. Since 1.2.0 (P056) the store is asked **once** for the page
+  (`ValueStore.findAll`; the default asks `find` per record, so a store of your own keeps working), and `read(List<RecordRef>)`
+  reads a page the same way with the sensitive values hidden and no key service call. Values never appear in a
   `toString()`, a log (nothing is logged) or an exception message.
+- **Without a key service (1.2.0):** `FieldValues.withoutKeyService(…)` for an app none of whose fields is sensitive; a call that
+  would seal, open or fingerprint a sensitive value is `VALUES_KEY_SERVICE_REQUIRED`, nothing written.
+- **Conflicts as data (1.2.0):** `FieldValuesException.conflictingKeys()` names the keys of a `VALUES_CONFLICT`.
+- **A list of definitions, all or none (1.2.0):** `FieldDefinitions.change(scope, List<FieldChange>, actor)` in one transaction
+  (`FieldStore.saveAll`; a store of your own must implement it, the default refuses and saves nothing).
 - **Key service calls:** new record with sensitive values: the data key, plus, when any value needs a fingerprint,
   the fingerprint key's versions and one batch (3 in all, however many values). Opening a record: 1; opening a
   page with `readSensitive(List)`: 1. Key rotation:

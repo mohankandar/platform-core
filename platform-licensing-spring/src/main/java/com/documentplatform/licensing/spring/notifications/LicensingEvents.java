@@ -51,6 +51,9 @@ public final class LicensingEvents {
             PRODUCT_NOT_COVERED);
 
     /** Field names (counts and times) the events carry. */
+    /** The admin's warning days of {@link #LICENCE_EXPIRING} (1.2.0): thresholds of the event type, 0 for none. */
+    static final List<String> WARN_DAYS = List.of("warnDaysFirst", "warnDaysSecond", "warnDaysThird", "warnDaysLast");
+    static final int MAX_WARN_DAYS = 180;
     static final String DAYS_LEFT = "daysLeft";
     static final String LICENCE_ENDS = "licenceEnds";
     static final String GRACE_DAYS_LEFT = "graceDaysLeft";
@@ -86,7 +89,12 @@ public final class LicensingEvents {
         return List.of(
                 EventType.builder(LICENCE_EXPIRING.value(), "Licence expiring", EventKind.BUSINESS)
                         .schedule(daily).recipients(businessAdmin)
-                        .count(DAYS_LEFT, "Days left").time(LICENCE_ENDS, "Licence ends").build(),
+                        .count(DAYS_LEFT, "Days left").time(LICENCE_ENDS, "Licence ends")
+                        .threshold(WARN_DAYS.get(0), "First warning days before", 60, 1, MAX_WARN_DAYS)
+                        .threshold(WARN_DAYS.get(1), "Second warning days before", 30, 0, MAX_WARN_DAYS)
+                        .threshold(WARN_DAYS.get(2), "Third warning days before", 7, 0, MAX_WARN_DAYS)
+                        .threshold(WARN_DAYS.get(3), "Last warning days before", 1, 0, MAX_WARN_DAYS)
+                        .build(),
                 EventType.builder(LICENCE_IN_GRACE.value(), "Licence expired, grace period running", EventKind.BUSINESS)
                         .critical().continuous(oncePerDay).recipients(businessAdmin, itAdmin)
                         .count(GRACE_DAYS_LEFT, "Grace days left").time(LICENCE_ENDS, "Licence ended")

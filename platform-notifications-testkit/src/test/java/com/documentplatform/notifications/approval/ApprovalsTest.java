@@ -16,6 +16,7 @@ import java.time.Duration;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -49,6 +50,80 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ApprovalsTest {
 
     private final ApprovalFixture f = new ApprovalFixture();
+
+    /** P056 (LV-24.5): the app's own screen decided first. */
+    @Test
+    void aDecisionMadeElsewhereClosesTheRequestAndTheLinksSayWhoDecided() {
+        List<String> places = new java.util.ArrayList<>();
+        List<ApprovalAudit.Entry> entries = new java.util.ArrayList<>();
+        Approvals approvals = Approvals.builder(List.of(ApprovalType.of(ApprovalFixture.PRINT, ApprovalFixture.WAITING,
+                        ApprovalFixture.APPROVED, ApprovalFixture.DECLINED, ApprovalFixture.APPROVER)),
+                f.settings.catalogue(), f.store, f.tokens, f.notifier).approvers(ApproverCheck.from(f.people))
+                .clock(f.clock).audit(new ApprovalAudit() {
+                    @Override
+                    public void record(Entry entry) {
+                        entries.add(entry);
+                    }
+
+                    @Override
+                    public void recordElsewhere(Entry entry, String where) {
+                        places.add(where);
+                        record(entry);
+                    }
+                }).build();
+        ApprovalRequest r = f.create();
+        f.send();
+        int mails = f.email.sent().size();
+        Decision d = new Decision(DECLINE, DEE.userId(), "Dee Moss", f.clock.instant(), "wrong copy");
+        ApprovalResult first = approvals.decidedElsewhere(ApprovalFixture.TENANT, r.id(), d, "print-queue screen", false);
+        assertEquals(d, ((ApprovalResult.Decided) first).request().decision());
+        assertEquals(List.of("print-queue screen"), places);
+        assertEquals(ApprovalAudit.Outcome.DECIDED, entries.get(0).outcome());
+        assertEquals(DEE.userId(), entries.get(0).userId());
+        f.send();
+        assertEquals(mails, f.email.sent().size(), "the requester is told by the app, unless asked otherwise");
+
+        // the links, also the approver's own, now say so and change nothing
+        ApprovalResult.AlreadyDecided opened = (ApprovalResult.AlreadyDecided) f.approvals.open(f.token(CY, APPROVE), AS_CY);
+        assertEquals(d, opened.request().decision());
+        assertTrue(f.approvals.decide(f.token(CY, APPROVE), AS_CY, null) instanceof ApprovalResult.AlreadyDecided);
+        // telling it twice, or something else, changes nothing
+        Decision other = new Decision(APPROVE, CY.userId(), "Cy Lee", f.clock.instant(), null);
+        ApprovalResult again = approvals.decidedElsewhere(ApprovalFixture.TENANT, r.id(), other, "other screen", true);
+        assertEquals(d, ((ApprovalResult.AlreadyDecided) again).request().decision());
+        assertEquals(ApprovalAudit.Outcome.ALREADY_DECIDED, entries.get(1).outcome());
+        assertEquals(List.of("print-queue screen", "other screen"), places);
+    }
+
+    @Test
+    void aDecisionMadeElsewhereIsRefusedWhereALinksDecisionWouldBe() {
+        ApprovalRequest r = f.create();
+        Decision ok = new Decision(APPROVE, CY.userId(), "Cy Lee", f.clock.instant(), null);
+        assertEquals(ApprovalRefusal.REQUEST_UNKNOWN, ((ApprovalResult.Refused) f.approvals.decidedElsewhere(
+                ApprovalFixture.OTHER_TENANT, r.id(), ok, "screen", false)).refusal());
+        assertEquals(ApprovalRefusal.OWN_REQUEST, ((ApprovalResult.Refused) f.approvals.decidedElsewhere(
+                ApprovalFixture.TENANT, r.id(), new Decision(APPROVE, REQ.userId(), "Rex", f.clock.instant(), null),
+                "screen", false)).refusal());
+        assertThrows(IllegalArgumentException.class, () -> f.approvals.decidedElsewhere(ApprovalFixture.TENANT, r.id(),
+                ok, " ", false));
+        f.clock.advance(java.time.Duration.ofDays(365));
+        assertEquals(ApprovalRefusal.REQUEST_EXPIRED, ((ApprovalResult.Refused) f.approvals.decidedElsewhere(
+                ApprovalFixture.TENANT, r.id(), ok, "screen", false)).refusal());
+        assertTrue(f.store.find(ApprovalFixture.TENANT, r.id()).orElseThrow().decision() == null);
+    }
+
+    @Test
+    void theRequesterIsToldOfADecisionMadeElsewhereWhenAsked() {
+        ApprovalRequest r = f.create();
+        f.send();
+        int mails = f.email.sent().size();
+        f.approvals.decidedElsewhere(ApprovalFixture.TENANT, r.id(), new Decision(APPROVE, CY.userId(), "Cy Lee",
+                f.clock.instant(), null), "screen", true);
+        f.send();
+        assertEquals(mails + 1, f.email.sent().size());
+        assertEquals(Set.of(REQ), f.email.sent().get(mails).recipients());
+        assertEquals(1, f.audit.size(), "an audit that does not know the place still gets the entry");
+    }
 
     @Test
     void eachApproverGetsTheirOwnLinksAtOnceAndTheRequesterNone() {

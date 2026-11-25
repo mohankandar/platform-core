@@ -29,6 +29,7 @@ final class NotificationsHealthIndicator implements HealthIndicator {
     private final DestinationHealth health;
     private final MailServer mail;
     private final MicrosoftTokens tokens;
+    private final Map<String, MailServer> more;
 
     public NotificationsHealthIndicator(DestinationHealth health) {
         this(health, null, null);
@@ -39,6 +40,13 @@ final class NotificationsHealthIndicator implements HealthIndicator {
      * @param tokens Microsoft 365 tokens, whose state (never the token) is shown with auth OAUTH2_MICROSOFT
      */
     public NotificationsHealthIndicator(DestinationHealth health, MailServer mail, MicrosoftTokens tokens) {
+        this(health, mail, tokens, Map.of());
+    }
+
+    /** @param more the further mail servers, by name */
+    NotificationsHealthIndicator(DestinationHealth health, MailServer mail, MicrosoftTokens tokens,
+                                 Map<String, MailServer> more) {
+        this.more = new LinkedHashMap<>(more);
         this.health = health;
         this.mail = mail;
         this.tokens = tokens;
@@ -66,13 +74,18 @@ final class NotificationsHealthIndicator implements HealthIndicator {
         }
         Health.Builder h = Health.status(problem ? DEGRADED : Status.UP).withDetail("destinations", destinations);
         if (mail != null) {
-            h.withDetail("mail", mailSignIn());
+            h.withDetail("mail", mailSignIn(mail));
+        }
+        if (!more.isEmpty()) {
+            Map<String, Object> servers = new LinkedHashMap<>();
+            more.forEach((name, server) -> servers.put(name, mailSignIn(server)));
+            h.withDetail("mailServers", servers);
         }
         return h.build();
     }
 
     /** The sign-in mode and, for Microsoft 365, the token state: codes, labels and times only. */
-    private Map<String, Object> mailSignIn() {
+    private Map<String, Object> mailSignIn(MailServer mail) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("auth", mail.auth().name());
         if (mail.oauth() != null && tokens != null) {

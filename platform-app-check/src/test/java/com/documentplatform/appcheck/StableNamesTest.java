@@ -28,7 +28,9 @@ class StableNamesTest {
             P + "identity.testkit.MockIssuer", P + "integration.profile.ProfileValidator",
             P + "integration.testkit.ProfileContract",
             P + "crypto.KeyService", P + "crypto.Unwrapped", P + "crypto.envelope.RecordCipher",
-            P + "fields.values.FieldValues", P + "fields.values.SensitiveRead");
+            P + "fields.values.FieldValues", P + "fields.values.SensitiveRead",
+            P + "fields.FieldChange", P + "identity.store.LoginConnections", P + "notifications.approval.Approvals",
+            P + "licensing.LicenceBuild");
 
     @Test
     void theTypesArePublic() throws Exception {

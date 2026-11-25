@@ -158,6 +158,9 @@ Fixed now because an app builds its own loader to the same format (on Enterprise
 
 Decided by an app's design chat; built in P031 (`docs/work/P031-report.md`).
 
+- **1.2.0 (P056, LV-23):** replacing an ACTIVE connection needs a recorded test sign-in with a token for the draft's version
+  (`idn_login_connection.test_sign_in_version`, schema V6); the draft calls take the customer and product;
+  `setup identity rollback-login-connection`.
 - **Login-connection drafts** (`LoginConnections`, identity-core): draft (copy of the ACTIVE connection, or the
   first one), test sign-in (`OidcTestSignIn` over an `IssuerFetch`; production: `OutboundIssuerFetch`, since P028 in
   platform-identity-spring on platform-outbound), activate (VALIDATED only; old ACTIVE → DISABLED in one

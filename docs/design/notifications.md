@@ -371,6 +371,18 @@ supported. Password login and the internal relay stay as they are.
   announced late. A failure is logged once with its neutral reason, like the other workers.
 - An app without the Spring module calls `tellExpired` from its own scheduler and purges as before.
 
+### Added in P056 (1.2.0)
+
+- **Decided outside the links** (`Approvals.decidedElsewhere`): the app decided; the stored decision is the same row a link's
+  decision writes, so the first one wins and every link answers "already decided". Checked here: the request exists, is open, is not
+  decided by its requester. The approver role is the app's own check. Audited through `ApprovalAudit.recordElsewhere` with the place;
+  the place is the app's audit's to keep, the request row has no column for it.
+- **Several mail servers** (`mail-servers.<name>`, notifications-spring): chosen by tenant and destination, one `Notifier` for all;
+  `MailServerDirectory` was already the port for it.
+- **Licence warning days:** thresholds of `licensing.licence-expiring` (`warnDaysFirst` 60, `warnDaysSecond` 30, `warnDaysThird` 7,
+  `warnDaysLast` 1; 0 to 180, the first at least 1), set like any threshold on the app's settings screen. The licence states are
+  unchanged: EXPIRING still starts at 60 days.
+
 ## 7. Time zone per entity (P020, requirement 20 of `integration-standards.md`)
 
 - Entities can be separate companies in different places. The tenant settings keep the tenant's zone; the app may

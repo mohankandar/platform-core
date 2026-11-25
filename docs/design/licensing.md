@@ -35,6 +35,9 @@ Source of truth: the owner's Shared capabilities thread (project doc `Licensing-
 
 ## 4. Usage
 
+- **Warning days (1.2.0):** the admin sets them in the notification settings (thresholds of "licence expiring", defaults 60, 30, 7, 1).
+  `LicenceStatus.WARNING_DAYS` and the state EXPIRING stay as they are. `LicenceBuild.isDevelopment()` and
+  `isDevelopmentLicence(licence)` say whether the app is a development build and a licence is signed by one of its development keys.
 - **Never stop at a limit.** 80% and 100% warnings and over-limit are reported; work continues; overage is recorded.
 - The module provides a **usage ledger**: the app records units at its own meter point (e.g. pages processed, daily peak of concurrent seats, named seats assigned, storage). Records carry entity slot, period, amount, billable flag (false under an install licence or when the app marks it free), and a hash chained to the previous record so accidental edits and gaps are detected (the hash is not keyed: whoever owns the database can rewrite the chain).
 - Usage per entity per month can be read for the app's screens and notifications.
