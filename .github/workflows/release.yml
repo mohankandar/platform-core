@@ -41,12 +41,7 @@ jobs:
               exit 1
             fi
           fi
-          runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${sha}&branch=${branch}&event=push&status=success&per_page=1" --jq '.total_count')"
-          if [ "${runs}" -lt 1 ]; then
-            echo "No successful CI run on ${branch} for ${sha}. Wait for its CI on the merge commit to pass, then tag again with a new version." >&2
-            exit 1
-          fi
-          echo "commit ${sha} is on ${branch}; CI there passed"
+          bash scripts/release-ci-passed.sh "${sha}" "${branch}" # asks for up to 3 minutes (P058)
 
       - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
