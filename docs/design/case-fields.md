@@ -196,10 +196,16 @@ Built in P019 in `platform-fields` (package `com.documentplatform.fields.values`
   without it partial runs as prefix and the result says so (`SearchResult.Note.PARTIAL_AS_PREFIX`;
   `searchStatus()` gives `FLD_PARTIAL_SEARCH_UNAVAILABLE` and names `db/platform/fields-optional/partial-search.sql`).
 - **Reading:** `read` never decrypts (sensitive values hidden, count only); `readSensitive` is the explicit call the
-  app makes only for roles allowed to see sensitive values: one key service call per record. Values never appear in a
+  app makes only for roles allowed to see sensitive values: one key service call per record.
+  `readSensitive(List<RecordRef>)` (1.1.0, P054) reads a page: at most 100 records (`IllegalArgumentException` above), one
+  `SensitiveRead` per record in the order given, **one** batched key service call for all (none when there is nothing to
+  open). Each result is what the single read gives: the values, or its exception (`VALUES_RECORD_UNKNOWN`,
+  `VALUES_WRONG_CUSTOMER`, `CRYPTO_CIPHERTEXT_INVALID`, `CRYPTO_KEY_DISABLED`, …). Key service away, permission, missing
+  customer key or a store failure throws for the whole page. The store is still asked record by record. Values never appear in a
   `toString()`, a log (nothing is logged) or an exception message.
 - **Key service calls:** new record with sensitive values: the data key, plus, when any value needs a fingerprint,
-  the fingerprint key's versions and one batch (3 in all, however many values). Opening a record: 1. Key rotation:
+  the fingerprint key's versions and one batch (3 in all, however many values). Opening a record: 1; opening a
+  page with `readSensitive(List)`: 1. Key rotation:
   older wrapping key versions keep opening; `FieldValues.rewrap(ref)` moves a record's envelope to the latest
   version before an old one is switched off; a rotated fingerprint key keeps search and the primary rule working
   (lookups try one identity per usable version).

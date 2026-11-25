@@ -26,7 +26,7 @@ final class VaultDev {
     static final String SHORT_ROLE = "platform-app-short";
     static final int SHORT_TTL_SECONDS = 3;
 
-    private static final GenericContainer<?> CONTAINER = new GenericContainer<>("hashicorp/vault:1.17.6")
+    private static final GenericContainer<?> CONTAINER = new GenericContainer<>("hashicorp/vault:1.21.4")
             .withEnv("VAULT_DEV_ROOT_TOKEN_ID", ROOT_TOKEN)
             .withEnv("VAULT_DEV_LISTEN_ADDRESS", "0.0.0.0:8200")
             .withEnv("SKIP_SETCAP", "true")

@@ -88,6 +88,17 @@ class NoSecretInLogsTest {
                 secrets.add(Base64.getEncoder().encodeToString(dk.key()));
                 texts.add(dk.toString());
             }
+            String batched;
+            try (KeyService.DataKey dk = keys.newDataKey(c)) {
+                batched = dk.wrapped();
+                secrets.add(batched.substring("vault:v1:".length()));
+                secrets.add(Base64.getEncoder().encodeToString(dk.key()));
+            }
+            keys.unwrapAll(c, List.of(batched, "vault:v1:AAAA", "junk")).forEach(u -> {
+                texts.add(u.toString());
+                texts.add(String.valueOf(u.failure()));
+                u.close();
+            });
             ValueCipher values = new ValueCipher(keys);
             String sealed = values.seal(c, "case:1:field:name", PLAIN);
             values.openText(c, "case:1:field:name", sealed);

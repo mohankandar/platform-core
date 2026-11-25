@@ -108,7 +108,7 @@ batch. Empty input calls nothing.
 
 ## 5. The key service plug-in point
 
-`KeyService`: `id`, `createKeys`, `wrappingKey` / `fingerprintKey` (versions), `newDataKey`, `unwrap`, `rewrap`,
+`KeyService`: `id`, `createKeys`, `wrappingKey` / `fingerprintKey` (versions), `newDataKey`, `unwrap`, `unwrapAll`, `rewrap`,
 `versionOf`, `rotate`, `fingerprint(customer, version, input)`, `health`. How the later implementations map:
 
 | KeyService | Vault Transit (built) | AWS KMS (later) | Azure Key Vault (later) |
@@ -116,10 +116,26 @@ batch. Empty input calls nothing.
 | wrapping key | `aes256-gcm96` key | symmetric KMS key (alias per customer) | RSA-HSM or AES (Managed HSM) key |
 | `newDataKey` | `datakey/plaintext` | `GenerateDataKey` | random key + `wrapKey` |
 | `unwrap` | `decrypt` | `Decrypt` | `unwrapKey` |
+| `unwrapAll` | `decrypt` with `batch_input` (one call) | one `Decrypt` per item (the default) | one `unwrapKey` per item (the default) |
 | `rewrap` | `rewrap` | `ReEncrypt` | `unwrapKey` + `wrapKey` |
 | `rotate`, versions | `keys/…/rotate`, `latest_version`, `min_decryption_version` | key rotation (backing keys) | new key version |
 | retired version | below `min_decryption_version` | disabled key | disabled version |
 | `fingerprint` | `hmac` (sha2-256, explicit version) | HMAC KMS key, `GenerateMac` | no HMAC operation: a per-customer fingerprint key wrapped by Key Vault, HMAC in the app (the "where possible" case) |
+
+**Many data keys in one call (1.1.0, P054):** `unwrapAll(customer, wrapped)` gives one `Unwrapped` per item, in the order
+given; at most `KeyService.MAX_BATCH` (100) items (more: `IllegalArgumentException`, nothing called); an empty list calls
+nothing.
+- An item that was changed or wrapped for another customer (`CRYPTO_CIPHERTEXT_INVALID`), or whose key version is switched off
+  (`CRYPTO_KEY_DISABLED`), fails as that item; the others open. Anything else (key service away, time-out, permission, key
+  missing, an answer that is not one result per item) throws and nothing is returned.
+- `Unwrapped.close()` wipes the key, `Unwrapped.closeAll` a whole list.
+- Vault Transit: one `decrypt` call. It sends `partial_failure_response_code` 200 (else a batch with one failed item answers
+  400); when every item fails Vault answers 400 all the same, with `batch_results`, which are read. A text that is no Transit
+  ciphertext is refused before the call, as by `unwrap`. An item's error is mapped as the single call's error text.
+- A `KeyService` without a batch of its own inherits the default, one `unwrap` per item. **A class that wraps another
+  `KeyService` forwards `unwrapAll`**, or it hides the batch.
+- `RecordCipher.openKeys(customer, records)` opens many record envelopes (`StoredKey`: context and envelope) through one
+  `unwrapAll`; an envelope that is damaged, another customer's or another key service's fails as that record.
 
 ## 6. Failure codes
 

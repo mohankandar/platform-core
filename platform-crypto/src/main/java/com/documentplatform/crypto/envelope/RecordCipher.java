@@ -4,14 +4,17 @@ import com.documentplatform.crypto.CryptoError;
 import com.documentplatform.crypto.CryptoException;
 import com.documentplatform.crypto.CustomerId;
 import com.documentplatform.crypto.KeyService;
+import com.documentplatform.crypto.Unwrapped;
 
 import javax.crypto.Cipher;
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -78,6 +81,98 @@ public final class RecordCipher {
         check(customer, e);
         byte[] key = keys.unwrap(customer, e.wrapped());
         return new RecordKey(customer, e.keyService(), recordContext, key, envelope);
+    }
+
+    /** One stored record whose key {@link #openKeys} opens. {@code toString()} does not show the envelope. */
+    public record StoredKey(String recordContext, String envelope) {
+        @Override
+        public String toString() {
+            return "StoredKey[" + recordContext + "]";
+        }
+    }
+
+    /**
+     * One record's result of {@link #openKeys}: its key, or the exception {@link #openKey} throws for it.
+     * {@link #close()} wipes the key.
+     */
+    public static final class OpenedKey implements AutoCloseable {
+        private final RecordKey key;
+        private final CryptoException failure;
+
+        private OpenedKey(RecordKey key, CryptoException failure) {
+            this.key = key;
+            this.failure = failure;
+        }
+
+        /** The record's key; throws the record's failure if it did not open. */
+        public RecordKey key() {
+            if (failure != null) {
+                throw failure;
+            }
+            return key;
+        }
+
+        /** Why the record's key did not open, or null when it did. */
+        public CryptoException failure() {
+            return failure;
+        }
+
+        @Override
+        public void close() {
+            if (key != null) {
+                key.close();
+            }
+        }
+
+        @Override
+        public String toString() {
+            return failure == null ? "OpenedKey[ok]" : "OpenedKey[" + failure.code() + "]";
+        }
+    }
+
+    /**
+     * The data keys of many stored records of one customer, one result per record in the order given: one
+     * {@link KeyService#unwrapAll} (none when no envelope can be used). An envelope that is damaged, another customer's
+     * or another key service's, and a key that does not open, fail as that record; a failure of the key service itself
+     * throws. At most {@link KeyService#MAX_BATCH} records. The caller closes every result.
+     */
+    public List<OpenedKey> openKeys(CustomerId customer, List<StoredKey> records) {
+        Objects.requireNonNull(customer, "customer");
+        List<StoredKey> all = List.copyOf(records);
+        if (all.size() > KeyService.MAX_BATCH) {
+            throw new IllegalArgumentException("A batch has at most " + KeyService.MAX_BATCH + " records");
+        }
+        all.forEach(r -> checkContext(r.recordContext(), "record"));
+        OpenedKey[] out = new OpenedKey[all.size()];
+        List<Integer> at = new ArrayList<>();
+        List<String> wrapped = new ArrayList<>();
+        for (int i = 0; i < out.length; i++) {
+            try {
+                Envelope e = decodeEnvelope(all.get(i).envelope());
+                check(customer, e);
+                at.add(i);
+                wrapped.add(e.wrapped());
+            } catch (CryptoException e) {
+                out[i] = new OpenedKey(null, e);
+            }
+        }
+        if (wrapped.isEmpty()) {
+            return List.of(out);
+        }
+        List<Unwrapped> dataKeys = keys.unwrapAll(customer, wrapped);
+        if (dataKeys.size() != wrapped.size()) {
+            Unwrapped.closeAll(dataKeys);
+            throw new CryptoException(CryptoError.CRYPTO_KEY_SERVICE_ERROR, "key service " + keys.id()
+                    + " did not give one result per item");
+        }
+        for (int n = 0; n < dataKeys.size(); n++) {
+            int i = at.get(n);
+            Unwrapped u = dataKeys.get(n);
+            // The record key takes the array over and wipes it when closed; check() matched the key service.
+            out[i] = u.ok() ? new OpenedKey(new RecordKey(customer, keys.id(), all.get(i).recordContext(), u.key(),
+                    all.get(i).envelope()), null) : new OpenedKey(null, u.failure());
+        }
+        return List.of(out);
     }
 
     /** The envelope with its data key wrapped by the latest key version; the items stay as they are. */

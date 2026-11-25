@@ -26,7 +26,9 @@ class StableNamesTest {
             P + "licensing.jdbc.PostgresLastSeenStore", P + "licensing.jdbc.PostgresLicenceStore",
             P + "licensing.jdbc.PostgresNoticeLog", P + "licensing.jdbc.PostgresUsageLedger", P + "setup.SetupCommand",
             P + "identity.testkit.MockIssuer", P + "integration.profile.ProfileValidator",
-            P + "integration.testkit.ProfileContract");
+            P + "integration.testkit.ProfileContract",
+            P + "crypto.KeyService", P + "crypto.Unwrapped", P + "crypto.envelope.RecordCipher",
+            P + "fields.values.FieldValues", P + "fields.values.SensitiveRead");
 
     @Test
     void theTypesArePublic() throws Exception {
