@@ -175,6 +175,73 @@ public final class Approvals {
         return finish(c, person, reason, now);
     }
 
+    /**
+     * Closes a request that was decided outside the links, by the app itself (for example on its own work screen, with
+     * its own checks). From then on every link answers "already decided" with this decision. The app has checked who
+     * may decide; this checks only what every stored decision must keep: the request exists, has not expired, is not
+     * decided by its requester. The first decision wins here too: when a link was faster, the answer is
+     * {@link ApprovalResult.AlreadyDecided} with the stored decision, and the app must follow it. Audited, whatever the
+     * outcome, through {@link ApprovalAudit#recordElsewhere}. Safe to call again.
+     *
+     * @param decision      who decided what, when, and (for a decline) why
+     * @param where         where it was decided, for the audit (1 to 100 characters, no control characters; for example
+     *                      the screen's name)
+     * @param tellRequester whether the requester gets the outcome message a link's decision sends; false when the app
+     *                      tells them itself
+     */
+    public ApprovalResult decidedElsewhere(TenantId tenant, UUID requestId, Decision decision, String where,
+                                           boolean tellRequester) {
+        Objects.requireNonNull(requestId, "requestId");
+        Objects.requireNonNull(decision, "decision");
+        if (where == null || where.isBlank() || where.length() > 100
+                || where.chars().anyMatch(Character::isISOControl)) {
+            throw new IllegalArgumentException("Where a decision was made: 1 to 100 characters, no control characters");
+        }
+        SignedInPerson person = new SignedInPerson(tenant, decision.byUserId(), decision.byName());
+        Instant now = now();
+        Optional<ApprovalRequest> found = store.find(tenant, requestId);
+        ApprovalRefusal refusal = found.isEmpty() ? ApprovalRefusal.REQUEST_UNKNOWN
+                : found.get().requester().equals(decision.byUserId()) ? ApprovalRefusal.OWN_REQUEST
+                : decision.reason() != null && !Ids.reasonOk(decision.reason()) ? ApprovalRefusal.REASON_INVALID : null;
+        ApprovalRequest request = found.orElse(null);
+        if (refusal == null) {
+            ApprovalStore.Stored stored = store.decide(tenant, requestId, decision, now);
+            request = stored.request();
+            switch (stored.kind()) {
+                case DECIDED -> {
+                    LOG.log(Level.INFO, "Approval request {0} of tenant {1} {2} by user {3}, outside its links",
+                            requestId, tenant, decision.action().pastTense(), decision.byUserId());
+                    if (tellRequester) {
+                        tellOutcome(request);
+                    }
+                    audit.recordElsewhere(entry(request, person, decision.action(), ApprovalAudit.Outcome.DECIDED,
+                            null, now, decision.reason()), where);
+                    return new ApprovalResult.Decided(request);
+                }
+                case ALREADY_DECIDED -> {
+                    audit.recordElsewhere(entry(request, person, decision.action(),
+                            ApprovalAudit.Outcome.ALREADY_DECIDED, null, now, decision.reason()), where);
+                    return new ApprovalResult.AlreadyDecided(request);
+                }
+                case EXPIRED -> refusal = ApprovalRefusal.REQUEST_EXPIRED;
+                case UNKNOWN -> refusal = ApprovalRefusal.REQUEST_UNKNOWN;
+            }
+        }
+        LOG.log(Level.INFO, "Decision of user {0} of tenant {1} on request {2}, made outside its links, not stored: {3}",
+                person.userId(), tenant, requestId, refusal.name());
+        audit.recordElsewhere(new ApprovalAudit.Entry(tenant, requestId, request == null ? null : request.entity(),
+                request == null ? null : request.type(), person.userId(), decision.action(),
+                ApprovalAudit.Outcome.REFUSED, refusal, now, decision.reason()), where);
+        return new ApprovalResult.Refused(refusal);
+    }
+
+    private static ApprovalAudit.Entry entry(ApprovalRequest r, SignedInPerson person, ApprovalAction action,
+                                             ApprovalAudit.Outcome outcome, ApprovalRefusal refusal, Instant now,
+                                             String reason) {
+        return new ApprovalAudit.Entry(r.tenant(), r.id(), r.entity(), r.type(), person.userId(), action, outcome,
+                refusal, now, reason);
+    }
+
     /** The request, for the app's screens. */
     public Optional<ApprovalRequest> find(TenantId tenant, UUID id) {
         return store.find(tenant, id);
@@ -262,10 +329,17 @@ public final class Approvals {
     }
 
     private ApprovalResult won(ApprovalRequest request, SignedInPerson person, String reason, Instant now) {
-        ApprovalType type = types.get(request.type());
         Decision d = request.decision();
         LOG.log(Level.INFO, "Approval request {0} of tenant {1} {2} by user {3}", request.id(), request.tenant(),
                 d.action().pastTense(), d.byUserId());
+        tellOutcome(request);
+        audit.record(entry(request, person, d.action(), ApprovalAudit.Outcome.DECIDED, null, now, reason));
+        return new ApprovalResult.Decided(request);
+    }
+
+    private void tellOutcome(ApprovalRequest request) {
+        ApprovalType type = types.get(request.type());
+        Decision d = request.decision();
         if (type != null) {
             NotificationEvent.Builder outcome = NotificationEvent.builder(
                             d.action() == ApprovalAction.APPROVE ? type.approvedEvent() : type.declinedEvent(),
@@ -288,9 +362,6 @@ public final class Approvals {
             LOG.log(Level.WARNING, "Approval request {0} of tenant {1} has a request type no longer registered; the "
                     + "requester is not told", request.id(), request.tenant());
         }
-        audit.record(new ApprovalAudit.Entry(request.tenant(), request.id(), request.entity(), request.type(),
-                person.userId(), d.action(), ApprovalAudit.Outcome.DECIDED, null, now, reason));
-        return new ApprovalResult.Decided(request);
     }
 
     private ApprovalResult lost(ApprovalRequest request, ApprovalAction action, SignedInPerson person, String reason,

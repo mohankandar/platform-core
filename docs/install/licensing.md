@@ -134,7 +134,7 @@ and licensing works the same.
 
 | Event | Kind | Default | Goes to |
 |---|---|---|---|
-| Licence expiring (60, 30, 7 and 1 days before) | business, per entity | once a day at 08:00 | Business Admin |
+| Licence expiring (60, 30, 7 and 1 days before; your admin can set other days, up to 180, 0 for none, 1.2.0) | business, per entity | once a day at 08:00 | Business Admin |
 | Licence expired, grace period running | business, per entity, **critical** | at once, repeated daily, Recovered when renewed | Business Admin and IT Admin |
 | Intake stopped, licence expired (after grace) | business, per entity, **critical** | at once, repeated daily, Recovered when renewed | Business Admin and IT Admin |
 | Server clock behind | technical, **critical** | at once, repeated every 4 hours, Recovered when correct | IT Admin |

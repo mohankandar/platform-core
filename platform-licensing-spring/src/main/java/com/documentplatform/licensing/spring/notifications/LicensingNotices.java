@@ -174,8 +174,10 @@ final class LicensingNotices {
             LicenceState state = status.state();
             for (Map.Entry<String, EntityId> slot : active.entrySet()) {
                 EntityId entity = slot.getValue();
-                if (on(LICENCE_EXPIRING) && state == LicenceState.EXPIRING) {
-                    int band = status.warningThreshold().getAsInt();
+                long band = on(LICENCE_EXPIRING) && (state == LicenceState.VALID || state == LicenceState.EXPIRING)
+                        && status.daysUntilExpiry().isPresent()
+                        ? warningBand(entity, status.daysUntilExpiry().getAsLong()) : 0;
+                if (band > 0) {
                     once("expiring|" + tenant + "|" + l.licenceId() + "|v" + l.version() + "|" + slot.getKey() + "|"
                             + band, () -> event(LICENCE_EXPIRING, entity).identifier(id(l.licenceId()))
                             .count(DAYS_LEFT, status.daysUntilExpiry().getAsLong())
@@ -204,6 +206,21 @@ final class LicensingNotices {
                     }
                 }
             }
+        }
+
+        /**
+         * The smallest of the admin's warning days that {@code days} is within, or 0: no warning yet. Counted from the
+         * expiry date, so a first warning earlier than the EXPIRING state's 60 days works too.
+         */
+        private long warningBand(EntityId entity, long days) {
+            long band = 0;
+            for (String name : LicensingEvents.WARN_DAYS) {
+                long w = settings.threshold(tenant, entity, LICENCE_EXPIRING, name);
+                if (w > 0 && days <= w && (band == 0 || w < band)) {
+                    band = w;
+                }
+            }
+            return band;
         }
 
         void clock() {

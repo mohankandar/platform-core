@@ -22,6 +22,11 @@ public class NotificationsProperties {
     /** The customer's mail server, used by every e-mail destination. Leave out the host for no e-mail. */
     private final Mail mail = new Mail();
 
+    /**
+     * More mail servers, by a name of your choice, for the tenants and destinations each names; every other message
+     * goes through {@link #getMail() mail}. Empty by default: one server for all.
+     */
+    private Map<String, MailServerSettings> mailServers = new LinkedHashMap<>();
     /** Teams destinations: destination id → secret reference of the Workflows webhook address. */
     private Map<String, String> teams = new LinkedHashMap<>();
 
@@ -55,6 +60,14 @@ public class NotificationsProperties {
 
     public Mail getMail() {
         return mail;
+    }
+
+    public Map<String, MailServerSettings> getMailServers() {
+        return mailServers;
+    }
+
+    public void setMailServers(Map<String, MailServerSettings> mailServers) {
+        this.mailServers = mailServers;
     }
 
     public Map<String, String> getTeams() {
@@ -247,6 +260,36 @@ public class NotificationsProperties {
 
         public void setReadTimeout(Duration readTimeout) {
             this.readTimeout = readTimeout;
+        }
+    }
+
+    /**
+     * {@code platform.notifications.mail-servers.<name>.*}: the settings of {@link Mail}, and which messages it sends.
+     * A message's server is the one naming its tenant and destination, else its tenant, else its destination, else
+     * {@code platform.notifications.mail.*}. An entity gets its own server by sending its events to a destination of
+     * its own.
+     */
+    public static class MailServerSettings extends Mail {
+
+        /** The tenants it serves; empty for every tenant. */
+        private java.util.List<String> tenants = new java.util.ArrayList<>();
+        /** The e-mail destinations it serves; empty for every destination of its tenants. */
+        private java.util.List<String> destinations = new java.util.ArrayList<>();
+
+        public java.util.List<String> getTenants() {
+            return tenants;
+        }
+
+        public void setTenants(java.util.List<String> tenants) {
+            this.tenants = tenants;
+        }
+
+        public java.util.List<String> getDestinations() {
+            return destinations;
+        }
+
+        public void setDestinations(java.util.List<String> destinations) {
+            this.destinations = destinations;
         }
     }
 

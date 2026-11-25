@@ -47,6 +47,31 @@ class LicenceBuildTest {
         return assertThrows(LicenceBuild.Invalid.class, () -> load(roots)).getMessage();
     }
 
+    /** P056 (LV-24.10). */
+    @Test
+    void theBuildSaysWhetherItIsADevelopmentBuild() throws Exception {
+        TrustedKeys keys = TrustedKeys.of(Map.of("lic-1", key(), "dev-1", key()), Set.of("dev-1"));
+        LicenceBuild development = LicenceBuild.of(keys, true, Instant.parse("2026-11-21T10:00:00Z"));
+        LicenceBuild production = LicenceBuild.of(keys, false, Instant.parse("2026-11-21T10:00:00Z"));
+        assertTrue(development.isDevelopment());
+        assertFalse(production.isDevelopment());
+        Licence dev = licenceSignedBy("dev-1");
+        assertTrue(development.isDevelopmentLicence(dev));
+        assertFalse(development.isDevelopmentLicence(licenceSignedBy("lic-1")));
+        assertFalse(production.isDevelopmentLicence(dev));
+        String built = "built-at=2026-11-21T10:00:00Z\n";
+        assertTrue(load(place("d", keys, built + "development-keys=true")).isDevelopment());
+        assertFalse(load(place("p", keys, built)).isDevelopment());
+    }
+
+    private static Licence licenceSignedBy(String keyId) {
+        return new Licence("LIC-TEST-0001", 1, "Test Customer Ltd", "TEN-TEST-0001", java.util.List.of("PRODUCT_A"),
+                java.util.List.of(new EntitySlot("ENT-TEST-0001", java.util.List.of(new Allowance("PRODUCT_A",
+                        AllowanceType.PAGES_PER_MONTH, 10)))), LicenceType.SUBSCRIPTION, LicenceKind.PRODUCTION,
+                java.time.LocalDate.parse("2026-01-01"), java.time.LocalDate.parse("2027-01-01"), null,
+                Deployment.ON_PREM, keyId, Instant.parse("2026-01-01T00:00:00Z"));
+    }
+
     @Test
     void theKeysComeFromTheAppsOwnBuildOnly() throws Exception {
         TrustedKeys keys = TrustedKeys.of(Map.of("lic-1", key()));

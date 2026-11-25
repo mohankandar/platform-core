@@ -295,6 +295,21 @@ by setup, with or without the flag.
 whatever the licence. Without the setting (or with `"optional"`), the flag works as before. A customer set up once
 with `--no-customer-keys` gets both keys from the next run without the flag; nothing else changes.
 
+## 4a. Going back to the previous login connection
+
+When a changed login connection lets nobody sign in, so that nobody can use the app's own rollback:
+
+```
+setup identity rollback-login-connection --tenant-id TEN-... --product PRODUCT_A [--apply] [--run-log FILE]
+```
+
+It needs the database settings only (`PLATFORM_SETUP_DB_*`), no licence file and no key service. Without `--apply` it shows the
+connection active now and the one it would go back to, and changes nothing. With `--apply` the previous active connection is
+active again as a new version, in one transaction; drafts are left alone; the history row says
+`setup rollback, run <run ID>`. Refusals: `SETUP_NO_PREVIOUS_CONNECTION`, `SETUP_OTHER_CUSTOMER_INSTALLED` (no such
+customer here), `SETUP_BAD_OPTION`. A later `setup apply` never undoes it silently: when the sign-in file says something
+else, the plan shows `conflict`.
+
 ## 5. Results
 
 | Exit code | Means |

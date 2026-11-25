@@ -1,5 +1,8 @@
 package com.documentplatform.notifications.spring.internal;
 
+import com.documentplatform.notifications.TenantId;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import com.documentplatform.notifications.AppLink;
 import com.documentplatform.notifications.DestinationId;
 import com.documentplatform.notifications.RetryPolicy;
@@ -32,10 +35,43 @@ import static com.documentplatform.notifications.spring.NotificationsProperties.
  * <p>Internal (P041): a bean of notifications-spring that monitoring-spring reads for its mail check (P039); may change
  * in any release, not for apps.
  */
-public record NotificationsConfig(Optional<MailServer> mail, Map<DestinationId, SecretRef> teams,
+public record NotificationsConfig(Optional<MailServer> mail, Map<String, MailFor> mailServers, Map<DestinationId, SecretRef> teams,
                                   Map<DestinationId, SecretRef> slack, WebhookOptions webhookOptions,
                                   RetryPolicy retry, Duration lease, Duration retention, Duration tickInterval,
                                   Duration pollInterval, int batchSize, Optional<ApprovalLinksConfig> approvals) {
+
+    /** A further mail server and what it serves; an empty set means every one. */
+    public record MailFor(MailServer server, Set<TenantId> tenants, Set<DestinationId> destinations) {
+        public MailFor {
+            tenants = Set.copyOf(tenants);
+            destinations = Set.copyOf(destinations);
+        }
+    }
+
+    /** The server of a message: naming its tenant and destination, else its tenant, else its destination, else mail. */
+    public Optional<MailServer> mailServer(TenantId tenant, DestinationId destination) {
+        MailServer byTenant = null;
+        MailServer byDestination = null;
+        for (MailFor m : mailServers.values()) {
+            boolean t = m.tenants.contains(tenant);
+            boolean d = m.destinations.contains(destination);
+            if (t && d) {
+                return Optional.of(m.server);
+            }
+            if (t && m.destinations.isEmpty()) {
+                byTenant = m.server;
+            }
+            if (d && m.tenants.isEmpty()) {
+                byDestination = m.server;
+            }
+        }
+        return byTenant != null ? Optional.of(byTenant) : byDestination != null ? Optional.of(byDestination) : mail;
+    }
+
+    /** Whether any mail server is configured. */
+    public boolean anyMail() {
+        return mail.isPresent() || !mailServers.isEmpty();
+    }
 
     /** Approval links: the key's secret reference and the app's page path. */
     public record ApprovalLinksConfig(SecretRef keySecret, AppLink pagePath) {
@@ -49,6 +85,7 @@ public record NotificationsConfig(Optional<MailServer> mail, Map<DestinationId, 
     private static final String REF_SHAPE = "not a valid secret reference (letters, digits and . _ : / -, no \"//\")";
 
     public NotificationsConfig {
+        mailServers = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(mailServers));
         teams = Map.copyOf(teams);
         slack = Map.copyOf(slack);
     }
@@ -64,7 +101,8 @@ public record NotificationsConfig(Optional<MailServer> mail, Map<DestinationId, 
     /** Checks the properties and builds the config. */
     public static NotificationsConfig from(NotificationsProperties p) {
         List<String> problems = new ArrayList<>();
-        Optional<MailServer> mail = mail(p.getMail(), problems);
+        Optional<MailServer> mail = mail("mail", p.getMail(), problems);
+        Map<String, MailFor> mailServers = mailServers(p.getMailServers(), problems);
         Map<DestinationId, SecretRef> teams = webhooks("teams", p.getTeams(), problems);
         Map<DestinationId, SecretRef> slack = webhooks("slack", p.getSlack(), problems);
         teams.keySet().stream().filter(slack::containsKey).forEach(id -> problems.add(PREFIX + ".slack." + id
@@ -85,6 +123,13 @@ public record NotificationsConfig(Optional<MailServer> mail, Map<DestinationId, 
             if (mail.isPresent()) {
                 longest = mail.get().connectTimeout().plus(mail.get().readTimeout());
                 which = "mail.connect-timeout + mail.read-timeout";
+            }
+            for (Map.Entry<String, MailFor> e : mailServers.entrySet()) {
+                Duration send = e.getValue().server().connectTimeout().plus(e.getValue().server().readTimeout());
+                if (send.compareTo(longest) > 0) {
+                    longest = send;
+                    which = "mail-servers." + e.getKey() + ".connect-timeout + read-timeout";
+                }
             }
             if (webhookOptions != null && !(teams.isEmpty() && slack.isEmpty())) {
                 Duration hook = webhookOptions.connectTimeout().plus(webhookOptions.requestTimeout());
@@ -117,7 +162,7 @@ public record NotificationsConfig(Optional<MailServer> mail, Map<DestinationId, 
         if (!problems.isEmpty()) {
             throw new NotificationsConfigException(problems);
         }
-        return new NotificationsConfig(mail, teams, slack, webhookOptions, retry, lease, retention,
+        return new NotificationsConfig(mail, mailServers, teams, slack, webhookOptions, retry, lease, retention,
                 p.getTickInterval(), p.getSender().getPollInterval(), batch, approvals);
     }
 
@@ -142,8 +187,63 @@ public record NotificationsConfig(Optional<MailServer> mail, Map<DestinationId, 
         return ref == null || path == null ? Optional.empty() : Optional.of(new ApprovalLinksConfig(ref, path));
     }
 
-    private static Optional<MailServer> mail(NotificationsProperties.Mail m, List<String> problems) {
-        String key = PREFIX + ".mail.";
+    private static Map<String, MailFor> mailServers(Map<String, NotificationsProperties.MailServerSettings> config,
+                                                    List<String> problems) {
+        Map<String, MailFor> out = new LinkedHashMap<>();
+        if (config == null) {
+            return out;
+        }
+        Map<String, String> served = new LinkedHashMap<>();
+        for (Map.Entry<String, NotificationsProperties.MailServerSettings> e : config.entrySet()) {
+            String name = e.getKey();
+            if (name == null || !ID.matcher(name).matches()) {
+                problems.add(PREFIX + ".mail-servers: a server's name has letters, digits, '.', '_' and '-', at most 128");
+                continue;
+            }
+            String key = PREFIX + ".mail-servers." + name;
+            NotificationsProperties.MailServerSettings s = e.getValue();
+            int before = problems.size();
+            Set<TenantId> tenants = new LinkedHashSet<>();
+            ids(key + ".tenants", "a tenant ID", s.getTenants(), problems).forEach(v -> tenants.add(TenantId.of(v)));
+            Set<DestinationId> destinations = new LinkedHashSet<>();
+            ids(key + ".destinations", "a destination ID", s.getDestinations(), problems)
+                    .forEach(v -> destinations.add(DestinationId.of(v)));
+            if (problems.size() == before && tenants.isEmpty() && destinations.isEmpty()) {
+                problems.add(key + ": give tenants, destinations or both (which messages it sends); the server for all "
+                        + "others is " + PREFIX + ".mail.*");
+            }
+            for (String t : tenants.isEmpty() ? List.of("*") : tenants.stream().map(TenantId::value).toList()) {
+                for (String d : destinations.isEmpty() ? List.of("*")
+                        : destinations.stream().map(DestinationId::value).toList()) {
+                    String other = served.putIfAbsent(t + "/" + d, key);
+                    if (other != null && problems.size() == before) {
+                        problems.add(key + ": serves the same tenant and destination as " + other);
+                    }
+                }
+            }
+            Optional<MailServer> server = mail("mail-servers." + name, s, problems);
+            if (problems.size() == before && server.isEmpty()) {
+                problems.add(key + ".host: missing; give the mail server's host name");
+            }
+            server.ifPresent(m -> out.put(name, new MailFor(m, tenants, destinations)));
+        }
+        return out;
+    }
+
+    private static List<String> ids(String key, String what, List<String> values, List<String> problems) {
+        List<String> out = new ArrayList<>();
+        for (String v : values == null ? List.<String>of() : values) {
+            if (v == null || !ID.matcher(v.trim()).matches()) {
+                problems.add(key + ": not " + what + " (letters, digits, '.', '_' and '-', at most 128 characters)");
+            } else {
+                out.add(v.trim());
+            }
+        }
+        return out;
+    }
+
+    private static Optional<MailServer> mail(String name, NotificationsProperties.Mail m, List<String> problems) {
+        String key = PREFIX + "." + name + ".";
         NotificationsProperties.Oauth o = m.getOauth();
         boolean authSet = m.getAuth() != null && !m.getAuth().trim().equalsIgnoreCase(MailAuth.PASSWORD.name());
         boolean anySet = m.getHost() != null || m.getPort() != null || m.getUsername() != null
@@ -164,7 +264,7 @@ public record NotificationsConfig(Optional<MailServer> mail, Map<DestinationId, 
         String host = microsoft && blank(m.getHost()) ? MicrosoftOAuth.SMTP_HOST : m.getHost();
         if (blank(host)) {
             problems.add(key + "host: missing; give the mail server's host name, or remove the other "
-                    + key + "* settings to switch e-mail off");
+                    + key + (name.equals("mail") ? "* settings to switch e-mail off" : "* settings"));
         } else if (!HOST.matcher(host.trim()).matches()) {
             problems.add(key + "host: not a valid host name or address");
         }
@@ -250,8 +350,8 @@ public record NotificationsConfig(Optional<MailServer> mail, Map<DestinationId, 
                 || m.getFromName().chars().anyMatch(Character::isISOControl))) {
             problems.add(key + "from-name: must be a non-empty display name without control characters");
         }
-        boolean timeouts = positive("mail.connect-timeout", m.getConnectTimeout(), problems)
-                & positive("mail.read-timeout", m.getReadTimeout(), problems);
+        boolean timeouts = positive(name + ".connect-timeout", m.getConnectTimeout(), problems)
+                & positive(name + ".read-timeout", m.getReadTimeout(), problems);
         if (problems.size() > before || !timeouts) {
             return Optional.empty();
         }

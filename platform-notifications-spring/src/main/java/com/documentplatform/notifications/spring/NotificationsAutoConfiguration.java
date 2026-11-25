@@ -129,7 +129,7 @@ public class NotificationsAutoConfiguration {
     @ConditionalOnMissingBean
     NotificationChannels notificationChannels(NotificationsConfig config, ObjectProvider<SecretResolver> secrets,
                                               DestinationHealth health, MicrosoftTokens tokens) {
-        boolean anyChannel = config.mail().isPresent() || !config.teams().isEmpty() || !config.slack().isEmpty();
+        boolean anyChannel = config.anyMail() || !config.teams().isEmpty() || !config.slack().isEmpty();
         SecretResolver resolver = anyChannel
                 ? required(secrets, SecretResolver.class, "the reader of the secret store (mail password or "
                 + "Microsoft 365 app credential, webhook addresses)")
@@ -251,7 +251,9 @@ public class NotificationsAutoConfiguration {
         @ConditionalOnMissingBean
         NotificationsHealthIndicator notificationsHealthIndicator(DestinationHealth health, NotificationsConfig config,
                                                                   MicrosoftTokens tokens) {
-            return new NotificationsHealthIndicator(health, config.mail().orElse(null), tokens);
+            java.util.Map<String, MailServer> more = new java.util.LinkedHashMap<>();
+            config.mailServers().forEach((name, m) -> more.put(name, m.server()));
+            return new NotificationsHealthIndicator(health, config.mail().orElse(null), tokens, more);
         }
     }
 

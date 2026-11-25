@@ -12,11 +12,10 @@ import com.documentplatform.notifications.webhook.WebhookDirectory;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * The senders the install config asks for: e-mail when a mail server is configured, Teams and Slack when they have
- * destinations. Each is observed for {@link DestinationHealth}. One mail server serves every e-mail destination.
+ * destinations. Each is observed for {@link DestinationHealth}. The config says which mail server sends a message.
  */
 final class NotificationChannels implements AutoCloseable {
 
@@ -31,8 +30,9 @@ final class NotificationChannels implements AutoCloseable {
     NotificationChannels(NotificationsConfig config, SecretResolver secrets, DestinationHealth health,
                          MicrosoftTokens tokens) {
         List<Channel> list = new ArrayList<>();
-        config.mail().ifPresent(server -> list.add(new ObservedChannel(
-                new EmailChannel((tenant, destination) -> Optional.of(server), secrets, null, tokens), health)));
+        if (config.anyMail()) {
+            list.add(new ObservedChannel(new EmailChannel(config::mailServer, secrets, null, tokens), health));
+        }
         if (!config.teams().isEmpty()) {
             TeamsChannel teams = new TeamsChannel(WebhookDirectory.of(config.teams()), secrets, config.webhookOptions());
             closeables.add(teams);

@@ -51,6 +51,16 @@ Each step works on its own and can be released on its own. Later ones use earlie
 6. Notifications (the licensing events and time zones join when licensing and identity are there).
 7. Model governance, when the app runs models.
 
+**New in 1.2.0, per module:**
+
+- `platform-fields`: `FieldValues.read(List)`, one query per page; `conflictingKeys()`; `FieldDefinitions.change(list)`;
+  `FieldValues.withoutKeyService`.
+- `platform-identity-*`: schema version 6; the test sign-in with a token before a connection is replaced; draft calls with the
+  customer and product. **Check the app's screen offers the token** before upgrading.
+- `platform-setup`: `identity rollback-login-connection`.
+- `platform-notifications*`: `mail-servers.*`; `Approvals.decidedElsewhere` and `ApprovalAudit.recordElsewhere`.
+- `platform-licensing*`: the admin's warning days; `LicenceBuild.isDevelopment()`.
+
 ## 4. Schema runs
 
 Each module's files run as their **own Flyway run with their own history table**, as the schema owner, before the app starts.
@@ -59,7 +69,7 @@ The platform never creates tables at start-up. The runs do not depend on each ot
 | # | Location | History table | Version in 1.0 |
 |---|---|---|---|
 | 1 | `db/platform/licensing` | `lic_schema_history` | 2 |
-| 2 | `db/platform/identity` | `idn_schema_history` | 5 |
+| 2 | `db/platform/identity` | `idn_schema_history` | 5 (6 from 1.2.0) |
 | 3 | `db/platform/notifications` | your choice, for example `notif_schema_history` | 1 |
 | 4 | `db/platform/fields` | `fld_schema_history` | 2 |
 | 5 | `db/platform/erase-log` | `erl_schema_history` | 3 |
@@ -99,7 +109,7 @@ show a complete set. Secrets come from the environment or files, never from a fi
 ## 8. Apps that use only identity, from an earlier version
 
 1. Move to Spring Boot 4.2 and the 1.0.0 BOM.
-2. Run the identity schema step to version 5 and adjust the grants (`docs/install/identity.md` section 1).
+2. Run the identity schema step to this release's version and adjust the grants (`docs/install/identity.md` section 1).
 3. Check group names and push callers (`docs/install/identity.md`, "Upgrading to 0.7.0").
 4. The `platform.outbound.*` settings are needed for the test sign-in; the integrations module is not.
 5. An app that keeps its own tables until later implements the four interfaces (`docs/install/identity.md` section 10).

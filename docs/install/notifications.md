@@ -40,7 +40,7 @@ sends nothing.
 7. **Make sure the sender may send to everyone who will get notifications.** Messages carry
    `Auto-Submitted: auto-generated`, so out-of-office replies are held back.
 
-One mail server serves all e-mail notifications.
+One mail server serves all e-mail notifications, unless you configure more (section 5, "Several mail servers").
 
 ## 1a. E-mail through Microsoft 365
 
@@ -276,6 +276,26 @@ a `CustomerZones` bean), the customer's zone in `idn_customer.time_zone` replace
 settings for every event and summary. The settings' zone is used only when identity has none for the customer. Set
 the customer's zone in one place, the app's settings screen (`EntityTimeZones.setCustomerZone`).
 
+### Several mail servers (1.2.0)
+
+Leave this out when one server sends everything. Otherwise give each further server a name and say what it sends:
+
+```properties
+platform.notifications.mail-servers.east.host=smtp.east.yourcompany.com
+platform.notifications.mail-servers.east.from-address=notifications@east.yourcompany.com
+platform.notifications.mail-servers.east.tenants=TEN-TEST-0002
+platform.notifications.mail-servers.legal.host=smtp.legal.yourcompany.com
+platform.notifications.mail-servers.legal.from-address=notifications@legal.yourcompany.com
+platform.notifications.mail-servers.legal.destinations=legal-mail
+```
+
+- Every `mail.*` setting above works for each server (`mail-servers.<name>.*`), Microsoft 365 included.
+- `tenants`, `destinations` or both, at least one. A message goes through the server naming its tenant **and** destination, else
+  its tenant, else its destination, else `mail.*`. Without `mail.*`, a message no server serves fails with
+  `DESTINATION_NOT_CONFIGURED`.
+- **One entity with its own server:** give that entity's events an e-mail destination of its own, and the server that destination.
+- Health shows the sign-in of each (`mailServers`), and monitoring checks each (`channel-mail-<name>`).
+
 ## 6. Several app servers
 
 Several instances of the app may share one database. Each message is sent by one instance only, and no extra setup
@@ -301,6 +321,11 @@ The health page shows ids, states, codes and reasons only, never an address, log
 down does not mark the whole app as unhealthy. The notifications entry shows `DEGRADED` instead.
 
 ## 8. Approval links (Approve / Decline in the message)
+
+**For the app's developers (1.2.0).** When the app itself decides a request, on its own screen with its own checks, it calls
+`Approvals.decidedElsewhere(tenant, requestId, decision, where, tellRequester)`. The links then answer "already decided" with
+that decision. If a link was faster, the answer is `AlreadyDecided` with the stored decision, and the app must follow that one.
+Override `ApprovalAudit.recordElsewhere(entry, where)` to keep where it was decided; the default records the entry without it.
 
 Some messages ask for a decision, for example "Print request waiting". They carry two links, **Approve** and
 **Decline**. A link opens the app's approval page for that one request. The approver signs in as usual, sees the

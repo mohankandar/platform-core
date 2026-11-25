@@ -115,6 +115,28 @@ class MonitoringWiringTest {
         return out[0];
     }
 
+    /** P056: every further mail server has a check of its own. */
+    @Test
+    void everyMailServerIsChecked() {
+        String p = "platform.notifications.";
+        Map<String, String> props = Map.of(p + "mail-servers.east.host", "east.invalid", p
+                + "mail-servers.east.from-address", "n@corp.example", p + "mail-servers.east.tenants", "T1");
+        var bound = new org.springframework.boot.context.properties.bind.Binder(
+                new org.springframework.boot.context.properties.source.MapConfigurationPropertySource(props))
+                .bindOrCreate("platform.notifications",
+                        com.documentplatform.notifications.spring.NotificationsProperties.class);
+        var config = com.documentplatform.notifications.spring.internal.NotificationsConfig.from(bound);
+        runner().withBean(com.documentplatform.notifications.spring.internal.NotificationsConfig.class, () -> config)
+                .run(ctx -> {
+                    List<CheckResult> all = ctx.getBean(DependencyStatus.class).runAll();
+                    assertTrue(all.stream().noneMatch(r -> r.name().equals("channel-mail")));
+                    CheckResult east = all.stream().filter(r -> r.name().equals("channel-mail-east")).findFirst()
+                            .orElseThrow();
+                    assertEquals(MonitoringCode.MON_CHANNEL_UNREACHABLE, east.code());
+                    assertTrue(east.cause().contains("east.invalid:587"), east.cause());
+                });
+    }
+
     /**
      * monitoring-34 (P039): the mail check uses the sender's own settings: the port from the security when none is
      * set, and under Microsoft 365 the sender mailbox as the from-address (no false DOWN).
