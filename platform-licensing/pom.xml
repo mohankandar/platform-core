@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.documentplatform.platform</groupId>
         <artifactId>platform-core</artifactId>
-        <version>1.2.0-rc.1</version>
+        <version>1.2.0</version>
     </parent>
     <artifactId>platform-licensing</artifactId>
     <description>Licensing capability: the signed licence (Ed25519, JDK crypto), licence states with grace, the

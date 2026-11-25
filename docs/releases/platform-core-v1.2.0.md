@@ -48,3 +48,8 @@ As in 1.1.x; no module added. Updated: case-fields, setup, notifications, licens
 
 None in signatures, settings' defaults, codes or released SQL (`docs/api/public-api-1.txt`: lines added only). One deliberate
 refusal is new: `IDN_TEST_SIGN_IN_REQUIRED` (above).
+
+## Install proof
+
+Candidate rc.1, whose code is this release's, from the published artifacts on `ubuntu-latest` and `windows-latest`:
+<https://github.com/mohankandar/platform-core/actions/runs/45688094927>.
