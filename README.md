@@ -22,7 +22,7 @@ its own.
     <dependency>
       <groupId>com.documentplatform.platform</groupId>
       <artifactId>platform-bom</artifactId>
-      <version>1.1.1</version>
+      <version>1.2.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
