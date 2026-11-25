@@ -85,6 +85,7 @@ Releases are tags `platform-core-vX.Y.Z` on main. Tags are never moved or reused
    - runs `mvn -B verify` (no test may be skipped);
    - deploys to GitHub Packages;
    - creates the GitHub release from `docs/releases/platform-core-vX.Y.Z.md`.
+   The workflow's guard asks for the merge commit's green CI for up to 3 minutes, because GitHub's run list can lag (P058).
 3. A second PR moves main to the next `-SNAPSHOT` (`mvn versions:set -DnewVersion=X.Y+1.0-SNAPSHOT`).
 
 ## Monthly install proof

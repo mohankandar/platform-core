@@ -50,6 +50,9 @@ jobs:
           java-version: '21'
           cache: maven
 
+      - name: Release guard script
+        run: bash scripts/test-release-ci-passed.sh
+
       # Compile and all tests, including the PostgreSQL tests (Testcontainers, Docker on the runner), the end-to-end
       # TLS tests and the product-name guard.
       - name: mvn -B verify
