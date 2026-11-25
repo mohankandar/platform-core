@@ -48,3 +48,8 @@ None. No signature, behaviour, error code, schema or setting of 1.0.0 changed (`
 ## Database schemas
 
 As in 1.0.0: identity 5, licensing 2, fields 2, erase log 3, integration 3, model governance 5, notifications 1.
+
+## Install proof
+
+Candidate rc.1, whose code is this release's, from the published artifacts on `ubuntu-latest` and `windows-latest`:
+<https://github.com/mohankandar/platform-core/actions/runs/45555459502>.
