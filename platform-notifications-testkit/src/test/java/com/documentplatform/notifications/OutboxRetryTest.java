@@ -124,7 +124,8 @@ class OutboxRetryTest {
         f.resolver.grant(TENANT, E1, Fixture.APPROVER, dee);
         f.email.succeed();
         assertEquals(DeliveryStatus.SENT, f.advance(Duration.ofMinutes(1)).get(0).status());
-        assertEquals(Set.of(CY, dee), f.email.sent().get(0).recipients());
+        assertEquals(List.of(Set.of(CY), Set.of(dee)),
+                f.email.sent().stream().map(OutgoingMessage::recipients).toList(), "a message of their own each");
         assertTrue(f.outbox.all().get(0).message().text().contains("C-1"));
     }
 

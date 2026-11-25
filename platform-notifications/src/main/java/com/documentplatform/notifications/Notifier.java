@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 
 import static com.documentplatform.notifications.NotificationException.Reason.ENTITY_REQUIRED;
 import static com.documentplatform.notifications.NotificationException.Reason.IS_A_CONDITION;
@@ -509,6 +510,10 @@ public final class Notifier {
         return new DeliveryReport(tenant, types, destination, kind, DeliveryStatus.FAILED, code);
     }
 
+    /** Failures that concern one recipient's e-mail, not the mail server or its configuration. */
+    private static final Set<FailureCode> ONE_RECIPIENT = Set.of(FailureCode.MAIL_RECIPIENT_REFUSED,
+            FailureCode.MAIL_TEMPORARILY_REFUSED, FailureCode.MAIL_MESSAGE_REJECTED, FailureCode.SENDER_FAILED);
+
     private SendResult send(OutboxEntry entry, Instant now) {
         Optional<TenantSettings> tenant = settings.tenant(entry.tenant());
         if (tenant.isEmpty() || tenant.get().kindOf(entry.destination()) != entry.channel()) {
@@ -539,8 +544,53 @@ public final class Notifier {
         if (request != null) {
             return sendWithLinks(entry, channel, people, request, tenant.get().appBaseUrl(), now);
         }
+        if (entry.channel() == ChannelKind.EMAIL && entry.recipientUser() == null) {
+            return sendToEach(entry, channel, people, now);
+        }
         return deliver(channel, new OutgoingMessage(entry.tenant(), entry.destination(), entry.channel(), people,
                 entry.message(), entry.key()));
+    }
+
+    /**
+     * An e-mail to the holders of the recipient roles: one message per person, so nobody sees who else was told (P055).
+     * What became final for one person (sent, or refused for good) is recorded in the outbox under that person's key, in
+     * its final state, so a retry of the message for the others leaves them out. A failure that is not about one
+     * recipient ends the attempt: the rest would fail alike.
+     */
+    private SendResult sendToEach(OutboxEntry entry, Channel channel, Set<Recipient> people, Instant now) {
+        Map<String, Set<Recipient>> persons = new TreeMap<>();
+        people.forEach(r -> persons.computeIfAbsent(r.userId(), id -> new LinkedHashSet<>()).add(r));
+        SendResult temporary = null;
+        SendResult permanent = null;
+        for (Map.Entry<String, Set<Recipient>> person : persons.entrySet()) {
+            String key = Keys.forPerson(entry.key(), person.getKey());
+            Optional<OutboxEntry> before = outbox.find(key);
+            if (before.isPresent()) {
+                if (before.get().state() == OutboxState.FAILED && permanent == null) {
+                    permanent = SendResult.failed(before.get().lastFailure());
+                }
+                continue;
+            }
+            SendResult r = deliver(channel, new OutgoingMessage(entry.tenant(), entry.destination(), entry.channel(),
+                    person.getValue(), entry.message(), persons.size() == 1 ? entry.key() : key));
+            if (!r.sent() && !ONE_RECIPIENT.contains(r.failure())) {
+                return r;
+            }
+            if (!r.sent() && r.failure().retryable()) {
+                temporary = temporary == null ? r : temporary;
+                continue;
+            }
+            if (!r.sent() && permanent == null) {
+                permanent = r;
+            }
+            if (persons.size() > 1) {
+                outbox.enqueue(new OutboxEntry(key, entry.tenant(), entry.destination(), entry.channel(),
+                        entry.entity(), entry.recipientRoles(), entry.eventTypes(), entry.message(),
+                        r.sent() ? OutboxState.SENT : OutboxState.FAILED, entry.attempts() + 1, entry.createdAt(), now,
+                        r.failure(), now));
+            }
+        }
+        return temporary != null ? temporary : permanent != null ? permanent : SendResult.ok();
     }
 
     /**
