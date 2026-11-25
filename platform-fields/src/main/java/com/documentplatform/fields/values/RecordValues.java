@@ -12,7 +12,7 @@ import java.util.Optional;
 
 /**
  * A record's values as read back. From {@link FieldValues#read} sensitive values are hidden (only how many there
- * are); from {@link FieldValues#readSensitive} they are opened. {@code toString()} shows no value.
+ * are); from {@link FieldValues#readSensitive(RecordRef)} they are opened. {@code toString()} shows no value.
  *
  * @param ref       the record
  * @param version   the record's version

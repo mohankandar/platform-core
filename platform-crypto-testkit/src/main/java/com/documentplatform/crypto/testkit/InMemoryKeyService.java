@@ -5,6 +5,7 @@ import com.documentplatform.crypto.CryptoException;
 import com.documentplatform.crypto.CustomerId;
 import com.documentplatform.crypto.KeyDestruction;
 import com.documentplatform.crypto.KeyService;
+import com.documentplatform.crypto.Unwrapped;
 
 import javax.crypto.AEADBadTagException;
 import javax.crypto.Cipher;
@@ -135,6 +136,34 @@ public final class InMemoryKeyService implements KeyService {
     @Override
     public byte[] unwrap(CustomerId customer, String wrapped) {
         gate();
+        return unwrapped(customer, wrapped);
+    }
+
+    /** One call for the whole batch, as Vault Transit's {@code batch_input}. */
+    @Override
+    public List<Unwrapped> unwrapAll(CustomerId customer, List<String> wrapped) {
+        java.util.Objects.requireNonNull(customer, "customer");
+        List<String> items = List.copyOf(wrapped);
+        if (items.size() > MAX_BATCH) {
+            throw new IllegalArgumentException("A batch has at most " + MAX_BATCH + " items");
+        }
+        if (items.isEmpty()) {
+            return List.of();
+        }
+        gate();
+        keys(wrapping, customer, "wrapping");
+        List<Unwrapped> out = new ArrayList<>(items.size());
+        for (String item : items) {
+            try {
+                out.add(Unwrapped.opened(unwrapped(customer, item)));
+            } catch (CryptoException e) {
+                out.add(Unwrapped.failed(e));
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    private byte[] unwrapped(CustomerId customer, String wrapped) {
         Keys k = keys(wrapping, customer, "wrapping");
         Matcher m = parse(wrapped);
         int version = Integer.parseInt(m.group(1));

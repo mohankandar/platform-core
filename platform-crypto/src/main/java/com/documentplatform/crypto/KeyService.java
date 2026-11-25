@@ -17,6 +17,9 @@ import java.util.Objects;
  */
 public interface KeyService {
 
+    /** The most items one {@link #unwrapAll} takes. */
+    int MAX_BATCH = 100;
+
     /** A short, stable name of the kind of key service, written into every envelope (for example "vault-transit"). */
     String id();
 
@@ -42,6 +45,47 @@ public interface KeyService {
      * the array after use.
      */
     byte[] unwrap(CustomerId customer, String wrapped);
+
+    /**
+     * The data keys inside many wrapped ones of one customer: one result per item, in the order given, in as few calls
+     * as the key service allows (Vault Transit: one call with a batch). The default makes one call per item.
+     *
+     * <p>An item that was changed or wrapped for another customer ({@link CryptoError#CRYPTO_CIPHERTEXT_INVALID}), or
+     * whose key version is switched off ({@link CryptoError#CRYPTO_KEY_DISABLED}), fails as that item; the others
+     * still open. Every other failure (key service away, login or permission refused, key missing, an answer that is
+     * not one result per item) throws as {@link #unwrap} does, and nothing is returned. An empty list calls nothing.
+     * The caller wipes the results ({@link Unwrapped#closeAll}).
+     *
+     * @throws IllegalArgumentException more than {@link #MAX_BATCH} items; nothing was called
+     * @throws NullPointerException     a null item; nothing was called
+     */
+    default java.util.List<Unwrapped> unwrapAll(CustomerId customer, java.util.List<String> wrapped) {
+        Objects.requireNonNull(customer, "customer");
+        java.util.List<String> items = java.util.List.copyOf(wrapped);
+        if (items.size() > MAX_BATCH) {
+            throw new IllegalArgumentException("A batch has at most " + MAX_BATCH + " items");
+        }
+        java.util.List<Unwrapped> out = new java.util.ArrayList<>(items.size());
+        boolean done = false;
+        try {
+            for (String item : items) {
+                try {
+                    out.add(Unwrapped.opened(unwrap(customer, item)));
+                } catch (CryptoException e) {
+                    if (!Unwrapped.isItemError(e.code())) {
+                        throw e;
+                    }
+                    out.add(Unwrapped.failed(e));
+                }
+            }
+            done = true;
+            return java.util.List.copyOf(out);
+        } finally {
+            if (!done) {
+                Unwrapped.closeAll(out);
+            }
+        }
+    }
 
     /** {@code wrapped} wrapped again by the latest version of the wrapping key, without the data key leaving. */
     String rewrap(CustomerId customer, String wrapped);

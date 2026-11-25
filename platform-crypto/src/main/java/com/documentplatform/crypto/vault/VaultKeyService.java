@@ -5,6 +5,7 @@ import com.documentplatform.crypto.CryptoException;
 import com.documentplatform.crypto.CustomerId;
 import com.documentplatform.crypto.KeyDestruction;
 import com.documentplatform.crypto.KeyService;
+import com.documentplatform.crypto.Unwrapped;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -127,8 +128,104 @@ public final class VaultKeyService implements KeyService {
         int version = versionOf(wrapped);
         VaultClient.Reply r = vault.call("POST", "/v1/" + mount + "/decrypt/" + name,
                 VaultJson.write(Map.of("ciphertext", wrapped)));
-        check(r, name, "unwrapping a data key with key " + name + " version " + version);
-        byte[] key = decode(VaultJson.string(data(r, name), "plaintext").orElse(""), name);
+        check(r, name, unwrapping(name, version));
+        return dataKey(VaultJson.string(data(r, name), "plaintext").orElse(""), name);
+    }
+
+    /**
+     * One {@code decrypt} call with a {@code batch_input} of all items. {@code partial_failure_response_code} 200 asks
+     * for a plain answer when some items fail; when all fail Vault still answers 400, with the results. A text that is
+     * no Transit ciphertext is refused here, as by {@link #unwrap}, and not sent.
+     */
+    @Override
+    public List<Unwrapped> unwrapAll(CustomerId customer, List<String> wrapped) {
+        String name = wrappingKeyName(customer);
+        List<String> items = List.copyOf(wrapped);
+        if (items.size() > MAX_BATCH) {
+            throw new IllegalArgumentException("A batch has at most " + MAX_BATCH + " items");
+        }
+        Unwrapped[] out = new Unwrapped[items.size()];
+        List<Integer> sent = new ArrayList<>();
+        List<Map<String, Object>> batch = new ArrayList<>();
+        for (int i = 0; i < out.length; i++) {
+            try {
+                versionOf(items.get(i));
+                sent.add(i);
+                batch.add(Map.of("ciphertext", items.get(i)));
+            } catch (CryptoException e) {
+                out[i] = Unwrapped.failed(e);
+            }
+        }
+        if (batch.isEmpty()) {
+            return List.of(out);
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("batch_input", batch);
+        body.put("partial_failure_response_code", 200);
+        VaultClient.Reply r = vault.call("POST", "/v1/" + mount + "/decrypt/" + name, VaultJson.write(body));
+        Object results = VaultJson.object(r.body(), "data").map(d -> d.get("batch_results")).orElse(null);
+        if (!r.ok() && !(r.status() == 400 && results != null)) {
+            CryptoException e = failure(r, name, "unwrapping " + batch.size() + " data keys with key " + name);
+            // Without results, Vault's refusal is about the call, not about an item.
+            throw e.code() != CryptoError.CRYPTO_CIPHERTEXT_INVALID ? e
+                    : new CryptoException(CryptoError.CRYPTO_KEY_SERVICE_ERROR, e.reason());
+        }
+        if (!(results instanceof List<?> list) || list.size() != batch.size()) {
+            throw notOnePerItem(name);
+        }
+        boolean done = false;
+        try {
+            for (int n = 0; n < list.size(); n++) {
+                int i = sent.get(n);
+                out[i] = unwrapped(list.get(n), name, versionOf(items.get(i)));
+            }
+            done = true;
+            return List.of(out);
+        } finally {
+            if (!done) {
+                for (Unwrapped u : out) {
+                    if (u != null) {
+                        u.close();
+                    }
+                }
+            }
+        }
+    }
+
+    /** One entry of {@code batch_results}. */
+    private static Unwrapped unwrapped(Object result, String name, int version) {
+        if (!(result instanceof Map<?, ?> m)) {
+            throw notOnePerItem(name);
+        }
+        CryptoException failure;
+        if (m.get("error") instanceof String error && !error.isBlank()) {
+            failure = refused(VaultClient.tidy(error), name, unwrapping(name, version));
+        } else if (m.get("plaintext") instanceof String plaintext) {
+            try {
+                return Unwrapped.opened(dataKey(plaintext, name));
+            } catch (CryptoException e) {
+                failure = e;
+            }
+        } else {
+            throw notOnePerItem(name);
+        }
+        if (!Unwrapped.isItemError(failure.code())) {
+            throw failure;
+        }
+        return Unwrapped.failed(failure);
+    }
+
+    private static CryptoException notOnePerItem(String name) {
+        return new CryptoException(CryptoError.CRYPTO_KEY_SERVICE_ERROR, "the decrypt reply for key " + name
+                + " does not hold one result per item");
+    }
+
+    private static String unwrapping(String name, int version) {
+        return "unwrapping a data key with key " + name + " version " + version;
+    }
+
+    private static byte[] dataKey(String plaintext, String name) {
+        byte[] key = decode(plaintext, name);
         if (key.length != 32) {
             java.util.Arrays.fill(key, (byte) 0);
             throw new CryptoException(CryptoError.CRYPTO_CIPHERTEXT_INVALID, "the wrapped data key for key " + name
@@ -326,29 +423,35 @@ public final class VaultKeyService implements KeyService {
 
     /** Maps Transit's 400 answers to their specific codes; everything else as the client does. */
     private void check(VaultClient.Reply r, String name, String what) {
-        if (r.ok()) {
-            return;
+        if (!r.ok()) {
+            throw failure(r, name, what);
         }
-        if (r.status() == 404) {
-            throw missing(name);
+    }
+
+    private CryptoException failure(VaultClient.Reply r, String name, String what) {
+        return switch (r.status()) {
+            case 404 -> missing(name);
+            case 400 -> refused(r.error(), name, what);
+            default -> vault.failure(r, what);
+        };
+    }
+
+    /** The specific code for Transit's error text: of a whole call (HTTP 400) or of one item of a batch. */
+    private static CryptoException refused(String error, String name, String what) {
+        String e = error.toLowerCase(Locale.ROOT);
+        if (e.contains("not found") || e.contains("no existing key")) {
+            return missing(name);
         }
-        if (r.status() == 400) {
-            String e = r.error().toLowerCase(Locale.ROOT);
-            if (e.contains("not found") || e.contains("no existing key")) {
-                throw missing(name);
-            }
-            if (e.contains("too old") || e.contains("disallowed by policy") || e.contains("disabled")) {
-                throw new CryptoException(CryptoError.CRYPTO_KEY_DISABLED, what + ": that key version is switched"
-                        + " off (below the key's lowest usable version)");
-            }
-            if (e.contains("version") && (e.contains("not") || e.contains("invalid")) && what.contains("fingerprint")) {
-                throw new CryptoException(CryptoError.CRYPTO_KEY_DISABLED, what + ": that key version cannot be"
-                        + " used");
-            }
-            throw new CryptoException(CryptoError.CRYPTO_CIPHERTEXT_INVALID, what + ": Vault refused the input ("
-                    + r.error() + ")");
+        if (e.contains("too old") || e.contains("disallowed by policy") || e.contains("disabled")) {
+            return new CryptoException(CryptoError.CRYPTO_KEY_DISABLED, what + ": that key version is switched"
+                    + " off (below the key's lowest usable version)");
         }
-        throw vault.failure(r, what);
+        if (e.contains("version") && (e.contains("not") || e.contains("invalid")) && what.contains("fingerprint")) {
+            return new CryptoException(CryptoError.CRYPTO_KEY_DISABLED, what + ": that key version cannot be"
+                    + " used");
+        }
+        return new CryptoException(CryptoError.CRYPTO_CIPHERTEXT_INVALID, what + ": Vault refused the input ("
+                + error + ")");
     }
 
     private static CryptoException missing(String name) {

@@ -22,6 +22,7 @@ import com.documentplatform.fields.values.RecordRef;
 import com.documentplatform.fields.values.TestErase;
 import com.documentplatform.fields.values.RecordValues;
 import com.documentplatform.fields.values.SearchResult;
+import com.documentplatform.fields.values.SensitiveRead;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 
@@ -636,6 +637,28 @@ class PostgresValueStoreTest {
         assertEquals(ref(B, "n1"), values.claim(ref(B, "n1"), vals("remark", "same text")).record(),
                 "the same ID again is the same record");
         assertEquals(2, db.count("select count(*) from fld_record"));
+    }
+
+    /** P054: a page is the single read record by record, in one key service call. */
+    @Test
+    void aPageIsReadInOneKeyServiceCall() {
+        values.claim(ref(A, "c1"), fullCase("AB-1001"));
+        values.claim(ref(A, "c2"), vals("contract_number", "AB-1002", "borrower_name", List.of("Bob Jones")));
+        db.exec("update fld_value set sealed_value = (select v.sealed_value from fld_value v join fld_record r on "
+                + "r.record_uuid = v.record_uuid where r.record_id = 'c1' and v.field_key = 'borrower_name' and "
+                + "v.position = 0) where field_key = 'borrower_name' and record_uuid = (select record_uuid from "
+                + "fld_record where record_id = 'c2')");
+        int before = keys.calls();
+        List<SensitiveRead> page = values.readSensitive(List.of(ref(A, "c2"), ref(A, "none"), ref(B, "c1"),
+                ref(A, "c1")));
+        assertEquals(1, keys.calls() - before);
+        assertEquals(CryptoError.CRYPTO_CIPHERTEXT_INVALID, page.get(0).code().orElseThrow());
+        assertEquals(FieldValuesError.VALUES_RECORD_UNKNOWN, page.get(1).code().orElseThrow());
+        assertEquals(FieldValuesError.VALUES_RECORD_UNKNOWN, page.get(2).code().orElseThrow(), "another entity");
+        assertEquals(values.readSensitive(ref(A, "c1")), page.get(3).values());
+        for (String secret : SECRETS) {
+            assertFalse(page.toString().toLowerCase(Locale.ROOT).contains(secret));
+        }
     }
 
     /** case-fields-73: a sealed value is bound to its field and position, not only to the record. */

@@ -1,5 +1,6 @@
 package com.documentplatform.fields.values;
 
+import com.documentplatform.crypto.CryptoException;
 import com.documentplatform.crypto.CustomerId;
 import com.documentplatform.crypto.KeyService;
 import com.documentplatform.crypto.envelope.RecordCipher;
@@ -27,6 +28,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -55,12 +57,13 @@ import java.util.UUID;
  * or makes the record for incoming values: the same primary value(s) always lead to the same record, and concurrent
  * claims of a new value end up on one record. A record without primary values is a record of its own.
  *
- * <p><b>Reading:</b> {@link #read} never decrypts; {@link #readSensitive} is the explicit call that opens sensitive
+ * <p><b>Reading:</b> {@link #read} never decrypts; {@link #readSensitive(RecordRef)} is the explicit call that opens sensitive
  * values, which the app makes only for roles allowed to see them. No value ever appears in a {@code toString()}, a
  * log (this class logs nothing) or an exception message.
  *
  * <p>Key service calls: a new record with sensitive values takes one call for its data key, plus two for
- * fingerprints when any value needs one (the key versions, then one batch); {@link #readSensitive} takes one.
+ * fingerprints when any value needs one (the key versions, then one batch); {@link #readSensitive(RecordRef)}
+ * takes one, and {@link #readSensitive(List)} one for the whole list.
  */
 public final class FieldValues {
 
@@ -304,6 +307,67 @@ public final class FieldValues {
      */
     public RecordValues readSensitive(RecordRef ref) {
         return read(ref, true);
+    }
+
+    /**
+     * {@link #readSensitive(RecordRef)} of many records (a results page), one result per record in the order given,
+     * with <b>one</b> batched key service call for all of them (none when no record has a sensitive value). What the
+     * single read would refuse or fail for one record is that record's result; a failure that is not about one record
+     * (key service away or refusing, customer's key missing, store failure) throws, and nothing is returned. At most
+     * {@link KeyService#MAX_BATCH} records; an empty list calls nothing.
+     */
+    public List<SensitiveRead> readSensitive(List<RecordRef> refs) {
+        List<RecordRef> all = List.copyOf(refs);
+        if (all.size() > KeyService.MAX_BATCH) {
+            throw new IllegalArgumentException("A batch has at most " + KeyService.MAX_BATCH + " records");
+        }
+        SensitiveRead[] out = new SensitiveRead[all.size()];
+        StoredRecord[] records = new StoredRecord[all.size()];
+        Map<FieldScope, FieldSet> sets = new HashMap<>();
+        List<Integer> sealed = new ArrayList<>();
+        List<RecordCipher.StoredKey> toOpen = new ArrayList<>();
+        for (int i = 0; i < out.length; i++) {
+            RecordRef ref = all.get(i);
+            try {
+                records[i] = mine(store.find(ref).orElseThrow(() -> unknown(ref)));
+            } catch (FieldValuesException e) {
+                if (e.code() != FieldValuesError.VALUES_RECORD_UNKNOWN
+                        && e.code() != FieldValuesError.VALUES_WRONG_CUSTOMER) {
+                    throw e;
+                }
+                out[i] = SensitiveRead.failed(ref, e);
+                continue;
+            }
+            sets.computeIfAbsent(ref.scope(), this::fields);
+            if (anySensitive(records[i])) {
+                sealed.add(i);
+                toOpen.add(new RecordCipher.StoredKey(recordContext(ref), records[i].envelope()));
+            }
+        }
+        List<RecordCipher.OpenedKey> opened = toOpen.isEmpty() ? List.of() : cipher.openKeys(customer, toOpen);
+        try {
+            RecordCipher.OpenedKey[] keyOf = new RecordCipher.OpenedKey[out.length];
+            for (int n = 0; n < opened.size(); n++) {
+                keyOf[sealed.get(n)] = opened.get(n);
+            }
+            for (int i = 0; i < out.length; i++) {
+                if (out[i] != null) {
+                    continue;
+                }
+                RecordRef ref = all.get(i);
+                try (RecordCipher.OpenedKey key = keyOf[i]) {
+                    out[i] = SensitiveRead.read(ref, values(records[i], sets.get(ref.scope()),
+                            key == null ? null : key.key()));
+                } catch (CryptoException | FieldValuesException | IllegalStateException
+                         | IllegalArgumentException e) {
+                    // Opening and decoding one record's own rows; neither the key service nor the store is called.
+                    out[i] = SensitiveRead.failed(ref, e);
+                }
+            }
+        } finally {
+            opened.forEach(RecordCipher.OpenedKey::close);
+        }
+        return List.of(out);
     }
 
     /**
@@ -639,33 +703,41 @@ public final class FieldValues {
     private RecordValues read(RecordRef ref, boolean open) {
         StoredRecord r = mine(store.find(Objects.requireNonNull(ref, "ref")).orElseThrow(() -> unknown(ref)));
         FieldSet set = fields(ref.scope());
-        Map<FieldKey, List<StoredValue>> byKey = new TreeMap<>();
-        r.values().forEach(v -> byKey.computeIfAbsent(v.key(), k -> new ArrayList<>()).add(v));
-        boolean anySensitive = r.values().stream().anyMatch(StoredValue::sensitive);
-        RecordCipher.RecordKey key = open && anySensitive
+        RecordCipher.RecordKey key = open && anySensitive(r)
                 ? cipher.openKey(customer, recordContext(ref), r.envelope()) : null;
         try {
-            Map<FieldKey, RecordValues.Field> out = new LinkedHashMap<>();
-            for (Map.Entry<FieldKey, List<StoredValue>> e : byKey.entrySet()) {
-                boolean address = set.find(e.getKey()).map(s -> s.type() == FieldType.ADDRESS).orElse(false);
-                boolean sensitive = e.getValue().stream().anyMatch(StoredValue::sensitive);
-                List<ValidValue> values = new ArrayList<>();
-                if (!sensitive || key != null) {
-                    for (StoredValue v : e.getValue()) {
-                        values.add(v.sensitive()
-                                ? ValueCodec.fromSealedForm(key.openText(itemContext(v), v.sealed()))
-                                : new ValidValue(ValueCodec.decode(v.display(), address),
-                                ValueCodec.decode(v.normalised(), address)));
-                    }
-                }
-                out.put(e.getKey(), new RecordValues.Field(e.getKey(), sensitive, e.getValue().size(), values));
-            }
-            return new RecordValues(ref, r.version(), key != null, out);
+            return values(r, set, key);
         } finally {
             if (key != null) {
                 key.close();
             }
         }
+    }
+
+    private static boolean anySensitive(StoredRecord r) {
+        return r.values().stream().anyMatch(StoredValue::sensitive);
+    }
+
+    /** The record's values, the sensitive ones opened with the key, or hidden without one. */
+    private static RecordValues values(StoredRecord r, FieldSet set, RecordCipher.RecordKey key) {
+        Map<FieldKey, List<StoredValue>> byKey = new TreeMap<>();
+        r.values().forEach(v -> byKey.computeIfAbsent(v.key(), k -> new ArrayList<>()).add(v));
+        Map<FieldKey, RecordValues.Field> out = new LinkedHashMap<>();
+        for (Map.Entry<FieldKey, List<StoredValue>> e : byKey.entrySet()) {
+            boolean address = set.find(e.getKey()).map(s -> s.type() == FieldType.ADDRESS).orElse(false);
+            boolean sensitive = e.getValue().stream().anyMatch(StoredValue::sensitive);
+            List<ValidValue> values = new ArrayList<>();
+            if (!sensitive || key != null) {
+                for (StoredValue v : e.getValue()) {
+                    values.add(v.sensitive()
+                            ? ValueCodec.fromSealedForm(key.openText(itemContext(v), v.sealed()))
+                            : new ValidValue(ValueCodec.decode(v.display(), address),
+                            ValueCodec.decode(v.normalised(), address)));
+                }
+            }
+            out.put(e.getKey(), new RecordValues.Field(e.getKey(), sensitive, e.getValue().size(), values));
+        }
+        return new RecordValues(r.ref(), r.version(), key != null, out);
     }
 
     /** The record, if it is this customer's. */

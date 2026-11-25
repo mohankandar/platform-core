@@ -51,7 +51,7 @@ public final class VaultClient implements AutoCloseable {
         String error() {
             Object errors = body.get("errors");
             if (errors instanceof List<?> l && !l.isEmpty() && l.get(0) instanceof String first) {
-                return safe(first.replaceAll("\\s+", " ").strip());
+                return tidy(first);
             }
             return "";
         }
@@ -393,6 +393,11 @@ public final class VaultClient implements AutoCloseable {
             s = s.substring(0, s.length() - 1);
         }
         return URI.create(s + "/");
+    }
+
+    /** An error text of Vault's, on one line, cut short and kept to safe characters. */
+    static String tidy(String error) {
+        return safe(error.replaceAll("\\s+", " ").strip());
     }
 
     static String safe(String v) {

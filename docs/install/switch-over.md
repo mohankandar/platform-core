@@ -44,8 +44,9 @@ Each step works on its own and can be released on its own. Later ones use earlie
 
 1. `platform-errors`, then `platform-monitoring-spring`: the app's own checks and codes first.
 2. Licensing, then identity, then the setup command (setup needs both).
-3. Crypto (the customer's keys come from setup).
+3. Crypto (the customer's keys come from setup). Many data keys at once: `KeyService.unwrapAll` (1.1.0).
 4. Case fields, then the erase log (the field erase handler needs fields; the keyed log needs crypto).
+   A results page with sensitive values: `FieldValues.readSensitive(List)`, one key service call per page (1.1.0).
 5. Outbound, then integrations.
 6. Notifications (the licensing events and time zones join when licensing and identity are there).
 7. Model governance, when the app runs models.

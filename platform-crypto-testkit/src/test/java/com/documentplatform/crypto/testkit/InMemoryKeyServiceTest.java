@@ -212,6 +212,10 @@ class InMemoryKeyServiceTest {
             return inner.unwrap(c, w);
         }
 
+        public java.util.List<com.documentplatform.crypto.Unwrapped> unwrapAll(CustomerId c, java.util.List<String> w) {
+            return inner.unwrapAll(c, w);
+        }
+
         public String rewrap(CustomerId c, String w) {
             return inner.rewrap(c, w);
         }
