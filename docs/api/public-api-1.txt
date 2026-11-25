@@ -870,6 +870,14 @@ com.documentplatform.errors.SafeText method static java.lang.String forName[java
 com.documentplatform.errors.SafeText method static java.lang.String oneLine[java.lang.String]
 com.documentplatform.errors.SafeText method static java.lang.String scrub[java.lang.String]
 com.documentplatform.errors.SafeText type class final extends java.lang.Object implements []
+com.documentplatform.fields.FieldChange method boolean equals[java.lang.Object]
+com.documentplatform.fields.FieldChange method com.documentplatform.fields.FieldSpec next[]
+com.documentplatform.fields.FieldChange method int expectedVersion[]
+com.documentplatform.fields.FieldChange method int hashCode[]
+com.documentplatform.fields.FieldChange method java.lang.String toString[]
+com.documentplatform.fields.FieldChange method static com.documentplatform.fields.FieldChange create[com.documentplatform.fields.FieldSpec]
+com.documentplatform.fields.FieldChange new [com.documentplatform.fields.FieldSpec, int]
+com.documentplatform.fields.FieldChange type record extends java.lang.Record implements []
 com.documentplatform.fields.FieldDefinition method boolean active[]
 com.documentplatform.fields.FieldDefinition method boolean equals[java.lang.Object]
 com.documentplatform.fields.FieldDefinition method com.documentplatform.fields.FieldKey key[]
@@ -935,6 +943,7 @@ com.documentplatform.fields.FieldDefinitions method com.documentplatform.fields.
 com.documentplatform.fields.FieldDefinitions method com.documentplatform.fields.file.ImportReport previewImport[com.documentplatform.fields.FieldScope, java.lang.String]
 com.documentplatform.fields.FieldDefinitions method java.lang.String exportFile[com.documentplatform.fields.FieldScope]
 com.documentplatform.fields.FieldDefinitions method java.util.List<com.documentplatform.fields.FieldDefinition> active[com.documentplatform.fields.FieldScope]
+com.documentplatform.fields.FieldDefinitions method java.util.List<com.documentplatform.fields.FieldDefinition> change[com.documentplatform.fields.FieldScope, java.util.List<com.documentplatform.fields.FieldChange>, java.lang.String]
 com.documentplatform.fields.FieldDefinitions method java.util.List<com.documentplatform.fields.FieldDefinition> list[com.documentplatform.fields.FieldScope]
 com.documentplatform.fields.FieldDefinitions method java.util.List<com.documentplatform.fields.FieldStore$HistoryEntry> history[com.documentplatform.fields.FieldScope, com.documentplatform.fields.FieldKey]
 com.documentplatform.fields.FieldDefinitions method java.util.Map<java.lang.String, java.lang.String> extensions[com.documentplatform.fields.FieldScope, com.documentplatform.fields.FieldKey]
@@ -1039,6 +1048,7 @@ com.documentplatform.fields.FieldStore method abstract java.util.List<com.docume
 com.documentplatform.fields.FieldStore method abstract java.util.Map<java.lang.String, java.lang.String> extensions[com.documentplatform.fields.FieldScope, com.documentplatform.fields.FieldKey]
 com.documentplatform.fields.FieldStore method abstract java.util.Optional<com.documentplatform.fields.FieldDefinition> find[com.documentplatform.fields.FieldScope, com.documentplatform.fields.FieldKey]
 com.documentplatform.fields.FieldStore method abstract void putExtension[com.documentplatform.fields.FieldScope, com.documentplatform.fields.FieldKey, java.lang.String, java.lang.String, java.time.Instant]
+com.documentplatform.fields.FieldStore method java.util.List<com.documentplatform.fields.FieldDefinition> saveAll[com.documentplatform.fields.FieldScope, java.util.List<com.documentplatform.fields.FieldStore$Save>, java.lang.String, java.time.Instant]
 com.documentplatform.fields.FieldStore type interface extends - implements []
 com.documentplatform.fields.FieldStore$Change field static com.documentplatform.fields.FieldStore$Change CHANGED
 com.documentplatform.fields.FieldStore$Change field static com.documentplatform.fields.FieldStore$Change CREATED
@@ -1058,6 +1068,13 @@ com.documentplatform.fields.FieldStore$HistoryEntry method java.lang.String toSt
 com.documentplatform.fields.FieldStore$HistoryEntry method java.time.Instant at[]
 com.documentplatform.fields.FieldStore$HistoryEntry new [int, com.documentplatform.fields.FieldStore$Change, java.time.Instant, java.lang.String, com.documentplatform.fields.FieldSpec]
 com.documentplatform.fields.FieldStore$HistoryEntry type record extends java.lang.Record implements []
+com.documentplatform.fields.FieldStore$Save method boolean equals[java.lang.Object]
+com.documentplatform.fields.FieldStore$Save method com.documentplatform.fields.FieldDefinition current[]
+com.documentplatform.fields.FieldStore$Save method com.documentplatform.fields.FieldSpec next[]
+com.documentplatform.fields.FieldStore$Save method int hashCode[]
+com.documentplatform.fields.FieldStore$Save method java.lang.String toString[]
+com.documentplatform.fields.FieldStore$Save new [com.documentplatform.fields.FieldDefinition, com.documentplatform.fields.FieldSpec]
+com.documentplatform.fields.FieldStore$Save type record extends java.lang.Record implements []
 com.documentplatform.fields.FieldType field static com.documentplatform.fields.FieldType ADDRESS
 com.documentplatform.fields.FieldType field static com.documentplatform.fields.FieldType CUSTOM_PATTERN
 com.documentplatform.fields.FieldType field static com.documentplatform.fields.FieldType DATE
@@ -1319,6 +1336,7 @@ com.documentplatform.fields.inmemory.InMemoryFieldStore method com.documentplatf
 com.documentplatform.fields.inmemory.InMemoryFieldStore method java.util.List<com.documentplatform.fields.FieldDefinition> all[]
 com.documentplatform.fields.inmemory.InMemoryFieldStore method java.util.List<com.documentplatform.fields.FieldDefinition> create[com.documentplatform.fields.FieldScope, java.util.List<com.documentplatform.fields.FieldSpec>, com.documentplatform.fields.FieldStore$Change, java.lang.String, java.time.Instant]
 com.documentplatform.fields.inmemory.InMemoryFieldStore method java.util.List<com.documentplatform.fields.FieldDefinition> list[com.documentplatform.fields.FieldScope]
+com.documentplatform.fields.inmemory.InMemoryFieldStore method java.util.List<com.documentplatform.fields.FieldDefinition> saveAll[com.documentplatform.fields.FieldScope, java.util.List<com.documentplatform.fields.FieldStore$Save>, java.lang.String, java.time.Instant]
 com.documentplatform.fields.inmemory.InMemoryFieldStore method java.util.List<com.documentplatform.fields.FieldStore$HistoryEntry> history[com.documentplatform.fields.FieldScope, com.documentplatform.fields.FieldKey]
 com.documentplatform.fields.inmemory.InMemoryFieldStore method java.util.Map<java.lang.String, java.lang.String> extensions[com.documentplatform.fields.FieldScope, com.documentplatform.fields.FieldKey]
 com.documentplatform.fields.inmemory.InMemoryFieldStore method java.util.Optional<com.documentplatform.fields.FieldDefinition> find[com.documentplatform.fields.FieldScope, com.documentplatform.fields.FieldKey]
@@ -1377,6 +1395,7 @@ com.documentplatform.fields.jdbc.FieldStoreException type class final extends ja
 com.documentplatform.fields.jdbc.PostgresFieldStore method com.documentplatform.fields.FieldDefinition update[com.documentplatform.fields.FieldDefinition, com.documentplatform.fields.FieldSpec, com.documentplatform.fields.FieldStore$Change, java.lang.String, java.time.Instant]
 com.documentplatform.fields.jdbc.PostgresFieldStore method java.util.List<com.documentplatform.fields.FieldDefinition> create[com.documentplatform.fields.FieldScope, java.util.List<com.documentplatform.fields.FieldSpec>, com.documentplatform.fields.FieldStore$Change, java.lang.String, java.time.Instant]
 com.documentplatform.fields.jdbc.PostgresFieldStore method java.util.List<com.documentplatform.fields.FieldDefinition> list[com.documentplatform.fields.FieldScope]
+com.documentplatform.fields.jdbc.PostgresFieldStore method java.util.List<com.documentplatform.fields.FieldDefinition> saveAll[com.documentplatform.fields.FieldScope, java.util.List<com.documentplatform.fields.FieldStore$Save>, java.lang.String, java.time.Instant]
 com.documentplatform.fields.jdbc.PostgresFieldStore method java.util.List<com.documentplatform.fields.FieldStore$HistoryEntry> history[com.documentplatform.fields.FieldScope, com.documentplatform.fields.FieldKey]
 com.documentplatform.fields.jdbc.PostgresFieldStore method java.util.Map<java.lang.String, java.lang.String> extensions[com.documentplatform.fields.FieldScope, com.documentplatform.fields.FieldKey]
 com.documentplatform.fields.jdbc.PostgresFieldStore method java.util.Optional<com.documentplatform.fields.FieldDefinition> find[com.documentplatform.fields.FieldScope, com.documentplatform.fields.FieldKey]
@@ -1388,6 +1407,7 @@ com.documentplatform.fields.jdbc.PostgresValueStore method boolean valuesExist[c
 com.documentplatform.fields.jdbc.PostgresValueStore method com.documentplatform.fields.values.StoredRecord replace[com.documentplatform.fields.values.StoredRecord]
 com.documentplatform.fields.jdbc.PostgresValueStore method com.documentplatform.fields.values.ValueStore$Inserted insert[com.documentplatform.fields.values.StoredRecord]
 com.documentplatform.fields.jdbc.PostgresValueStore method java.util.List<com.documentplatform.fields.values.RecordRef> search[java.util.UUID, com.documentplatform.fields.FieldScope, java.lang.String, com.documentplatform.fields.FieldKey, com.documentplatform.fields.values.SearchMatch, int]
+com.documentplatform.fields.jdbc.PostgresValueStore method java.util.Map<com.documentplatform.fields.values.RecordRef, com.documentplatform.fields.values.StoredRecord> findAll[java.util.Collection<com.documentplatform.fields.values.RecordRef>]
 com.documentplatform.fields.jdbc.PostgresValueStore method java.util.Optional<com.documentplatform.fields.values.StoredRecord> findByIdentity[com.documentplatform.fields.FieldScope, java.lang.String, java.util.Collection<java.lang.String>]
 com.documentplatform.fields.jdbc.PostgresValueStore method java.util.Optional<com.documentplatform.fields.values.StoredRecord> find[com.documentplatform.fields.values.RecordRef]
 com.documentplatform.fields.jdbc.PostgresValueStore method void delete[com.documentplatform.fields.values.StoredRecord, com.documentplatform.fields.values.EraseTicket]
@@ -1408,7 +1428,10 @@ com.documentplatform.fields.values.FieldValues method com.documentplatform.field
 com.documentplatform.fields.values.FieldValues method com.documentplatform.fields.values.SearchResult search[com.documentplatform.fields.FieldScope, java.lang.String, java.lang.String, com.documentplatform.fields.SearchMode, com.documentplatform.fields.FieldValue]
 com.documentplatform.fields.values.FieldValues method int update[com.documentplatform.fields.values.RecordRef, java.util.Map<java.lang.String, ? extends java.util.List<? extends com.documentplatform.fields.FieldValue>>]
 com.documentplatform.fields.values.FieldValues method java.util.List<com.documentplatform.fields.values.SensitiveRead> readSensitive[java.util.List<com.documentplatform.fields.values.RecordRef>]
+com.documentplatform.fields.values.FieldValues method java.util.List<com.documentplatform.fields.values.SensitiveRead> read[java.util.List<com.documentplatform.fields.values.RecordRef>]
 com.documentplatform.fields.values.FieldValues method java.util.Optional<com.documentplatform.fields.values.RecordRef> findByPrimary[com.documentplatform.fields.FieldScope, java.lang.String, java.util.Map<java.lang.String, ? extends com.documentplatform.fields.FieldValue>]
+com.documentplatform.fields.values.FieldValues method static com.documentplatform.fields.values.FieldValues withoutKeyService[com.documentplatform.crypto.CustomerId, com.documentplatform.fields.FieldStore, com.documentplatform.fields.values.ValueStore, java.time.Clock, com.documentplatform.fields.values.LegalHolds]
+com.documentplatform.fields.values.FieldValues method static com.documentplatform.fields.values.FieldValues withoutKeyService[com.documentplatform.crypto.CustomerId, com.documentplatform.fields.FieldStore, com.documentplatform.fields.values.ValueStore, java.time.Clock]
 com.documentplatform.fields.values.FieldValues new [com.documentplatform.crypto.CustomerId, com.documentplatform.fields.FieldStore, com.documentplatform.fields.values.ValueStore, com.documentplatform.crypto.KeyService, java.time.Clock, com.documentplatform.fields.values.LegalHolds]
 com.documentplatform.fields.values.FieldValues new [com.documentplatform.crypto.CustomerId, com.documentplatform.fields.FieldStore, com.documentplatform.fields.values.ValueStore, com.documentplatform.crypto.KeyService, java.time.Clock]
 com.documentplatform.fields.values.FieldValues type class final extends java.lang.Object implements []
@@ -1443,6 +1466,7 @@ com.documentplatform.fields.values.FieldValuesError field static com.documentpla
 com.documentplatform.fields.values.FieldValuesError field static com.documentplatform.fields.values.FieldValuesError VALUES_ERASE_OUTSIDE_LOG
 com.documentplatform.fields.values.FieldValuesError field static com.documentplatform.fields.values.FieldValuesError VALUES_FIELD_UNKNOWN
 com.documentplatform.fields.values.FieldValuesError field static com.documentplatform.fields.values.FieldValuesError VALUES_INVALID
+com.documentplatform.fields.values.FieldValuesError field static com.documentplatform.fields.values.FieldValuesError VALUES_KEY_SERVICE_REQUIRED
 com.documentplatform.fields.values.FieldValuesError field static com.documentplatform.fields.values.FieldValuesError VALUES_LEGAL_HOLD
 com.documentplatform.fields.values.FieldValuesError field static com.documentplatform.fields.values.FieldValuesError VALUES_LEGAL_HOLD_UNKNOWN
 com.documentplatform.fields.values.FieldValuesError field static com.documentplatform.fields.values.FieldValuesError VALUES_NOT_PRIMARY
@@ -1459,6 +1483,7 @@ com.documentplatform.fields.values.FieldValuesError method static com.documentpl
 com.documentplatform.fields.values.FieldValuesError type enum extends java.lang.Enum implements [com.documentplatform.errors.PlatformCode]
 com.documentplatform.fields.values.FieldValuesException method com.documentplatform.errors.PlatformCode platformCode[]
 com.documentplatform.fields.values.FieldValuesException method com.documentplatform.fields.values.FieldValuesError code[]
+com.documentplatform.fields.values.FieldValuesException method java.util.List<com.documentplatform.fields.FieldKey> conflictingKeys[]
 com.documentplatform.fields.values.FieldValuesException method java.util.List<com.documentplatform.fields.ValueProblem> problems[]
 com.documentplatform.fields.values.FieldValuesException new [com.documentplatform.fields.values.FieldValuesError, java.lang.String, java.util.List<com.documentplatform.fields.ValueProblem>]
 com.documentplatform.fields.values.FieldValuesException new [com.documentplatform.fields.values.FieldValuesError, java.lang.String]
@@ -1576,6 +1601,7 @@ com.documentplatform.fields.values.ValueStore method abstract java.util.List<com
 com.documentplatform.fields.values.ValueStore method abstract java.util.Optional<com.documentplatform.fields.values.StoredRecord> findByIdentity[com.documentplatform.fields.FieldScope, java.lang.String, java.util.Collection<java.lang.String>]
 com.documentplatform.fields.values.ValueStore method abstract java.util.Optional<com.documentplatform.fields.values.StoredRecord> find[com.documentplatform.fields.values.RecordRef]
 com.documentplatform.fields.values.ValueStore method abstract void delete[com.documentplatform.fields.values.StoredRecord, com.documentplatform.fields.values.EraseTicket]
+com.documentplatform.fields.values.ValueStore method java.util.Map<com.documentplatform.fields.values.RecordRef, com.documentplatform.fields.values.StoredRecord> findAll[java.util.Collection<com.documentplatform.fields.values.RecordRef>]
 com.documentplatform.fields.values.ValueStore type interface extends - implements [com.documentplatform.fields.FieldValuesCheck]
 com.documentplatform.fields.values.ValueStore$Inserted method boolean created[]
 com.documentplatform.fields.values.ValueStore$Inserted method boolean equals[java.lang.Object]
@@ -1738,6 +1764,7 @@ com.documentplatform.identity.admission.TrustedEntityAdmission method com.docume
 com.documentplatform.identity.admission.TrustedEntityAdmission method com.documentplatform.identity.admission.EntityId requireUnambiguous[java.util.Set<com.documentplatform.identity.admission.EntityId>]
 com.documentplatform.identity.admission.TrustedEntityAdmission new []
 com.documentplatform.identity.admission.TrustedEntityAdmission type class final extends java.lang.Object implements []
+com.documentplatform.identity.inmemory.InMemoryIdentityStore method boolean testSignInPassed[java.util.UUID, long]
 com.documentplatform.identity.inmemory.InMemoryIdentityStore method com.documentplatform.identity.admission.MachineEntityBindings machineBindings[java.lang.String, java.util.function.Function<java.lang.String, java.util.Set<java.util.UUID>>]
 com.documentplatform.identity.inmemory.InMemoryIdentityStore method com.documentplatform.identity.admission.MachineEntityBindings machineBindings[java.lang.String]
 com.documentplatform.identity.inmemory.InMemoryIdentityStore method com.documentplatform.identity.inmemory.InMemoryIdentityStore$Lookup lookup[java.lang.String]
@@ -1775,6 +1802,7 @@ com.documentplatform.identity.inmemory.InMemoryIdentityStore method java.util.Op
 com.documentplatform.identity.inmemory.InMemoryIdentityStore method java.util.Optional<com.documentplatform.identity.store.LoginConnection> find[java.util.UUID]
 com.documentplatform.identity.inmemory.InMemoryIdentityStore method java.util.Optional<com.documentplatform.identity.store.LoginConnection> rollbackCandidate[java.lang.String, java.lang.String]
 com.documentplatform.identity.inmemory.InMemoryIdentityStore method java.util.Optional<com.documentplatform.identity.store.LoginConnection> rollback[java.lang.String, java.lang.String, com.documentplatform.identity.store.ChangeSource, java.lang.String]
+com.documentplatform.identity.inmemory.InMemoryIdentityStore method java.util.Optional<com.documentplatform.identity.store.LoginConnection> updateTested[com.documentplatform.identity.store.LoginConnection, long, com.documentplatform.identity.store.ChangeSource, java.lang.String]
 com.documentplatform.identity.inmemory.InMemoryIdentityStore method java.util.Optional<com.documentplatform.identity.store.LoginConnection> update[com.documentplatform.identity.store.LoginConnection, long, com.documentplatform.identity.store.ChangeSource, java.lang.String]
 com.documentplatform.identity.inmemory.InMemoryIdentityStore method java.util.Optional<com.documentplatform.identity.store.MachineBinding> activeBinding[java.lang.String, java.lang.String]
 com.documentplatform.identity.inmemory.InMemoryIdentityStore method java.util.Optional<com.documentplatform.identity.store.MachineBinding> updateBinding[com.documentplatform.identity.store.MachineBinding, long, com.documentplatform.identity.store.ChangeSource, java.lang.String]
@@ -1865,6 +1893,7 @@ com.documentplatform.identity.jdbc.PostgresIdentityLookup method java.util.Optio
 com.documentplatform.identity.jdbc.PostgresIdentityLookup method java.util.Set<com.documentplatform.identity.admission.EntityId> find[com.documentplatform.identity.admission.ConnectionKey]
 com.documentplatform.identity.jdbc.PostgresIdentityLookup new [javax.sql.DataSource, java.lang.String]
 com.documentplatform.identity.jdbc.PostgresIdentityLookup type class final extends java.lang.Object implements [com.documentplatform.identity.OidcConnectionBindingResolver, com.documentplatform.identity.admission.ActiveEntityCandidates, com.documentplatform.identity.admission.EntityGroupGrants, com.documentplatform.identity.admission.PlatformGroupGrants]
+com.documentplatform.identity.jdbc.PostgresLoginConnectionStore method boolean testSignInPassed[java.util.UUID, long]
 com.documentplatform.identity.jdbc.PostgresLoginConnectionStore method com.documentplatform.identity.store.LoginConnection insert[com.documentplatform.identity.store.LoginConnection, com.documentplatform.identity.store.ChangeSource, java.lang.String]
 com.documentplatform.identity.jdbc.PostgresLoginConnectionStore method java.util.List<com.documentplatform.identity.store.ConnectionChange> history[java.util.UUID]
 com.documentplatform.identity.jdbc.PostgresLoginConnectionStore method java.util.List<com.documentplatform.identity.store.LoginConnection> connections[java.lang.String, java.lang.String]
@@ -1873,6 +1902,7 @@ com.documentplatform.identity.jdbc.PostgresLoginConnectionStore method java.util
 com.documentplatform.identity.jdbc.PostgresLoginConnectionStore method java.util.Optional<com.documentplatform.identity.store.LoginConnection> find[java.util.UUID]
 com.documentplatform.identity.jdbc.PostgresLoginConnectionStore method java.util.Optional<com.documentplatform.identity.store.LoginConnection> rollbackCandidate[java.lang.String, java.lang.String]
 com.documentplatform.identity.jdbc.PostgresLoginConnectionStore method java.util.Optional<com.documentplatform.identity.store.LoginConnection> rollback[java.lang.String, java.lang.String, com.documentplatform.identity.store.ChangeSource, java.lang.String]
+com.documentplatform.identity.jdbc.PostgresLoginConnectionStore method java.util.Optional<com.documentplatform.identity.store.LoginConnection> updateTested[com.documentplatform.identity.store.LoginConnection, long, com.documentplatform.identity.store.ChangeSource, java.lang.String]
 com.documentplatform.identity.jdbc.PostgresLoginConnectionStore method java.util.Optional<com.documentplatform.identity.store.LoginConnection> update[com.documentplatform.identity.store.LoginConnection, long, com.documentplatform.identity.store.ChangeSource, java.lang.String]
 com.documentplatform.identity.jdbc.PostgresLoginConnectionStore method static com.documentplatform.identity.jdbc.PostgresLoginConnectionStore onConnection[java.sql.Connection]
 com.documentplatform.identity.jdbc.PostgresLoginConnectionStore new [javax.sql.DataSource]
@@ -2356,6 +2386,7 @@ com.documentplatform.identity.store.ConnectionOutcome$Result field static com.do
 com.documentplatform.identity.store.ConnectionOutcome$Result field static com.documentplatform.identity.store.ConnectionOutcome$Result IDN_NOT_VALIDATED
 com.documentplatform.identity.store.ConnectionOutcome$Result field static com.documentplatform.identity.store.ConnectionOutcome$Result IDN_NO_PREVIOUS_CONNECTION
 com.documentplatform.identity.store.ConnectionOutcome$Result field static com.documentplatform.identity.store.ConnectionOutcome$Result IDN_TEST_FAILED
+com.documentplatform.identity.store.ConnectionOutcome$Result field static com.documentplatform.identity.store.ConnectionOutcome$Result IDN_TEST_SIGN_IN_REQUIRED
 com.documentplatform.identity.store.ConnectionOutcome$Result field static com.documentplatform.identity.store.ConnectionOutcome$Result IDN_VALUES_INVALID
 com.documentplatform.identity.store.ConnectionOutcome$Result field static com.documentplatform.identity.store.ConnectionOutcome$Result IDN_VALUES_REQUIRED
 com.documentplatform.identity.store.ConnectionOutcome$Result field static com.documentplatform.identity.store.ConnectionOutcome$Result IDN_VERSION_CONFLICT
@@ -2543,17 +2574,23 @@ com.documentplatform.identity.store.LoginConnectionStore method abstract java.ut
 com.documentplatform.identity.store.LoginConnectionStore method abstract java.util.Optional<com.documentplatform.identity.store.LoginConnection> active[java.lang.String, java.lang.String]
 com.documentplatform.identity.store.LoginConnectionStore method abstract java.util.Optional<com.documentplatform.identity.store.LoginConnection> find[java.util.UUID]
 com.documentplatform.identity.store.LoginConnectionStore method abstract java.util.Optional<com.documentplatform.identity.store.LoginConnection> update[com.documentplatform.identity.store.LoginConnection, long, com.documentplatform.identity.store.ChangeSource, java.lang.String]
+com.documentplatform.identity.store.LoginConnectionStore method boolean testSignInPassed[java.util.UUID, long]
 com.documentplatform.identity.store.LoginConnectionStore method java.util.List<com.documentplatform.identity.store.LoginConnection> connections[java.lang.String, java.lang.String]
 com.documentplatform.identity.store.LoginConnectionStore method java.util.Optional<com.documentplatform.identity.store.LoginConnection> activate[java.util.UUID, long, com.documentplatform.identity.store.ChangeSource, java.lang.String]
 com.documentplatform.identity.store.LoginConnectionStore method java.util.Optional<com.documentplatform.identity.store.LoginConnection> pending[java.lang.String, java.lang.String]
 com.documentplatform.identity.store.LoginConnectionStore method java.util.Optional<com.documentplatform.identity.store.LoginConnection> rollbackCandidate[java.lang.String, java.lang.String]
 com.documentplatform.identity.store.LoginConnectionStore method java.util.Optional<com.documentplatform.identity.store.LoginConnection> rollback[java.lang.String, java.lang.String, com.documentplatform.identity.store.ChangeSource, java.lang.String]
+com.documentplatform.identity.store.LoginConnectionStore method java.util.Optional<com.documentplatform.identity.store.LoginConnection> updateTested[com.documentplatform.identity.store.LoginConnection, long, com.documentplatform.identity.store.ChangeSource, java.lang.String]
 com.documentplatform.identity.store.LoginConnectionStore type interface extends - implements []
+com.documentplatform.identity.store.LoginConnections method com.documentplatform.identity.store.ConnectionOutcome activate[java.lang.String, java.lang.String, java.util.UUID, long, java.lang.String]
 com.documentplatform.identity.store.LoginConnections method com.documentplatform.identity.store.ConnectionOutcome activate[java.util.UUID, long, java.lang.String]
 com.documentplatform.identity.store.LoginConnections method com.documentplatform.identity.store.ConnectionOutcome createDraft[java.lang.String, java.lang.String, long, com.documentplatform.identity.store.ConnectionValues, java.lang.String]
+com.documentplatform.identity.store.LoginConnections method com.documentplatform.identity.store.ConnectionOutcome discardDraft[java.lang.String, java.lang.String, java.util.UUID, long, java.lang.String]
 com.documentplatform.identity.store.LoginConnections method com.documentplatform.identity.store.ConnectionOutcome discardDraft[java.util.UUID, long, java.lang.String]
 com.documentplatform.identity.store.LoginConnections method com.documentplatform.identity.store.ConnectionOutcome rollback[java.lang.String, java.lang.String, java.lang.String]
+com.documentplatform.identity.store.LoginConnections method com.documentplatform.identity.store.ConnectionOutcome updateDraft[java.lang.String, java.lang.String, java.util.UUID, long, com.documentplatform.identity.store.ConnectionValues, java.lang.String]
 com.documentplatform.identity.store.LoginConnections method com.documentplatform.identity.store.ConnectionOutcome updateDraft[java.util.UUID, long, com.documentplatform.identity.store.ConnectionValues, java.lang.String]
+com.documentplatform.identity.store.LoginConnections method com.documentplatform.identity.store.ConnectionOutcome validate[java.lang.String, java.lang.String, java.util.UUID, long, com.documentplatform.identity.signin.TestSignIn, java.lang.String]
 com.documentplatform.identity.store.LoginConnections method com.documentplatform.identity.store.ConnectionOutcome validate[java.util.UUID, long, com.documentplatform.identity.signin.TestSignIn, java.lang.String]
 com.documentplatform.identity.store.LoginConnections method java.util.List<com.documentplatform.identity.store.LoginConnection> connections[java.lang.String, java.lang.String]
 com.documentplatform.identity.store.LoginConnections method java.util.Optional<com.documentplatform.identity.store.LoginConnection> active[java.lang.String, java.lang.String]
@@ -4983,6 +5020,8 @@ com.documentplatform.licensing.Licence new [java.lang.String, long, java.lang.St
 com.documentplatform.licensing.Licence type record extends java.lang.Record implements []
 com.documentplatform.licensing.LicenceBuild field static java.lang.String BUILD
 com.documentplatform.licensing.LicenceBuild field static java.lang.String KEYS
+com.documentplatform.licensing.LicenceBuild method boolean isDevelopmentLicence[com.documentplatform.licensing.Licence]
+com.documentplatform.licensing.LicenceBuild method boolean isDevelopment[]
 com.documentplatform.licensing.LicenceBuild method com.documentplatform.licensing.TrustedKeys keys[]
 com.documentplatform.licensing.LicenceBuild method java.time.Instant builtAt[]
 com.documentplatform.licensing.LicenceBuild method static com.documentplatform.licensing.LicenceBuild load[]
@@ -7106,6 +7145,7 @@ com.documentplatform.notifications.approval.ApprovalAction method static com.doc
 com.documentplatform.notifications.approval.ApprovalAction method static com.documentplatform.notifications.approval.ApprovalAction[] values[]
 com.documentplatform.notifications.approval.ApprovalAction type enum extends java.lang.Enum implements []
 com.documentplatform.notifications.approval.ApprovalAudit method abstract void record[com.documentplatform.notifications.approval.ApprovalAudit$Entry]
+com.documentplatform.notifications.approval.ApprovalAudit method void recordElsewhere[com.documentplatform.notifications.approval.ApprovalAudit$Entry, java.lang.String]
 com.documentplatform.notifications.approval.ApprovalAudit type interface extends - implements []
 com.documentplatform.notifications.approval.ApprovalAudit$Entry method boolean equals[java.lang.Object]
 com.documentplatform.notifications.approval.ApprovalAudit$Entry method com.documentplatform.notifications.EntityId entity[]
@@ -7235,6 +7275,7 @@ com.documentplatform.notifications.approval.ApprovalType type record extends jav
 com.documentplatform.notifications.approval.Approvals field static java.lang.String EXPIRES_FIELD
 com.documentplatform.notifications.approval.Approvals method com.documentplatform.notifications.approval.ApprovalResult decide[java.lang.String, com.documentplatform.notifications.approval.SignedInPerson, java.lang.String]
 com.documentplatform.notifications.approval.Approvals method com.documentplatform.notifications.approval.ApprovalResult decide[java.util.UUID, com.documentplatform.notifications.approval.ApprovalAction, com.documentplatform.notifications.approval.SignedInPerson, java.lang.String]
+com.documentplatform.notifications.approval.Approvals method com.documentplatform.notifications.approval.ApprovalResult decidedElsewhere[com.documentplatform.notifications.TenantId, java.util.UUID, com.documentplatform.notifications.approval.Decision, java.lang.String, boolean]
 com.documentplatform.notifications.approval.Approvals method com.documentplatform.notifications.approval.ApprovalResult open[java.lang.String, com.documentplatform.notifications.approval.SignedInPerson]
 com.documentplatform.notifications.approval.Approvals method com.documentplatform.notifications.approval.Approvals$Created create[com.documentplatform.notifications.approval.NewApprovalRequest]
 com.documentplatform.notifications.approval.Approvals method int purgeExpiredBefore[java.time.Instant]
@@ -7550,10 +7591,12 @@ com.documentplatform.notifications.spring.NotificationsProperties method com.doc
 com.documentplatform.notifications.spring.NotificationsProperties method java.time.Duration getLease[]
 com.documentplatform.notifications.spring.NotificationsProperties method java.time.Duration getRetention[]
 com.documentplatform.notifications.spring.NotificationsProperties method java.time.Duration getTickInterval[]
+com.documentplatform.notifications.spring.NotificationsProperties method java.util.Map<java.lang.String, com.documentplatform.notifications.spring.NotificationsProperties$MailServerSettings> getMailServers[]
 com.documentplatform.notifications.spring.NotificationsProperties method java.util.Map<java.lang.String, java.lang.String> getSlack[]
 com.documentplatform.notifications.spring.NotificationsProperties method java.util.Map<java.lang.String, java.lang.String> getTeams[]
 com.documentplatform.notifications.spring.NotificationsProperties method void setEnabled[boolean]
 com.documentplatform.notifications.spring.NotificationsProperties method void setLease[java.time.Duration]
+com.documentplatform.notifications.spring.NotificationsProperties method void setMailServers[java.util.Map<java.lang.String, com.documentplatform.notifications.spring.NotificationsProperties$MailServerSettings>]
 com.documentplatform.notifications.spring.NotificationsProperties method void setRetention[java.time.Duration]
 com.documentplatform.notifications.spring.NotificationsProperties method void setSlack[java.util.Map<java.lang.String, java.lang.String>]
 com.documentplatform.notifications.spring.NotificationsProperties method void setTeams[java.util.Map<java.lang.String, java.lang.String>]
@@ -7589,6 +7632,12 @@ com.documentplatform.notifications.spring.NotificationsProperties$Mail method vo
 com.documentplatform.notifications.spring.NotificationsProperties$Mail method void setUsername[java.lang.String]
 com.documentplatform.notifications.spring.NotificationsProperties$Mail new []
 com.documentplatform.notifications.spring.NotificationsProperties$Mail type class extends java.lang.Object implements []
+com.documentplatform.notifications.spring.NotificationsProperties$MailServerSettings method java.util.List<java.lang.String> getDestinations[]
+com.documentplatform.notifications.spring.NotificationsProperties$MailServerSettings method java.util.List<java.lang.String> getTenants[]
+com.documentplatform.notifications.spring.NotificationsProperties$MailServerSettings method void setDestinations[java.util.List<java.lang.String>]
+com.documentplatform.notifications.spring.NotificationsProperties$MailServerSettings method void setTenants[java.util.List<java.lang.String>]
+com.documentplatform.notifications.spring.NotificationsProperties$MailServerSettings new []
+com.documentplatform.notifications.spring.NotificationsProperties$MailServerSettings type class extends com.documentplatform.notifications.spring.NotificationsProperties$Mail implements []
 com.documentplatform.notifications.spring.NotificationsProperties$Oauth method java.lang.String getAuthority[]
 com.documentplatform.notifications.spring.NotificationsProperties$Oauth method java.lang.String getClientId[]
 com.documentplatform.notifications.spring.NotificationsProperties$Oauth method java.lang.String getCredentialSecret[]
@@ -7849,6 +7898,7 @@ com.documentplatform.setup.SetupRefusal field static com.documentplatform.setup.
 com.documentplatform.setup.SetupRefusal field static com.documentplatform.setup.SetupRefusal SETUP_LICENCE_VERSION_CONFLICT
 com.documentplatform.setup.SetupRefusal field static com.documentplatform.setup.SetupRefusal SETUP_MAPPING_INVALID
 com.documentplatform.setup.SetupRefusal field static com.documentplatform.setup.SetupRefusal SETUP_MODE_NOT_SUPPORTED
+com.documentplatform.setup.SetupRefusal field static com.documentplatform.setup.SetupRefusal SETUP_NO_PREVIOUS_CONNECTION
 com.documentplatform.setup.SetupRefusal field static com.documentplatform.setup.SetupRefusal SETUP_OTHER_CUSTOMER_INSTALLED
 com.documentplatform.setup.SetupRefusal field static com.documentplatform.setup.SetupRefusal SETUP_PLATFORM_ROLE_ON_ENTITY
 com.documentplatform.setup.SetupRefusal field static com.documentplatform.setup.SetupRefusal SETUP_PRODUCT_NOT_IN_LICENCE
