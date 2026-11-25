@@ -10,7 +10,7 @@ Outcome: DONE
 |---|---|---|---|---|---|
 | Code, docs, rc.1 | #94 | 45685613948; main 45686795882 | `08fea4f` | `platform-core-v1.2.0-rc.1` | 45688094927: published; **install proof passed on Linux and Windows** |
 | 1.2.0, version and notes | #95 | 45691392484; main 45692744349 | `0157c65` | `platform-core-v1.2.0` | 45693997837 (attempt 3): published |
-| Main to `1.3.0-SNAPSHOT` | #96 |  | `b9183c9` | — | — |
+| Main to `1.3.0-SNAPSHOT` | #96 | 45697938485 | `b9183c9` | — | — |
 
 Every CI check on PRs and main was green the first time. **The release run of 1.2.0 (45693997837) needed two re-runs,** each after its cause was found;
 the tag was not moved:
