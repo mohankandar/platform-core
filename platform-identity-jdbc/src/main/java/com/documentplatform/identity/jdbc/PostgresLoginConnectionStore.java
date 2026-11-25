@@ -90,6 +90,32 @@ public final class PostgresLoginConnectionStore implements LoginConnectionStore 
     @Override
     public Optional<LoginConnection> update(LoginConnection connection, long expectedVersion, ChangeSource source,
                                             String changedBy) {
+        return update(connection, expectedVersion, source, changedBy, false);
+    }
+
+    @Override
+    public Optional<LoginConnection> updateTested(LoginConnection connection, long expectedVersion,
+                                                  ChangeSource source, String changedBy) {
+        return update(connection, expectedVersion, source, changedBy, true);
+    }
+
+    @Override
+    public boolean testSignInPassed(UUID connectionId, long version) {
+        return db.read("read login connection", c -> {
+            try (PreparedStatement ps = c.prepareStatement("select 1 from idn_login_connection where connection_id = ? "
+                    + "and configuration_version = ? and test_sign_in_version = ?")) {
+                ps.setObject(1, connectionId);
+                ps.setLong(2, version);
+                ps.setLong(3, version);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next();
+                }
+            }
+        });
+    }
+
+    private Optional<LoginConnection> update(LoginConnection connection, long expectedVersion, ChangeSource source,
+                                             String changedBy, boolean tested) {
         requireChange(source, changedBy);
         LoginConnection next = connection.withVersion(expectedVersion + 1);
         return db.inTransaction("update login connection", c -> {
@@ -102,6 +128,13 @@ public final class PostgresLoginConnectionStore implements LoginConnectionStore 
             }
             requireNoOther(c, next);
             write(c, next);
+            if (tested) {
+                try (PreparedStatement ps = c.prepareStatement("update idn_login_connection set test_sign_in_version "
+                        + "= configuration_version where connection_id = ?")) {
+                    ps.setObject(1, next.connectionId());
+                    ps.executeUpdate();
+                }
+            }
             history(c, next, source, changedBy);
             return Optional.of(next);
         });

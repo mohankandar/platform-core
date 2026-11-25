@@ -21,12 +21,12 @@ import static com.documentplatform.identity.store.ConnectionOutcome.Result.*;
  *
  * <ol>
  *   <li><b>Draft:</b> {@link #createDraft} copies the ACTIVE connection (or creates the first one);
- *       {@link #updateDraft} changes it. At most one DRAFT or VALIDATED connection per customer and product.</li>
- *   <li><b>Test sign-in:</b> {@link #validate} fetches the issuer's discovery document and keys through the outbound
+ *       {@link #updateDraft(String, String, UUID, long, ConnectionValues, String)} changes it. At most one DRAFT or VALIDATED connection per customer and product.</li>
+ *   <li><b>Test sign-in:</b> {@link #validate(String, String, UUID, long, TestSignIn, String)} fetches the issuer's discovery document and keys through the outbound
  *       rules and checks a test token if one is given ({@link OidcTestSignIn}). A pass makes the draft VALIDATED; a
  *       later edit makes it DRAFT again.</li>
- *   <li><b>Activate:</b> {@link #activate} makes a VALIDATED connection ACTIVE and the old one DISABLED, in one
- *       transaction.</li>
+ *   <li><b>Activate:</b> {@link #activate(String, String, UUID, long, String)} makes a VALIDATED connection ACTIVE and the old one DISABLED, in one
+ *       transaction; to replace an ACTIVE one, the test sign-in must have passed with a real token (1.2.0).</li>
  *   <li><b>Rollback:</b> {@link #rollback} makes the previous ACTIVE version ACTIVE again, as a new version; refused
  *       when there is none.</li>
  * </ol>
@@ -97,11 +97,30 @@ public final class LoginConnections {
         }
     }
 
-    /** Changes the draft's values. A VALIDATED draft becomes DRAFT again (test it again before activating). */
+    /**
+     * {@link #updateDraft(String, String, UUID, long, ConnectionValues, String)}. Deprecated: it cannot check whose draft it is; give the customer and product.
+     *
+     * @deprecated since 1.2.0, use the method with the customer and product; it stays through 1.x
+     */
+    @Deprecated
     public ConnectionOutcome updateDraft(UUID draftId, long expectedVersion, ConnectionValues values, String actor) {
+        return updateDraft(Optional.empty(), draftId, expectedVersion, values, actor);
+    }
+
+    /**
+     * Changes the values of the customer's draft for the product. A VALIDATED draft becomes DRAFT again (test it again
+     * before activating). Another customer's or product's draft is not found ({@code IDN_CONNECTION_UNKNOWN}).
+     */
+    public ConnectionOutcome updateDraft(String tenantId, String productCode, UUID draftId, long expectedVersion,
+                                         ConnectionValues values, String actor) {
+        return updateDraft(Optional.of(new Owner(tenantId, productCode)), draftId, expectedVersion, values, actor);
+    }
+
+    private ConnectionOutcome updateDraft(Optional<Owner> owner, UUID draftId, long expectedVersion,
+                                          ConnectionValues values, String actor) {
         requireActor(actor);
         Objects.requireNonNull(values, "values");
-        Optional<LoginConnection> found = store.find(draftId);
+        Optional<LoginConnection> found = find(owner, draftId);
         if (found.isEmpty()) return ConnectionOutcome.of(IDN_CONNECTION_UNKNOWN, null);
         LoginConnection now = found.get();
         if (!pending(now)) return ConnectionOutcome.of(IDN_NOT_A_DRAFT, now);
@@ -116,13 +135,32 @@ public final class LoginConnections {
     }
 
     /**
-     * The test sign-in of a DRAFT (or VALIDATED) connection. A pass makes it VALIDATED; a failure leaves a DRAFT as it
-     * is and makes a VALIDATED one DRAFT again. The token in {@code test} is checked and forgotten.
+     * {@link #validate(String, String, UUID, long, TestSignIn, String)}. Deprecated: it cannot check whose draft it is; give the customer and product.
+     *
+     * @deprecated since 1.2.0, use the method with the customer and product; it stays through 1.x
      */
+    @Deprecated
     public ConnectionOutcome validate(UUID draftId, long expectedVersion, TestSignIn test, String actor) {
+        return validate(Optional.empty(), draftId, expectedVersion, test, actor);
+    }
+
+    /**
+     * The test sign-in of the customer's DRAFT (or VALIDATED) connection for the product. A pass makes it VALIDATED; a
+     * failure leaves a DRAFT as it is and makes a VALIDATED one DRAFT again. A pass <b>with a token</b> is recorded for
+     * this version of the draft: {@link #activate(String, String, UUID, long, String)} needs it to replace an ACTIVE
+     * connection. The token in {@code test} is checked and forgotten. Another customer's or product's draft is not
+     * found ({@code IDN_CONNECTION_UNKNOWN}).
+     */
+    public ConnectionOutcome validate(String tenantId, String productCode, UUID draftId, long expectedVersion,
+                                      TestSignIn test, String actor) {
+        return validate(Optional.of(new Owner(tenantId, productCode)), draftId, expectedVersion, test, actor);
+    }
+
+    private ConnectionOutcome validate(Optional<Owner> owner, UUID draftId, long expectedVersion, TestSignIn test,
+                                       String actor) {
         requireActor(actor);
         Objects.requireNonNull(test, "test");
-        Optional<LoginConnection> found = store.find(draftId);
+        Optional<LoginConnection> found = find(owner, draftId);
         if (found.isEmpty()) return ConnectionOutcome.of(IDN_CONNECTION_UNKNOWN, null);
         LoginConnection now = found.get();
         if (!pending(now)) return ConnectionOutcome.of(IDN_NOT_A_DRAFT, now);
@@ -136,7 +174,9 @@ public final class LoginConnections {
         IdentityConnectionStatus to = report.passed() ? IdentityConnectionStatus.VALIDATED : IdentityConnectionStatus.DRAFT;
         LoginConnection result = now;
         if (report.passed() || now.status() != to) {
-            Optional<LoginConnection> stored = store.update(with(now, to), expectedVersion, ChangeSource.APP, actor);
+            Optional<LoginConnection> stored = report.passed() && report.tokenChecked()
+                    ? store.updateTested(with(now, to), expectedVersion, ChangeSource.APP, actor)
+                    : store.update(with(now, to), expectedVersion, ChangeSource.APP, actor);
             if (stored.isEmpty()) {
                 return new ConnectionOutcome(IDN_VERSION_CONFLICT, store.find(draftId).orElse(null), report, null);
             }
@@ -145,10 +185,30 @@ public final class LoginConnections {
         return new ConnectionOutcome(report.passed() ? VALIDATED : IDN_TEST_FAILED, result, report, null);
     }
 
-    /** Makes a VALIDATED connection ACTIVE and the one ACTIVE until now DISABLED, in one transaction. */
+    /**
+     * {@link #activate(String, String, UUID, long, String)}. Deprecated: it cannot check whose draft it is; give the customer and product.
+     *
+     * @deprecated since 1.2.0, use the method with the customer and product; it stays through 1.x
+     */
+    @Deprecated
     public ConnectionOutcome activate(UUID validatedId, long expectedVersion, String actor) {
+        return activate(Optional.empty(), validatedId, expectedVersion, actor);
+    }
+
+    /**
+     * Makes the customer's VALIDATED connection for the product ACTIVE and the one ACTIVE until now DISABLED, in one
+     * transaction. When there is an ACTIVE one to replace, a test sign-in with a real token must have passed for this
+     * version of the draft ({@code IDN_TEST_SIGN_IN_REQUIRED}), so that a login system nobody can sign in to is never
+     * switched on. Another customer's or product's draft is not found ({@code IDN_CONNECTION_UNKNOWN}).
+     */
+    public ConnectionOutcome activate(String tenantId, String productCode, UUID validatedId, long expectedVersion,
+                                      String actor) {
+        return activate(Optional.of(new Owner(tenantId, productCode)), validatedId, expectedVersion, actor);
+    }
+
+    private ConnectionOutcome activate(Optional<Owner> owner, UUID validatedId, long expectedVersion, String actor) {
         requireActor(actor);
-        Optional<LoginConnection> found = store.find(validatedId);
+        Optional<LoginConnection> found = find(owner, validatedId);
         if (found.isEmpty()) return ConnectionOutcome.of(IDN_CONNECTION_UNKNOWN, null);
         LoginConnection now = found.get();
         if (now.status() != IdentityConnectionStatus.VALIDATED) {
@@ -157,6 +217,10 @@ public final class LoginConnections {
         if (now.configurationVersion() != expectedVersion) return ConnectionOutcome.of(IDN_VERSION_CONFLICT, now);
         Optional<ConnectionOutcome> issuer = issuerRefusal(now);
         if (issuer.isPresent()) return issuer.get();
+        if (store.active(now.tenantId(), now.productCode()).isPresent()
+                && !store.testSignInPassed(validatedId, expectedVersion)) {
+            return ConnectionOutcome.of(IDN_TEST_SIGN_IN_REQUIRED, now);
+        }
         return store.activate(validatedId, expectedVersion, ChangeSource.APP, actor)
                 .map(c -> ConnectionOutcome.of(ACTIVATED, c))
                 .orElseGet(() -> ConnectionOutcome.of(IDN_VERSION_CONFLICT, store.find(validatedId).orElse(null)));
@@ -175,10 +239,28 @@ public final class LoginConnections {
                 .orElseGet(() -> ConnectionOutcome.of(IDN_NO_PREVIOUS_CONNECTION, null));
     }
 
-    /** Drops a DRAFT or VALIDATED connection (it becomes DISABLED and stays in the history). */
+    /**
+     * {@link #discardDraft(String, String, UUID, long, String)}. Deprecated: it cannot check whose draft it is; give the customer and product.
+     *
+     * @deprecated since 1.2.0, use the method with the customer and product; it stays through 1.x
+     */
+    @Deprecated
     public ConnectionOutcome discardDraft(UUID draftId, long expectedVersion, String actor) {
+        return discardDraft(Optional.empty(), draftId, expectedVersion, actor);
+    }
+
+    /**
+     * Drops the customer's DRAFT or VALIDATED connection for the product (it becomes DISABLED and stays in the
+     * history). Another customer's or product's draft is not found ({@code IDN_CONNECTION_UNKNOWN}).
+     */
+    public ConnectionOutcome discardDraft(String tenantId, String productCode, UUID draftId, long expectedVersion,
+                                          String actor) {
+        return discardDraft(Optional.of(new Owner(tenantId, productCode)), draftId, expectedVersion, actor);
+    }
+
+    private ConnectionOutcome discardDraft(Optional<Owner> owner, UUID draftId, long expectedVersion, String actor) {
         requireActor(actor);
-        Optional<LoginConnection> found = store.find(draftId);
+        Optional<LoginConnection> found = find(owner, draftId);
         if (found.isEmpty()) return ConnectionOutcome.of(IDN_CONNECTION_UNKNOWN, null);
         LoginConnection now = found.get();
         if (!pending(now)) return ConnectionOutcome.of(IDN_NOT_A_DRAFT, now);
@@ -189,6 +271,19 @@ public final class LoginConnections {
     }
 
     // ---- helpers
+
+    /** Whose draft a call is about. */
+    private record Owner(String tenantId, String productCode) {
+        Owner {
+            Objects.requireNonNull(tenantId, "tenantId");
+            LoginConnection.requireProductCode(productCode);
+        }
+    }
+
+    private Optional<LoginConnection> find(Optional<Owner> owner, UUID id) {
+        return store.find(id).filter(c -> owner.isEmpty() || c.tenantId().equals(owner.get().tenantId())
+                && c.productCode().equals(owner.get().productCode()));
+    }
 
     private Optional<ConnectionOutcome> issuerRefusal(LoginConnection c) {
         return LocalTestIssuers.check(c.issuer(), licence.signedByDevelopmentKey()).map(p -> switch (p) {

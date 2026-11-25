@@ -93,7 +93,15 @@ class LoginConnectionDraftsTest {
         assertEquals(DRAFT_UPDATED, c.updateDraft(second, 1, values(issuer.issuer(), "api://v2"), "it-admin").result());
         assertEquals(IDN_NOT_VALIDATED, c.activate(second, 2, "it-admin").result());
         assertEquals(VALIDATED, c.validate(second, 2, TestSignIn.issuerOnly(), "it-admin").result());
-        assertEquals(ACTIVATED, c.activate(second, 3, "it-admin").result());
+        assertEquals(IDN_TEST_SIGN_IN_REQUIRED, c.activate(second, 3, "it-admin").result(), "P056, LV-23");
+        // a draft validated before schema version 6 has no recorded test sign-in either
+        assertEquals(1, db.count("select count(*) from idn_login_connection where connection_id = '" + second
+                + "' and test_sign_in_version is null"));
+        assertEquals(VALIDATED, c.validate(second, 3, TestSignIn.withToken(issuer.token("api://v2", List.of("g"),
+                Duration.ofMinutes(5))), "it-admin").result());
+        assertEquals(4, db.count("select test_sign_in_version from idn_login_connection where connection_id = '"
+                + second + "'"));
+        assertEquals(ACTIVATED, c.activate(second, 4, "it-admin").result());
 
         assertEquals(second, store.active(TENANT, A).orElseThrow().connectionId());
         assertEquals(IdentityConnectionStatus.DISABLED, store.find(first).orElseThrow().status());

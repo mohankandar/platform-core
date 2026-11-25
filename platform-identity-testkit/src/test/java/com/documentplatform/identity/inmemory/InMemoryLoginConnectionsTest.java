@@ -99,7 +99,8 @@ class InMemoryLoginConnectionsTest {
         assertEquals(DRAFT_UPDATED, again.result());
         assertEquals(IdentityConnectionStatus.DRAFT, again.connection().status());
         assertEquals(IDN_NOT_VALIDATED, connections.activate(draft, 4, "it-admin").result());
-        assertEquals(VALIDATED, connections.validate(draft, 4, TestSignIn.issuerOnly(), "it-admin").result());
+        assertEquals(VALIDATED, connections.validate(draft, 4, TestSignIn.withToken(issuer.token("api://changed-2",
+                List.of("g"), Duration.ofMinutes(5))), "it-admin").result());
 
         ConnectionOutcome on = connections.activate(draft, 5, "it-admin");
         assertEquals(ACTIVATED, on.result());
@@ -124,6 +125,62 @@ class InMemoryLoginConnectionsTest {
                 IdentityConnectionStatus.ACTIVE, IdentityConnectionStatus.DISABLED, IdentityConnectionStatus.ACTIVE,
                 IdentityConnectionStatus.DISABLED), h.stream().map(ConnectionChange::status).toList());
         assertTrue(h.stream().allMatch(c -> c.source() == ChangeSource.APP && c.changedBy().equals("it-admin")));
+    }
+
+    /** P056 (LV-23): an ACTIVE connection is replaced only after a real sign-in with the draft passed. */
+    @Test
+    void replacingTheActiveConnectionNeedsATestSignInWithAToken() {
+        LoginConnection active = firstActive();
+        UUID draft = connections.createDraft(TENANT, A, 3, null, "a").connection().connectionId();
+        assertEquals(VALIDATED, connections.validate(draft, 1, TestSignIn.issuerOnly(), "a").result());
+        ConnectionOutcome refused = connections.activate(draft, 2, "a");
+        assertEquals(IDN_TEST_SIGN_IN_REQUIRED, refused.result());
+        assertTrue(refused.refused());
+        assertEquals(active, store.active(TENANT, A).orElseThrow(), "people keep signing in");
+
+        assertEquals(VALIDATED, connections.validate(draft, 2, TestSignIn.withToken(goodToken()), "a").result());
+        // an edit takes the pass away, also when it is undone
+        assertEquals(DRAFT_UPDATED, connections.updateDraft(draft, 3, values(issuer.issuer(), "api://x"), "a").result());
+        assertEquals(DRAFT_UPDATED, connections.updateDraft(draft, 4, values(issuer.issuer(), AUD), "a").result());
+        assertEquals(VALIDATED, connections.validate(draft, 5, TestSignIn.issuerOnly(), "a").result());
+        assertEquals(IDN_TEST_SIGN_IN_REQUIRED, connections.activate(draft, 6, "a").result());
+        assertEquals(VALIDATED, connections.validate(draft, 6, TestSignIn.withToken(goodToken()), "a").result());
+        // a later failed test takes it away too
+        assertEquals(IDN_TEST_FAILED, connections.validate(draft, 7, TestSignIn.withToken("no.real.token"), "a").result());
+        assertEquals(IDN_NOT_VALIDATED, connections.activate(draft, 8, "a").result());
+        assertEquals(VALIDATED, connections.validate(draft, 8, TestSignIn.withToken(goodToken()), "a").result());
+        assertEquals(ACTIVATED, connections.activate(draft, 9, "a").result());
+    }
+
+    @Test
+    void theVeryFirstConnectionNeedsNoToken() {
+        ConnectionOutcome d = connections.createDraft(TENANT, A, 0, values(issuer.issuer(), AUD), "a");
+        UUID id = d.connection().connectionId();
+        assertEquals(VALIDATED, connections.validate(id, 1, TestSignIn.issuerOnly(), "a").result());
+        assertEquals(ACTIVATED, connections.activate(id, 2, "a").result(), "nobody signs in yet, nobody is locked out");
+    }
+
+    /** P056 (LV-23): a draft call names its customer and product; another's draft is not found. */
+    @Test
+    void anotherCustomersDraftIsNotFound() {
+        store.saveCustomer("TEN-TEST-0002", "Other Customer");
+        UUID id = connections.createDraft(TENANT, A, 0, values(issuer.issuer(), AUD), "a").connection().connectionId();
+        for (String[] other : new String[][]{{"TEN-TEST-0002", A}, {TENANT, "PRODUCT_B"}}) {
+            assertEquals(IDN_CONNECTION_UNKNOWN, connections.updateDraft(other[0], other[1], id, 1,
+                    values(HTTPS, AUD), "a").result());
+            assertEquals(IDN_CONNECTION_UNKNOWN, connections.validate(other[0], other[1], id, 1,
+                    TestSignIn.withToken(goodToken()), "a").result());
+            assertEquals(IDN_CONNECTION_UNKNOWN, connections.activate(other[0], other[1], id, 1, "a").result());
+            ConnectionOutcome x = connections.discardDraft(other[0], other[1], id, 1, "a");
+            assertEquals(IDN_CONNECTION_UNKNOWN, x.result());
+            assertNull(x.connection(), "nothing about it is told");
+        }
+        assertEquals(1, store.find(id).orElseThrow().configurationVersion(), "unchanged");
+        assertEquals(VALIDATED, connections.validate(TENANT, A, id, 1, TestSignIn.withToken(goodToken()), "a").result());
+        assertEquals(ACTIVATED, connections.activate(TENANT, A, id, 2, "a").result());
+        UUID next = connections.createDraft(TENANT, A, 3, null, "a").connection().connectionId();
+        assertEquals(DRAFT_UPDATED, connections.updateDraft(TENANT, A, next, 1, values(issuer.issuer(), "api://n"), "a").result());
+        assertEquals(DRAFT_DISCARDED, connections.discardDraft(TENANT, A, next, 2, "a").result());
     }
 
     @Test

@@ -18,6 +18,7 @@ import com.documentplatform.identity.store.LoginConnections;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.util.Map;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -324,7 +325,7 @@ class SetupIdentityChangesTest {
 
         // The app activates its draft (as LoginConnections does after a passed test sign-in).
         UUID id = draft.connection().connectionId();
-        LoginConnection validated = store.update(withStatus(draft.connection(), IdentityConnectionStatus.VALIDATED), 1,
+        LoginConnection validated = store.updateTested(withStatus(draft.connection(), IdentityConnectionStatus.VALIDATED), 1,
                 ChangeSource.APP, "it-admin").orElseThrow();
         assertEquals(ConnectionOutcome.Result.ACTIVATED, app.activate(id, validated.configurationVersion(), "it-admin")
                 .result());
@@ -347,6 +348,104 @@ class SetupIdentityChangesTest {
         assertEquals(IdentityConnectionStatus.DISABLED, store.find(setupMade.connectionId()).orElseThrow().status());
         assertEquals(Set.of("ACTIVE", "DISABLED", "DRAFT"), Set.copyOf(db.strings("select status from idn_login_connection")));
         assertFalse(replaced.all().contains(PASSWORD));
+    }
+
+    // ---- P056 (LV-23): going back without a signed-in session
+
+    private Result rollback(Map<String, String> env, String... more) {
+        List<String> args = new ArrayList<>(List.of("identity", "rollback-login-connection", "--run-log",
+                dir.resolve("rollback-runs.log").toString()));
+        args.addAll(List.of(more));
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        int exit = new SetupCommand(env, Clock.fixed(NOW, ZoneOffset.UTC), e -> {
+            throw new AssertionError("no key service is needed");
+        }, () -> {
+            throw new AssertionError("no licence build is needed for an https issuer");
+        }).run(args, new PrintStream(out, true, StandardCharsets.UTF_8), new PrintStream(err, true, StandardCharsets.UTF_8));
+        return new Result(exit, out.toString(StandardCharsets.UTF_8), err.toString(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void theRollbackCommandGoesBackToThePreviousConnectionWithTheSetupLoginOnly() throws Exception {
+        demo();
+        Pg db = Pg.migrated();
+        assertEquals(0, run(db, "apply").exit());
+        PostgresLoginConnectionStore store = new PostgresLoginConnectionStore(db.appDataSource(PASSWORD));
+        LoginConnection good = store.active(TENANT, A).orElseThrow();
+        Map<String, String> env = db.appEnv(PASSWORD);
+        Result none = rollback(env, "--tenant-id", TENANT, "--product", A, "--apply");
+        assertEquals(SetupCommand.EXIT_REFUSED, none.exit());
+        assertTrue(none.err().contains("SETUP_NO_PREVIOUS_CONNECTION"), none.err());
+
+        // The app switched to an issuer nobody can sign in to, and a new draft is open.
+        LoginConnection bad = store.insert(new LoginConnection(UUID.randomUUID(), TENANT, A, good.providerId(),
+                good.providerType(), URI.create("https://wrong.example.test"), good.browserClientId(),
+                good.apiAudience(), null, IdentityConnectionStatus.DRAFT, 1), ChangeSource.APP, "it-admin");
+        store.activate(bad.connectionId(), 1, ChangeSource.APP, "it-admin").orElseThrow();
+        LoginConnection draft = store.insert(new LoginConnection(UUID.randomUUID(), TENANT, A, good.providerId(),
+                good.providerType(), URI.create("https://next.example.test"), good.browserClientId(),
+                good.apiAudience(), null, IdentityConnectionStatus.DRAFT, 1), ChangeSource.APP, "it-admin");
+
+        Result shown = rollback(env, "--tenant-id", TENANT, "--product", A);
+        assertEquals(0, shown.exit(), shown.all());
+        assertTrue(shown.out().contains("https://wrong.example.test") && shown.out().contains(good.issuer().toString())
+                && shown.out().contains("nothing was changed"), shown.out());
+        assertEquals(bad.connectionId(), store.active(TENANT, A).orElseThrow().connectionId());
+
+        Result done = rollback(env, "--tenant-id", TENANT, "--product", A, "--apply");
+        assertEquals(0, done.exit(), done.all());
+        LoginConnection now = store.active(TENANT, A).orElseThrow();
+        assertEquals(good.connectionId(), now.connectionId());
+        assertEquals(good.issuer(), now.issuer());
+        assertEquals(IdentityConnectionStatus.DISABLED, store.find(bad.connectionId()).orElseThrow().status());
+        assertEquals(draft, store.find(draft.connectionId()).orElseThrow(), "the draft is left alone");
+        var last = store.history(good.connectionId());
+        assertEquals(ChangeSource.SETUP, last.get(last.size() - 1).source());
+        assertTrue(last.get(last.size() - 1).changedBy().startsWith("setup rollback, run "), last.toString());
+        String log = Files.readString(dir.resolve("rollback-runs.log"));
+        assertTrue(log.contains("rollback-login-connection") && log.contains("result=DONE"), log);
+        assertFalse((shown.all() + done.all() + log).contains(PASSWORD));
+        assertEquals(0, run(db, "apply").exit(), "the sign-in file holds the same connection: unchanged");
+    }
+
+    @Test
+    void setupDoesNotSilentlyUndoARollback() throws Exception {
+        demo();
+        Pg db = Pg.migrated();
+        assertEquals(0, run(db, "apply").exit());
+        PostgresLoginConnectionStore store = new PostgresLoginConnectionStore(db.appDataSource(PASSWORD));
+        LoginConnection fileValues = store.active(TENANT, A).orElseThrow();
+        LoginConnection other = store.insert(new LoginConnection(UUID.randomUUID(), TENANT, A, fileValues.providerId(),
+                fileValues.providerType(), URI.create("https://other.example.test"), fileValues.browserClientId(),
+                fileValues.apiAudience(), null, IdentityConnectionStatus.DRAFT, 1), ChangeSource.APP, "it-admin");
+        store.activate(other.connectionId(), 1, ChangeSource.APP, "it-admin").orElseThrow();
+        assertEquals(0, run(db, "apply", "--replace-connection").exit()); // the file's values again, in place
+        assertEquals(0, rollback(db.appEnv(PASSWORD), "--tenant-id", TENANT, "--product", A, "--apply").exit());
+        assertEquals(URI.create("https://other.example.test"), store.active(TENANT, A).orElseThrow().issuer());
+        Result again = run(db, "apply");
+        assertEquals(SetupCommand.EXIT_NEEDS_FLAG, again.exit(), again.all());
+        assertTrue(again.out().contains("conflict    login connection PRODUCT_A"), again.out());
+        assertEquals(URI.create("https://other.example.test"), store.active(TENANT, A).orElseThrow().issuer());
+    }
+
+    @Test
+    void theRollbackCommandRefusesBadOptionsAndAnotherCustomer() throws Exception {
+        demo();
+        Pg db = Pg.migrated();
+        assertEquals(0, run(db, "apply").exit());
+        Map<String, String> env = db.appEnv(PASSWORD);
+        for (String[] bad : new String[][]{{}, {"--product", A}, {"--tenant-id", TENANT}, {"--tenant-id", TENANT,
+                "--product", "bad code"}, {"--tenant-id", TENANT, "--product", A, "--licence", "x"}}) {
+            Result r = rollback(env, bad);
+            assertEquals(SetupCommand.EXIT_REFUSED, r.exit());
+            assertTrue(r.err().contains("SETUP_BAD_OPTION"), r.err());
+        }
+        Result other = rollback(env, "--tenant-id", "TEN-OTHER-0001", "--product", A, "--apply");
+        assertEquals(SetupCommand.EXIT_REFUSED, other.exit());
+        assertTrue(other.err().contains("SETUP_OTHER_CUSTOMER_INSTALLED"), other.err());
+        Result noDb = rollback(Map.of(), "--tenant-id", TENANT, "--product", A);
+        assertTrue(noDb.err().contains("SETUP_DB_SETTINGS_MISSING"), noDb.err());
     }
 
     @Test

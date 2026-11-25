@@ -42,6 +42,11 @@ public record ConnectionOutcome(Result result, LoginConnection connection, TestR
         IDN_NOT_A_DRAFT(true),
         /** Only a VALIDATED connection can be activated: run the test sign-in first. */
         IDN_NOT_VALIDATED(true),
+        /**
+         * The draft would replace the ACTIVE connection, but no test sign-in with a real token has passed for it: run
+         * the test sign-in with a token. Nothing is switched; people keep signing in as before.
+         */
+        IDN_TEST_SIGN_IN_REQUIRED(true),
         /** There is no previous ACTIVE version to go back to. */
         IDN_NO_PREVIOUS_CONNECTION(true),
         /**
@@ -87,7 +92,10 @@ public record ConnectionOutcome(Result result, LoginConnection connection, TestR
             case DRAFT_CREATED -> "Draft " + which + " created.";
             case DRAFT_UPDATED -> "Draft " + which + " saved; run the test sign-in before activating it.";
             case UNCHANGED -> "Draft " + which + " already has these values.";
-            case VALIDATED -> "The test sign-in passed; " + which + " can be activated.";
+            case VALIDATED -> test != null && !test.tokenChecked()
+                    ? "The login system answers; " + which + " is validated. To replace an active connection, run the "
+                    + "test sign-in with a token too."
+                    : "The test sign-in passed; " + which + " can be activated.";
             case ACTIVATED -> which + " is now the active login connection.";
             case ROLLED_BACK -> "The previous login connection is active again: " + which + ".";
             case DRAFT_DISCARDED -> "Draft " + which + " discarded.";
@@ -98,6 +106,8 @@ public record ConnectionOutcome(Result result, LoginConnection connection, TestR
             case IDN_CONNECTION_UNKNOWN -> "No such login connection.";
             case IDN_NOT_A_DRAFT -> which + " is not a draft.";
             case IDN_NOT_VALIDATED -> which + " has not passed the test sign-in; run it first.";
+            case IDN_TEST_SIGN_IN_REQUIRED -> which + " would replace the active login connection; run its test sign-in "
+                    + "with a token from a real sign-in first.";
             case IDN_NO_PREVIOUS_CONNECTION -> "There is no previous login connection to go back to.";
             case IDN_HTTP_ISSUER_NOT_ALLOWED -> "An http issuer is allowed only for a local test login server "
                     + "(localhost, 127.0.0.1 or [::1]) under a development licence; use the https issuer address.";

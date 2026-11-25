@@ -41,6 +41,7 @@ import java.util.function.Supplier;
  *             [--run-log platform-setup-runs.log] [--remove-unlisted-grants] [--replace-connection]
  *             [--no-customer-keys]
  * setup apply (the same options)
+ * setup identity rollback-login-connection --tenant-id ID --product CODE [--apply] [--run-log FILE]
  *
  * Database: PLATFORM_SETUP_DB_URL (jdbc:postgresql://host/db), PLATFORM_SETUP_DB_USER and PLATFORM_SETUP_DB_PASSWORD
  * from the environment only; the app's everyday (DML-only) database user is enough.
@@ -154,6 +155,9 @@ public final class SetupCommand {
             return EXIT_DONE;
         }
         Outcome o = new Outcome();
+        if (!args.isEmpty() && args.get(0).equals("identity")) {
+            return identity(args.subList(1, args.size()), o, out, err);
+        }
         Path runLog = null;
         try {
             if (args.isEmpty() || !ACTIONS.contains(args.get(0))) {
@@ -171,12 +175,7 @@ public final class SetupCommand {
                 }
             }
             o.product = safe(options.get("--product"));
-            try {
-                com.documentplatform.identity.store.LoginConnection.requireProductCode(options.get("--product"));
-            } catch (IllegalArgumentException e) {
-                throw new SetupException(SetupRefusal.SETUP_BAD_OPTION, "--product must be a product code (2 to 32 "
-                        + "of A-Z 0-9 _).");
-            }
+            requireProduct(options.get("--product"));
             SetupInputs in = SetupInputs.load(options, build, flags.contains("--remove-unlisted-grants"),
                     flags.contains("--replace-connection"));
             if (flags.contains("--no-customer-keys") && in.roles().customerKeysRequired()) {
@@ -190,12 +189,7 @@ public final class SetupCommand {
                     + "), sign-in mode " + in.signin().mode() + ", run " + o.runId + ".");
             o.exit = database(in, o, out, flags.contains("--no-customer-keys"));
         } catch (SetupException e) {
-            o.code = e.code().name();
-            o.result = e.code().exitCode() == EXIT_REFUSED ? "REFUSED" : "FAILED";
-            o.exit = e.code().exitCode();
-            err.println(e.getMessage());
-            for (String d : e.details()) err.println("  " + d);
-            err.println("What to do: " + e.code().action());
+            refused(e, o, err);
         }
         if (runLog != null) {
             writeRunLog(runLog, o, err);
@@ -203,23 +197,85 @@ public final class SetupCommand {
         return o.exit;
     }
 
+    private static void refused(SetupException e, Outcome o, PrintStream err) {
+        o.code = e.code().name();
+        o.result = e.code().exitCode() == EXIT_REFUSED ? "REFUSED" : "FAILED";
+        o.exit = e.code().exitCode();
+        err.println(e.getMessage());
+        for (String d : e.details()) err.println("  " + d);
+        err.println("What to do: " + e.code().action());
+    }
+
+    private static final String ROLLBACK = "rollback-login-connection";
+    private static final Set<String> ROLLBACK_OPTIONS = Set.of("--tenant-id", "--product", "--run-log");
+
+    /** {@code identity rollback-login-connection} ({@link SetupRollback}): the database settings only. */
+    private int identity(List<String> args, Outcome o, PrintStream out, PrintStream err) {
+        Path runLog = null;
+        try {
+            if (args.isEmpty() || !args.get(0).equals(ROLLBACK)) {
+                throw new SetupException(SetupRefusal.SETUP_BAD_OPTION, "After identity comes " + ROLLBACK + ". "
+                        + usage());
+            }
+            o.action = "identity " + ROLLBACK;
+            Map<String, String> options = new LinkedHashMap<>();
+            Set<String> flags = new TreeSet<>();
+            parse(args.subList(1, args.size()), options, flags, ROLLBACK_OPTIONS, Set.of("--apply"));
+            runLog = Path.of(options.getOrDefault("--run-log", DEFAULT_RUN_LOG));
+            for (String name : List.of("--tenant-id", "--product")) {
+                if (!options.containsKey(name)) {
+                    throw new SetupException(SetupRefusal.SETUP_BAD_OPTION, name + " is required. " + usage());
+                }
+            }
+            o.product = safe(options.get("--product"));
+            o.tenant = safe(options.get("--tenant-id"));
+            requireProduct(options.get("--product"));
+            DataSource ds = dataSource();
+            verifyTables(ds);
+            try (Connection c = ds.getConnection()) {
+                c.setAutoCommit(false);
+                try {
+                    new SetupRollback(c, clock, build, o.runId).run(options.get("--tenant-id"),
+                            options.get("--product"), flags.contains("--apply"), out);
+                    if (flags.contains("--apply")) {
+                        c.commit();
+                    } else {
+                        c.rollback();
+                    }
+                } catch (SQLException | RuntimeException e) {
+                    c.rollback();
+                    throw e;
+                }
+            }
+            o.result = flags.contains("--apply") ? "DONE" : "PLANNED";
+        } catch (SetupException e) {
+            refused(e, o, err);
+        } catch (SQLException e) {
+            refused(new SetupException(SetupRefusal.SETUP_FAILED, "The rollback failed and nothing was changed (SQL "
+                    + "state " + e.getSQLState() + ")."), o, err);
+        } catch (RuntimeException e) {
+            refused(new SetupException(SetupRefusal.SETUP_FAILED, "The rollback failed and nothing was changed ("
+                    + e.getClass().getSimpleName() + ")."), o, err);
+        }
+        if (runLog != null) {
+            writeRunLog(runLog, o, err);
+        }
+        return o.exit;
+    }
+
+    private static void requireProduct(String product) {
+        try {
+            com.documentplatform.identity.store.LoginConnection.requireProductCode(product);
+        } catch (IllegalArgumentException e) {
+            throw new SetupException(SetupRefusal.SETUP_BAD_OPTION, "--product must be a product code (2 to 32 "
+                    + "of A-Z 0-9 _).");
+        }
+    }
+
     /** Checks the tables, then plans (and applies) in one transaction. */
     private int database(SetupInputs in, Outcome o, PrintStream out, boolean noKeys) {
         DataSource ds = dataSource();
-        try {
-            LicensingSchema.verify(ds);
-            IdentitySchema.verify(ds);
-        } catch (LicensingSchemaException e) {
-            if (e.problem() == LicensingSchemaException.Problem.LIC_CHECK_FAILED) {
-                throw new SetupException(SetupRefusal.SETUP_DB_UNREACHABLE, e.problem() + ": " + e.getMessage());
-            }
-            throw new SetupException(SetupRefusal.SETUP_TABLES_NOT_READY, e.problem() + ": " + e.getMessage());
-        } catch (IdentitySchemaException e) {
-            if (e.problem() == IdentitySchemaException.Problem.IDN_CHECK_FAILED) {
-                throw new SetupException(SetupRefusal.SETUP_DB_UNREACHABLE, e.problem() + ": " + e.getMessage());
-            }
-            throw new SetupException(SetupRefusal.SETUP_TABLES_NOT_READY, e.problem() + ": " + e.getMessage());
-        }
+        verifyTables(ds);
         Plan plan;
         try (Connection c = ds.getConnection()) {
             c.setAutoCommit(false);
@@ -298,6 +354,24 @@ public final class SetupCommand {
         return EXIT_DONE;
     }
 
+    /** The tables are at this release's version. */
+    private static void verifyTables(DataSource ds) {
+        try {
+            LicensingSchema.verify(ds);
+            IdentitySchema.verify(ds);
+        } catch (LicensingSchemaException e) {
+            if (e.problem() == LicensingSchemaException.Problem.LIC_CHECK_FAILED) {
+                throw new SetupException(SetupRefusal.SETUP_DB_UNREACHABLE, e.problem() + ": " + e.getMessage());
+            }
+            throw new SetupException(SetupRefusal.SETUP_TABLES_NOT_READY, e.problem() + ": " + e.getMessage());
+        } catch (IdentitySchemaException e) {
+            if (e.problem() == IdentitySchemaException.Problem.IDN_CHECK_FAILED) {
+                throw new SetupException(SetupRefusal.SETUP_DB_UNREACHABLE, e.problem() + ": " + e.getMessage());
+            }
+            throw new SetupException(SetupRefusal.SETUP_TABLES_NOT_READY, e.problem() + ": " + e.getMessage());
+        }
+    }
+
     /** The keys step's line: the customer, its key-service UUID and what happens; never a key or a login. */
     private static String keysLine(SetupKeys.State state, String tenant, CustomerId customer,
                                    SetupKeys.Connection keyService) {
@@ -350,13 +424,18 @@ public final class SetupCommand {
     }
 
     private static void parse(List<String> args, Map<String, String> options, Set<String> flags) {
+        parse(args, options, flags, VALUE_OPTIONS, FLAGS);
+    }
+
+    private static void parse(List<String> args, Map<String, String> options, Set<String> flags,
+                              Set<String> valueOptions, Set<String> flagOptions) {
         for (int i = 0; i < args.size(); i++) {
             String name = args.get(i);
-            if (FLAGS.contains(name)) {
+            if (flagOptions.contains(name)) {
                 if (!flags.add(name)) throw new SetupException(SetupRefusal.SETUP_BAD_OPTION, name + " is given twice.");
                 continue;
             }
-            if (!VALUE_OPTIONS.contains(name)) {
+            if (!valueOptions.contains(name)) {
                 throw new SetupException(SetupRefusal.SETUP_BAD_OPTION, "Unknown option '" + safe(name) + "'. "
                         + usage());
             }
@@ -370,7 +449,8 @@ public final class SetupCommand {
     private static String usage() {
         return "Usage: setup plan|apply --licence FILE --signin FILE --product CODE "
                 + "--product-roles product-roles.json [--config-out FILE] [--run-log FILE] [--remove-unlisted-grants] "
-                + "[--replace-connection] [--no-customer-keys]; database settings " + DB_URL + ", " + DB_USER + ", " + DB_PASSWORD
+                + "[--replace-connection] [--no-customer-keys]; or: setup identity rollback-login-connection --tenant-id ID "
+                + "--product CODE [--apply] [--run-log FILE]; database settings " + DB_URL + ", " + DB_USER + ", " + DB_PASSWORD
                 + " from the environment.";
     }
 

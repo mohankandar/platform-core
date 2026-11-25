@@ -381,6 +381,23 @@ public final class InMemoryIdentityStore implements EntityStore, LoginConnection
         return Optional.of(next);
     }
 
+    /** test_sign_in_version. */
+    private final Map<UUID, Long> tested = new java.util.HashMap<>();
+
+    @Override
+    public synchronized Optional<LoginConnection> updateTested(LoginConnection connection, long expectedVersion,
+                                                               ChangeSource source, String changedBy) {
+        Optional<LoginConnection> stored = update(connection, expectedVersion, source, changedBy);
+        stored.ifPresent(c -> tested.put(c.connectionId(), c.configurationVersion()));
+        return stored;
+    }
+
+    @Override
+    public synchronized boolean testSignInPassed(UUID connectionId, long version) {
+        return Long.valueOf(version).equals(tested.get(connectionId)) && connections.containsKey(connectionId)
+                && connections.get(connectionId).configurationVersion() == version;
+    }
+
     @Override
     public synchronized List<ConnectionChange> history(UUID connectionId) {
         return List.copyOf(history.getOrDefault(connectionId, List.of()));
