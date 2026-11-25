@@ -13,6 +13,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.UUID;
 
 import static com.documentplatform.eraselog.FileEraseLogStoreTest.T0;
@@ -56,6 +57,54 @@ class KeyedFileEraseLogTest {
         assertEquals(EraseLogError.ERASE_LOG_CHAIN_BROKEN, chain.code());
         assertTrue(chain.message().startsWith("entry 3 has no valid MAC"), chain.message());
         assertEquals(2, chain.head().seq(), "the last good entry");
+    }
+
+    /** P055 (LV-24.7): a new log has nothing to verify and nothing pending; its first entry seals it. */
+    @Test
+    void aNewEmptyLogWorksAndIsSealedByItsFirstEntry() {
+        EraseLog log = keyed(dir);
+        assertTrue(log.verify().intact(), log.verify().message());
+        assertEquals(0, log.verify().entries());
+        assertTrue(log.pending(ChainPoint.START).isEmpty());
+        assertTrue(log.sealRecord().isEmpty(), "reading seals nothing");
+        log.record(req("rec-1"));
+        assertTrue(log.sealRecord().isPresent());
+        assertTrue(log.verify().intact());
+        assertEquals(1, log.pending(ChainPoint.START).size());
+    }
+
+    @Test
+    void aLogWithEntriesAndNoSealIsStillRefused() {
+        new FileEraseLogStore(dir).append(req("old"), T0);
+        EraseLog log = keyed(dir);
+        assertEquals(EraseLogError.ERASE_LOG_NOT_SEALED, log.verify().code());
+        assertEquals(EraseLogError.ERASE_LOG_NOT_SEALED,
+                assertThrows(EraseLogException.class, () -> log.pending(ChainPoint.START)).code());
+        assertEquals(EraseLogError.ERASE_LOG_NOT_SEALED,
+                assertThrows(EraseLogException.class, () -> log.record(req("rec-1"))).code());
+    }
+
+    @Test
+    void anEmptiedLogThatWasUsedIsNotNew() throws Exception {
+        keyed(dir).record(req("rec-1"));
+        new FileEraseLogStore(dir).recordApplied(1);
+        Files.delete(dir.resolve(FileEraseLogStore.LOG_FILE));
+        Files.delete(dir.resolve(FileEraseLogStore.SEAL_FILE));
+        assertEquals(EraseLogError.ERASE_LOG_NOT_SEALED, keyed(dir).verify().code());
+        assertEquals(EraseLogError.ERASE_LOG_NOT_SEALED,
+                assertThrows(EraseLogException.class, () -> keyed(dir).pending(ChainPoint.START)).code());
+    }
+
+    /** P055 (LV-22): the log keeps its times as text, whole; a nanosecond clock breaks nothing. */
+    @Test
+    void aNanosecondClockKeepsTheChainIntact() {
+        Clock nanos = Clock.fixed(Instant.parse("2026-11-20T10:00:00.123456789Z"), java.time.ZoneOffset.UTC);
+        for (int i = 1; i <= 3; i++) {
+            new EraseLog(new FileEraseLogStore(dir), nanos, new KeyServiceChainKey(keys, customer)).record(req("rec-" + i));
+        }
+        EraseLog reopened = keyed(dir);
+        assertTrue(reopened.verify().intact(), reopened.verify().message());
+        assertEquals(nanos.instant(), reopened.after(0).get(0).loggedAt());
     }
 
     @Test

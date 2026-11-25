@@ -3,6 +3,8 @@ package com.documentplatform.licensing.usage;
 import com.documentplatform.licensing.Ed25519;
 import com.documentplatform.licensing.json.Json;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -19,7 +21,7 @@ public final class UsageChain {
     private UsageChain() {
     }
 
-    /** The record that follows {@code previous} (null for the first). */
+    /** The record that follows {@code previous} (null for the first); its time is kept in whole microseconds. */
     public static UsageRecord link(UsageRecord previous, UsageEntry entry) {
         return seal(previous == null ? null : ChainHead.of(previous), entry);
     }
@@ -31,13 +33,15 @@ public final class UsageChain {
 
     private static UsageRecord seal(ChainHead head, UsageEntry entry) {
         Objects.requireNonNull(entry, "entry");
+        // LV-22: the database keeps microseconds; hashing a finer time would break the chain when it is read back.
+        Instant recordedAt = entry.recordedAt().truncatedTo(ChronoUnit.MICROS);
         long sequence = head == null ? 1 : head.sequence() + 1;
         String previousHash = head == null ? GENESIS : head.hash();
         UsageRecord unsealed = new UsageRecord(sequence, entry.slotId(), entry.product(), entry.type(),
-                entry.period(), entry.amount(), entry.type().unit(), entry.billable(), entry.recordedAt(),
+                entry.period(), entry.amount(), entry.type().unit(), entry.billable(), recordedAt,
                 previousHash, "");
         return new UsageRecord(sequence, entry.slotId(), entry.product(), entry.type(), entry.period(),
-                entry.amount(), entry.type().unit(), entry.billable(), entry.recordedAt(), previousHash,
+                entry.amount(), entry.type().unit(), entry.billable(), recordedAt, previousHash,
                 hashOf(unsealed));
     }
 

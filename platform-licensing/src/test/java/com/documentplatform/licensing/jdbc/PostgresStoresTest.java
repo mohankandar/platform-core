@@ -48,6 +48,55 @@ class PostgresStoresTest {
         assertEquals(0, ledger.usage("ENT-0001", "PRODUCT_A", AllowanceType.PAGES_PER_MONTH, NOV.plusMonths(1)));
     }
 
+    private static UsageEntry at(String time) {
+        return new UsageEntry("ENT-0001", "PRODUCT_A", AllowanceType.PAGES_PER_MONTH, NOV, 1, true,
+                Instant.parse(time));
+    }
+
+    /** P055 (LV-22): PostgreSQL keeps microseconds; a clock finer than that must not break the chain. */
+    @Test
+    void aTimeFinerThanAMicrosecondKeepsTheChainIntact() {
+        PostgresUsageLedger ledger = new PostgresUsageLedger(Pg.migrated().appUser(DML));
+        UsageRecord windows = ledger.append(at("2026-11-21T10:00:00.1234567Z")); // a 100 ns clock
+        assertTrue(ledger.verifyChain().intact(), ledger.verifyChain().message());
+        UsageRecord linux = ledger.append(at("2026-11-21T10:00:00.123456999Z")); // a nanosecond clock
+        UsageRecord up = ledger.append(at("2026-11-21T10:00:00.999999999Z")); // never rounded into the next second
+        assertTrue(ledger.verifyChain().intact(), ledger.verifyChain().message());
+        assertEquals(Instant.parse("2026-11-21T10:00:00.123456Z"), windows.recordedAt());
+        assertEquals(Instant.parse("2026-11-21T10:00:00.123456Z"), linux.recordedAt());
+        assertEquals(Instant.parse("2026-11-21T10:00:00.999999Z"), up.recordedAt());
+        assertEquals(List.of(windows, linux, up), ledger.records(), "what append answered is what is stored");
+    }
+
+    @Test
+    void aLongChainOnANanosecondClockVerifies() {
+        PostgresUsageLedger ledger = new PostgresUsageLedger(Pg.migrated().appUser(DML));
+        java.time.Clock nanos = new java.time.Clock() {
+            private Instant now = Instant.parse("2026-11-21T10:00:00.000000001Z");
+
+            @Override
+            public java.time.ZoneId getZone() {
+                return java.time.ZoneOffset.UTC;
+            }
+
+            @Override
+            public java.time.Clock withZone(java.time.ZoneId zone) {
+                return this;
+            }
+
+            @Override
+            public Instant instant() {
+                return now = now.plusNanos(123_456_789);
+            }
+        };
+        for (int i = 0; i < 200; i++) {
+            ledger.append(new UsageEntry("ENT-0001", "PRODUCT_A", AllowanceType.PAGES_PER_MONTH, NOV, i, true,
+                    nanos.instant()));
+        }
+        ChainCheck c = ledger.verifyChain();
+        assertTrue(c.intact(), c.message());
+    }
+
     @Test
     void peakTypesTakeTheHighestReading() {
         Pg db = Pg.migrated();
