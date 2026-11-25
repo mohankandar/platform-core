@@ -83,7 +83,7 @@ public final class EraseLog {
      * @throws EraseLogException {@code ERASE_LOG_CHAIN_BROKEN} naming the first bad entry, {@code ERASE_LOG_NOT_SEALED}
      */
     public List<EraseEntry> pending(ChainPoint applied) {
-        Seal seal = key == null ? null : requireSealed(false);
+        Seal seal = key == null || isNew() ? null : requireSealed(false);
         List<EraseEntry> out = new ArrayList<>();
         ChainPoint at = applied;
         for (EraseEntry e : store.after(applied.seq())) {
@@ -158,7 +158,7 @@ public final class EraseLog {
         Seal seal = null;
         if (key != null) {
             try {
-                seal = requireSealed(false);
+                seal = isNew() ? null : requireSealed(false);
             } catch (EraseLogException e) {
                 ChainPoint cp;
                 try {
@@ -226,6 +226,14 @@ public final class EraseLog {
             }
         }
         return null;
+    }
+
+    /**
+     * Whether this log was never written: no seal, no entry, nothing pruned, and no database ever applied an entry of
+     * it (a log emptied afterwards still has that mark). Nothing to verify or apply; its first entry seals it (P055).
+     */
+    private boolean isNew() {
+        return store.seal().isEmpty() && store.head().seq() == 0 && store.appliedHighWater() == 0;
     }
 
     /** The valid seal of a keyed log; a log without entries is sealed now when {@code sealIfEmpty}. */
