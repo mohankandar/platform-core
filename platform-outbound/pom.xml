@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.documentplatform.platform</groupId>
         <artifactId>platform-core</artifactId>
-        <version>1.2.0-SNAPSHOT</version>
+        <version>1.2.0-rc.1</version>
     </parent>
     <artifactId>platform-outbound</artifactId>
     <description>Safe outbound HTTP calls (plain Java, no Spring; package com.documentplatform.outbound), shared by
