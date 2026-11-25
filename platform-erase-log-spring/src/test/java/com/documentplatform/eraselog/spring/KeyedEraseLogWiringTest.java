@@ -67,6 +67,19 @@ class KeyedEraseLogWiringTest {
         });
     }
 
+    /** P055 (LV-24.7). */
+    @Test
+    void anAppStartsAndTakesWorkOnANewEmptyKeyedLog(@TempDir Path dir) {
+        RecordingEraseHandler docs = new RecordingEraseHandler("document").store("d1");
+        app(dir.resolve("log")).withBean(RecordingEraseHandler.class, () -> docs).run(ctx -> {
+            EraseGuard guard = ctx.getBean(EraseGuard.class);
+            assertTrue(guard.mayTakeWork(), guard.state().code() + " " + guard.state().message());
+            ctx.getBean(Eraser.class).erase(req("d1"));
+            assertTrue(guard.fullCheck().mayTakeWork());
+        });
+        app(dir.resolve("log")).run(ctx -> assertTrue(ctx.getBean(EraseLog.class).sealRecord().isPresent()));
+    }
+
     @Test
     void keyedTrueWithoutAKeyRefusesToStart(@TempDir Path dir) {
         new ApplicationContextRunner()
