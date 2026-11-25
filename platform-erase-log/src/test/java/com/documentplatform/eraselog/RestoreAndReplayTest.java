@@ -386,6 +386,48 @@ class RestoreAndReplayTest {
         assertTrue(guard.refresh().mayTakeWork());
     }
 
+    /** P055 (LV-24.8): the app's file storage restored alone; the database and the log are in step. */
+    @Test
+    void aFileStorageRestoredAloneIsErasedAgainByTheReplay(@TempDir Path logDir) {
+        EraseLog log = new EraseLog(new FileEraseLogStore(logDir), clock);
+        EraseGuard guard = new EraseGuard(log, position, clock);
+        Eraser eraser = new Eraser(log, position, handlers, guard);
+        documents.stored.addAll(List.of("doc-1", "doc-2", "doc-3"));
+        eraser.erase(document("doc-1"));
+        eraser.erase(document("doc-2"));
+        documents.stored.add("doc-1"); // the file storage of before the erasures is put back
+        documents.stored.add("doc-2");
+
+        EraseReplay.Report r = new EraseReplay(log, position, handlers, clock, guard).run();
+        assertTrue(r.passed(), r.describe());
+        assertEquals(2, r.applied().get(EraseHandler.Applied.ERASED));
+        assertEquals(Set.of("doc-3"), documents.stored, "only what the log names");
+        assertEquals(2, position.read(log.logId()).appliedSeq(), "the position does not move");
+        assertTrue(guard.checkAtStartup().mayTakeWork());
+    }
+
+    @Test
+    void aFileStorageThatCannotBeErasedAgainBlocksTheSystem(@TempDir Path logDir) {
+        EraseLog log = new EraseLog(new FileEraseLogStore(logDir), clock);
+        EraseGuard guard = new EraseGuard(log, position, clock);
+        documents.stored.add("doc-1");
+        new Eraser(log, position, handlers, guard).erase(document("doc-1"));
+        documents.stored.add("doc-1");
+        documents.failOn = "doc-1";
+        EraseReplay replay = new EraseReplay(log, position, handlers, clock, guard);
+
+        EraseReplay.Report r = replay.run();
+        assertEquals(EraseLogError.ERASE_HANDLER_FAILED, r.code(), r.describe());
+        assertEquals("DOC_STORE_DOWN", r.handlerCode());
+        assertEquals(1L, r.stoppedAt());
+        assertFalse(guard.refresh().mayTakeWork(), "erased data can be read: no work until a replay passes");
+
+        documents.failOn = null;
+        assertTrue(replay.run().passed());
+        assertTrue(guard.refresh().mayTakeWork());
+        assertTrue(documents.stored.isEmpty());
+    }
+
     @Test
     void somethingStillReadableAfterTheReplayKeepsTheSystemBlocked(@TempDir Path logDir) throws Exception {
         EraseLog log = new EraseLog(new FileEraseLogStore(logDir), clock);
