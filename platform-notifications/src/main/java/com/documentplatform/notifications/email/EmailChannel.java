@@ -29,17 +29,20 @@ import java.io.UnsupportedEncodingException;
 import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * Sends e-mail through the customer's own mail server (SMTP, with Jakarta Mail / Eclipse Angus). Host, port, TLS
  * and login come from the {@link MailServerDirectory}; the password is read from the secret store for each attempt.
  *
- * <p>Each message is plain text, addressed to the holders of the recipient roles, with a {@code Message-ID} made from
- * the outbox's idempotency key (so a resend after a crash carries the same id and mail systems can recognise it) and
+ * <p><b>One message per recipient</b> (P055): each is addressed to one person only, so nobody sees who else was told.
+ * Each message is plain text, with a {@code Message-ID} made from the outbox's idempotency key (so a resend after a crash carries the same id and mail systems can recognise it) and
  * the {@code Auto-Submitted} header, so out-of-office replies are not sent back.
  *
  * <p>Microsoft 365 ({@link MailAuth#OAUTH2_MICROSOFT}): the sender signs in with {@code AUTH XOAUTH2} as the sender
@@ -59,6 +62,10 @@ public final class EmailChannel implements Channel {
     private static final List<java.util.logging.Logger> SMTP_TRACE = List.of(
             java.util.logging.Logger.getLogger("org.eclipse.angus.mail.smtp"),
             java.util.logging.Logger.getLogger("org.eclipse.angus.mail.smtp.protocol"));
+
+    /** Failures that concern one recipient's message; after any other the rest of the recipients would fail alike. */
+    private static final Set<FailureCode> RECIPIENT_FAILURES = Set.of(FailureCode.MAIL_RECIPIENT_REFUSED,
+            FailureCode.MAIL_TEMPORARILY_REFUSED, FailureCode.MAIL_MESSAGE_REJECTED, FailureCode.SENDER_FAILED);
 
     private final MailServerDirectory servers;
     private final SecretResolver secrets;
@@ -130,30 +137,64 @@ public final class EmailChannel implements Channel {
             }
         }
         Session session = Session.getInstance(properties(server));
-        MimeMessage mail;
-        try {
-            mail = build(session, server, out);
-        } catch (MessagingException | UnsupportedEncodingException badAddress) {
-            return SendResult.failed(FailureCode.MAIL_RECIPIENT_REFUSED);
-        }
+        FailureCode refused = null;
+        int sent = 0;
         Transport transport = null;
         try {
-            transport = session.getTransport(protocol(server));
-            transport.connect(server.host(), server.port(), server.username(), password);
-            transport.sendMessage(mail, mail.getAllRecipients());
-            return SendResult.ok();
-        } catch (MessagingException e) {
-            if (server.oauth() == null) {
-                return SendResult.failed(classify(e, transport));
+            for (Recipient person : out.recipients().stream().sorted(Comparator.comparing(Recipient::userId)
+                    .thenComparing(Recipient::emailAddress)).toList()) {
+                MimeMessage mail;
+                try {
+                    mail = build(session, server, out, person);
+                } catch (MessagingException | UnsupportedEncodingException badAddress) {
+                    refused = worse(refused, FailureCode.MAIL_RECIPIENT_REFUSED);
+                    continue;
+                }
+                if (transport == null || !transport.isConnected()) {
+                    close(transport);
+                    transport = null;
+                    try {
+                        transport = session.getTransport(protocol(server));
+                        transport.connect(server.host(), server.port(), server.username(), password);
+                    } catch (MessagingException e) {
+                        return SendResult.failed(failure(e, transport, server));
+                    }
+                }
+                try {
+                    transport.sendMessage(mail, mail.getAllRecipients());
+                    sent++;
+                } catch (MessagingException e) {
+                    FailureCode code = failure(e, transport, server);
+                    if (!RECIPIENT_FAILURES.contains(code)) {
+                        return SendResult.failed(code); // the server's fault: the same for everyone left
+                    }
+                    refused = worse(refused, code);
+                }
             }
-            FailureCode code = classifyMicrosoft(e, transport);
-            if (code == FailureCode.MAIL_OAUTH_SEND_AS_NOT_ALLOWED || code == FailureCode.MAIL_SMTP_AUTH_DISABLED) {
-                tokens.invalidate(server.oauth()); // a permission granted later is only in a new token
-            }
-            return SendResult.failed(code);
         } finally {
             close(transport);
         }
+        if (refused == null) {
+            return SendResult.ok();
+        }
+        // Some got it: never resend the whole message.
+        return SendResult.failed(sent > 0 ? worse(refused, FailureCode.MAIL_RECIPIENT_REFUSED) : refused);
+    }
+
+    /** The permanent one of two failures, the first one otherwise. */
+    private static FailureCode worse(FailureCode first, FailureCode second) {
+        return first == null || (first.retryable() && !second.retryable()) ? second : first;
+    }
+
+    private FailureCode failure(MessagingException e, Transport transport, MailServer server) {
+        if (server.oauth() == null) {
+            return classify(e, transport);
+        }
+        FailureCode code = classifyMicrosoft(e, transport);
+        if (code == FailureCode.MAIL_OAUTH_SEND_AS_NOT_ALLOWED || code == FailureCode.MAIL_SMTP_AUTH_DISABLED) {
+            tokens.invalidate(server.oauth()); // a permission granted later is only in a new token
+        }
+        return code;
     }
 
     private static String protocol(MailServer server) {
@@ -176,9 +217,6 @@ public final class EmailChannel implements Channel {
         props.put(p + "connectiontimeout", Long.toString(server.connectTimeout().toMillis()));
         props.put(p + "timeout", Long.toString(server.readTimeout().toMillis()));
         props.put(p + "writetimeout", Long.toString(server.readTimeout().toMillis()));
-        // Recipients the server accepts get the message even if it refuses another; the refusal is reported and not
-        // retried, so the ones who got it do not get it twice.
-        props.put(p + "sendpartial", "true");
         if (server.security() == MailSecurity.STARTTLS) {
             props.put(p + "starttls.enable", "true");
             props.put(p + "starttls.required", "true");
@@ -193,10 +231,12 @@ public final class EmailChannel implements Channel {
         return props;
     }
 
-    private static MimeMessage build(Session session, MailServer server, OutgoingMessage out)
+    private static MimeMessage build(Session session, MailServer server, OutgoingMessage out, Recipient person)
             throws MessagingException, UnsupportedEncodingException {
         String domain = server.fromAddress().substring(server.fromAddress().indexOf('@') + 1);
-        String messageId = "<" + out.idempotencyKey() + "@" + domain + ">";
+        String copy = out.recipients().size() == 1 ? "" : "." + UUID.nameUUIDFromBytes(
+                (person.userId() + " " + person.emailAddress()).getBytes(StandardCharsets.UTF_8));
+        String messageId = "<" + out.idempotencyKey() + copy + "@" + domain + ">";
         MimeMessage mail = new MimeMessage(session) {
             @Override
             protected void updateMessageID() throws MessagingException {
@@ -205,12 +245,7 @@ public final class EmailChannel implements Channel {
         };
         mail.setFrom(server.fromName() == null ? new InternetAddress(server.fromAddress(), true)
                 : new InternetAddress(server.fromAddress(), server.fromName(), StandardCharsets.UTF_8.name()));
-        Address[] to = new Address[out.recipients().size()];
-        int i = 0;
-        for (Recipient r : out.recipients().stream().sorted((a, b) -> a.userId().compareTo(b.userId())).toList()) {
-            to[i++] = new InternetAddress(r.emailAddress(), true);
-        }
-        mail.setRecipients(jakarta.mail.Message.RecipientType.TO, to);
+        mail.setRecipient(jakarta.mail.Message.RecipientType.TO, new InternetAddress(person.emailAddress(), true));
         Message m = out.message();
         mail.setSubject(m.subject(), StandardCharsets.UTF_8.name());
         mail.setText(m.text(), StandardCharsets.UTF_8.name());

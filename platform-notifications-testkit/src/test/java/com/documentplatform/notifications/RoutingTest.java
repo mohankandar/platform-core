@@ -81,7 +81,8 @@ class RoutingTest {
     @Test
     void criticalEventGoesImmediatelyToTheItAdmin() {
         f.via(f.notifier).publish(event(LICENCE_EXPIRED).entity(E1).build());
-        assertEquals(Set.of(ANN, CY), f.email.sent().get(0).recipients());
+        assertEquals(List.of(Set.of(ANN), Set.of(CY)),
+                f.email.sent().stream().map(OutgoingMessage::recipients).toList(), "a message of their own each");
     }
 
     @Test

@@ -81,7 +81,8 @@ class SummaryTest {
         assertEquals(List.of(DeliveryStatus.SENT, DeliveryStatus.FAILED),
                 reports.stream().map(DeliveryReport::status).toList());
         assertEquals(FailureCode.NO_RECIPIENTS, reports.get(1).failure());
-        assertEquals(Set.of(BOB, CY), f.email.sent().get(0).recipients());
+        assertEquals(List.of(Set.of(BOB), Set.of(CY)),
+                f.email.sent().stream().map(OutgoingMessage::recipients).toList(), "a message of their own each");
         assertTrue(f.email.sent().get(0).message().text().contains("C-1"));
         assertTrue(!f.email.sent().get(0).message().text().contains("C-2"));
     }
