@@ -41,6 +41,11 @@ public enum FieldValuesError implements com.documentplatform.errors.PlatformCode
      * log's case-fields handler, so that every erasure is logged (nothing was erased).
      */
     VALUES_ERASE_OUTSIDE_LOG,
+    /**
+     * A sensitive field was used, but this {@link FieldValues} was made without a key service
+     * ({@link FieldValues#withoutKeyService}); nothing was written or opened.
+     */
+    VALUES_KEY_SERVICE_REQUIRED,
     /** The database refused or failed the call (the message has the SQL state only). */
     VALUES_STORE_FAILED,
     /**

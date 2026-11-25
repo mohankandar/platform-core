@@ -96,6 +96,64 @@ class ReadSensitiveListTest {
         assertFalse(got.toString().contains("Person"), got.toString());
     }
 
+    /** P056 (LV-25.1): the plain read of a page, the single read's outcome for each, no key service call. */
+    @Test
+    void aPlainPageHasTheSingleReadsOutcomeAndCallsNoKeyService() {
+        claim(values, "c1", "Alice c1");
+        claim(values, "plain", null);
+        claim(new FieldValues(OTHER, fieldStore, store, keys, CLOCK), "foreign", "Bob Jones");
+        int before = keys.calls();
+        List<SensitiveRead> got = values.read(List.of(ref("plain"), ref("missing"), ref("foreign"), ref("c1"),
+                ref("plain")));
+        assertEquals(0, keys.calls() - before);
+        assertEquals(values.read(ref("plain")), got.get(0).values());
+        assertEquals(FieldValuesError.VALUES_RECORD_UNKNOWN, got.get(1).code().orElseThrow());
+        assertEquals(FieldValuesError.VALUES_WRONG_CUSTOMER, got.get(2).code().orElseThrow());
+        assertEquals(values.read(ref("c1")), got.get(3).values());
+        assertTrue(got.get(3).values().values("borrower_name").isEmpty(), "hidden");
+        assertEquals(got.get(0).values(), got.get(4).values());
+        assertTrue(values.read(List.<RecordRef>of()).isEmpty());
+        List<RecordRef> tooMany = java.util.Collections.nCopies(101, ref("c1"));
+        assertThrows(IllegalArgumentException.class, () -> values.read(tooMany));
+    }
+
+    /** P056 (LV-25.5): no key service where no field is sensitive; refused only when a sensitive one is used. */
+    @Test
+    void withoutAKeyServicePlainFieldsWorkAndSensitiveOnesAreRefused() {
+        claim(values, "sealed", "Alice Smith");
+        FieldValues plain = FieldValues.withoutKeyService(CUSTOMER, fieldStore, store, CLOCK);
+        claim(plain, "p1", null);
+        assertEquals("LN-P1", plain.readSensitive(ref("p1")).values("loan_number").get(0).normalisedText().toUpperCase());
+        assertEquals(ref("p1"), plain.findByPrimary(A, "business_record", Map.of("loan_number",
+                FieldValue.text("LN-p1"))).orElseThrow());
+        assertFalse(plain.rewrap(ref("p1")));
+        assertTrue(plain.readSensitive(List.of(ref("p1"))).get(0).ok());
+        assertEquals(1, plain.read(ref("sealed")).fields().get(com.documentplatform.fields.FieldKey.of("borrower_name"))
+                .count(), "hidden as ever");
+        for (org.junit.jupiter.api.function.Executable e : List.<org.junit.jupiter.api.function.Executable>of(
+                () -> claim(plain, "p2", "Bob Jones"),
+                () -> plain.update(ref("p1"), Map.of("borrower_name", List.of(FieldValue.text("Bob Jones")))),
+                () -> plain.readSensitive(ref("sealed")),
+                () -> plain.readSensitive(List.of(ref("p1"), ref("sealed"))),
+                () -> plain.rewrap(ref("sealed")))) {
+            FieldValuesException x = assertThrows(FieldValuesException.class, e);
+            assertEquals(FieldValuesError.VALUES_KEY_SERVICE_REQUIRED, x.code());
+            assertFalse(x.getMessage().contains("Bob"));
+        }
+        assertTrue(store.find(ref("p2")).isEmpty(), "nothing written");
+    }
+
+    /** P056 (LV-25.3). */
+    @Test
+    void aConflictCarriesItsKeysAsData() {
+        claim(values, "c1", "Alice Smith");
+        FieldValuesException x = assertThrows(FieldValuesException.class, () -> claim(values, "c1", "Bob Jones"));
+        assertEquals(FieldValuesError.VALUES_CONFLICT, x.code());
+        assertEquals(List.of(com.documentplatform.fields.FieldKey.of("borrower_name")), x.conflictingKeys());
+        FieldValuesException other = assertThrows(FieldValuesException.class, () -> values.read(ref("none")));
+        assertTrue(other.conflictingKeys().isEmpty());
+    }
+
     @Test
     void eachRecordHasTheSingleReadsOutcome() {
         for (String id : List.of("c1", "c2", "c3", "c4", "c5")) {
@@ -173,7 +231,8 @@ class ReadSensitiveListTest {
         keys.denied(false);
         ValueStore broken = (ValueStore) Proxy.newProxyInstance(ValueStore.class.getClassLoader(),
                 new Class<?>[]{ValueStore.class}, (p, m, args) -> {
-                    if (m.getName().equals("find") && args[0].equals(ref("missing"))) {
+                    if (m.getName().equals("find") && args[0].equals(ref("missing"))
+                            || m.getName().equals("findAll")) {
                         throw new FieldValuesException(FieldValuesError.VALUES_STORE_FAILED, "SQL state 08006");
                     }
                     try {

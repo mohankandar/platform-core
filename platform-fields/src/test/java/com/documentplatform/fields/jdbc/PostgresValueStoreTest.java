@@ -661,6 +661,61 @@ class PostgresValueStoreTest {
         }
     }
 
+    /** P056 (LV-25.1): a page of 25 is one query for the records and one for the definitions, and one key call. */
+    @Test
+    void aPageOf25IsOneQueryForTheRecords() {
+        List<RecordRef> page = new java.util.ArrayList<>();
+        for (int i = 1; i <= 25; i++) {
+            values.claim(ref(A, "c" + i), vals("contract_number", "AB-" + (1000 + i), "borrower_name",
+                    List.of("Alice " + i, "Bob " + i)));
+            page.add(0, ref(A, "c" + i));
+        }
+        java.util.concurrent.atomic.AtomicInteger statements = new java.util.concurrent.atomic.AtomicInteger();
+        javax.sql.DataSource counting = counting(app, statements);
+        FieldValues counted = new FieldValues(CUSTOMER, definitionStore, new PostgresValueStore(counting), keys, CLOCK);
+        page.forEach(counted::readSensitive);
+        assertEquals(50, statements.getAndSet(0), "one by one: the record and its values, 25 times");
+        int calls = keys.calls();
+        List<SensitiveRead> got = counted.readSensitive(page);
+        assertEquals(1, statements.getAndSet(0));
+        assertEquals(1, keys.calls() - calls);
+        for (int i = 0; i < page.size(); i++) {
+            assertEquals(values.readSensitive(page.get(i)), got.get(i).values());
+        }
+        calls = keys.calls();
+        List<SensitiveRead> plain = counted.read(page);
+        assertEquals(1, statements.getAndSet(0));
+        assertEquals(calls, keys.calls(), "none for the plain read");
+        assertEquals(values.read(page.get(7)), plain.get(7).values());
+        // the scope is part of what is asked for; twice the same record is answered twice
+        List<SensitiveRead> mixed = counted.read(List.of(ref(B, "c1"), ref(A, "c1"), ref(A, "none"), ref(A, "c1")));
+        assertEquals(1, statements.get());
+        assertEquals(List.of(false, true, false, true), mixed.stream().map(SensitiveRead::ok).toList());
+        assertTrue(counted.read(List.<RecordRef>of()).isEmpty());
+        assertEquals(1, statements.get(), "an empty list asks nothing");
+    }
+
+    private static javax.sql.DataSource counting(javax.sql.DataSource ds, java.util.concurrent.atomic.AtomicInteger n) {
+        ClassLoader l = PostgresValueStoreTest.class.getClassLoader();
+        return (javax.sql.DataSource) java.lang.reflect.Proxy.newProxyInstance(l,
+                new Class<?>[]{javax.sql.DataSource.class}, (p, m, a) -> {
+                    Object r = call(ds, m, a);
+                    return !(r instanceof java.sql.Connection c) ? r : java.lang.reflect.Proxy.newProxyInstance(l,
+                            new Class<?>[]{java.sql.Connection.class}, (cp, cm, ca) -> {
+                                if (cm.getName().equals("prepareStatement")) n.incrementAndGet();
+                                return call(c, cm, ca);
+                            });
+                });
+    }
+
+    private static Object call(Object on, java.lang.reflect.Method m, Object[] args) throws Throwable {
+        try {
+            return m.invoke(on, args);
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            throw e.getCause();
+        }
+    }
+
     /** case-fields-73: a sealed value is bound to its field and position, not only to the record. */
     @Test
     void aSealedValueMovedToAnotherFieldOrPositionDoesNotOpen() {

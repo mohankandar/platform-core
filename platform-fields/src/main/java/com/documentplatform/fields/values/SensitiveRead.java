@@ -7,7 +7,8 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * One record's result of {@link FieldValues#readSensitive(java.util.List)}: its opened values, or the exception the
+ * One record's result of {@link FieldValues#readSensitive(java.util.List)} (its opened values) or
+ * {@link FieldValues#read(java.util.List)} (sensitive ones hidden), or the exception the
  * single read throws for it ({@link FieldValuesException}, for example {@code VALUES_RECORD_UNKNOWN}, or a
  * {@code CryptoException}, for example {@code CRYPTO_CIPHERTEXT_INVALID}). {@code toString()} shows no value.
  */
@@ -40,7 +41,7 @@ public final class SensitiveRead {
         return failure == null;
     }
 
-    /** The record's values, sensitive ones opened; throws what the single read throws if it was not read. */
+    /** The record's values (sensitive ones opened, or hidden by the plain read); throws what the single read throws if it was not read. */
     public RecordValues values() {
         if (failure != null) {
             throw failure;

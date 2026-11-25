@@ -9,10 +9,13 @@ import java.lang.System.Logger.Level;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -105,6 +108,65 @@ public final class FieldDefinitions {
     public FieldDefinition change(FieldScope scope, FieldSpec next, int expectedVersion, String actor) {
         Objects.requireNonNull(next, "next");
         actor(actor);
+        Checked c = checked(scope, next, expectedVersion);
+        if (c.effective.equals(c.current.spec())) {
+            return c.current;
+        }
+        FieldDefinition changed = store.update(c.current, c.effective, FieldStore.Change.CHANGED, actor, now());
+        log(changed, FieldStore.Change.CHANGED, actor);
+        return changed;
+    }
+
+    /**
+     * Saves a list of changes and new fields ({@link FieldChange}), <b>every one or none</b>, in one transaction. Each
+     * is checked as {@link #change(FieldScope, FieldSpec, int, String)} and {@link #create} check it; the first refusal
+     * is thrown and nothing is saved. A field that does not change makes no new version.
+     *
+     * @return the fields as they are now, in the order given
+     */
+    public List<FieldDefinition> change(FieldScope scope, List<FieldChange> changes, String actor) {
+        actor(actor);
+        List<FieldChange> all = List.copyOf(changes);
+        Set<String> keys = new HashSet<>();
+        FieldDefinition[] out = new FieldDefinition[all.size()];
+        List<Integer> places = new ArrayList<>();
+        List<FieldStore.Save> saves = new ArrayList<>();
+        for (int i = 0; i < out.length; i++) {
+            FieldChange c = all.get(i);
+            if (!keys.add(c.next().key().folded())) {
+                throw taken(c.next().key());
+            }
+            if (c.expectedVersion() == 0) {
+                store.find(scope, c.next().key()).ifPresent(d -> {
+                    throw taken(c.next().key());
+                });
+                saves.add(new FieldStore.Save(null, c.next()));
+                places.add(i);
+                continue;
+            }
+            Checked k = checked(scope, c.next(), c.expectedVersion());
+            out[i] = k.current;
+            if (!k.effective.equals(k.current.spec())) {
+                saves.add(new FieldStore.Save(k.current, k.effective));
+                places.add(i);
+            }
+        }
+        if (!saves.isEmpty()) {
+            List<FieldDefinition> saved = store.saveAll(scope, saves, actor, now());
+            for (int n = 0; n < saved.size(); n++) {
+                out[places.get(n)] = saved.get(n);
+                log(saved.get(n), saves.get(n).current() == null ? FieldStore.Change.CREATED
+                        : FieldStore.Change.CHANGED, actor);
+            }
+        }
+        return List.of(out);
+    }
+
+    /** A change that is allowed: the stored field, and the field as it would be saved. */
+    private record Checked(FieldDefinition current, FieldSpec effective) {
+    }
+
+    private Checked checked(FieldScope scope, FieldSpec next, int expectedVersion) {
         FieldDefinition current = store.find(scope, next.key()).orElseThrow(() -> unknown(next.key()));
         if (!current.key().equals(next.key())) {
             throw new FieldDefinitionException(Code.FIELD_KEY_LOCKED,
@@ -116,7 +178,7 @@ public final class FieldDefinitions {
         FieldSpec effective = next.active() == current.active() ? next : next.toBuilder().active(current.active())
                 .build();
         if (effective.equals(current.spec())) {
-            return current;
+            return new Checked(current, effective);
         }
         boolean kindChanges = !effective.sameValueKind(current.spec());
         boolean sensitiveChanges = effective.sensitive() != current.spec().sensitive();
@@ -136,9 +198,7 @@ public final class FieldDefinitions {
                     + " already has values, so it stays " + (current.spec().primary() ? "a primary identifier"
                     : "not a primary identifier") + "; add a new field instead");
         }
-        FieldDefinition changed = store.update(current, effective, FieldStore.Change.CHANGED, actor, now());
-        log(changed, FieldStore.Change.CHANGED, actor);
-        return changed;
+        return new Checked(current, effective);
     }
 
     /** Changes the label only. */

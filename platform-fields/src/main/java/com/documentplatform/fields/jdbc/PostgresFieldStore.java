@@ -79,66 +79,100 @@ public final class PostgresFieldStore implements FieldStore {
         return Sql.inTransaction(ds, "save field definitions", c -> {
             List<FieldDefinition> out = new ArrayList<>();
             for (FieldSpec spec : specs) {
-                FieldDefinition d = new FieldDefinition(UUID.randomUUID(), scope, spec, 1, at, at, actor);
-                try (PreparedStatement ps = c.prepareStatement("insert into fld_field_definition (" + COLUMNS
-                        + ") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                        + "?)")) {
-                    ps.setObject(1, d.id());
-                    ps.setObject(2, scope.entity());
-                    ps.setString(3, scope.product());
-                    ps.setString(4, spec.key().value());
-                    int i = bindSpec(c, ps, 5, spec);
-                    ps.setInt(i++, 1);
-                    ps.setObject(i++, ts(at));
-                    ps.setObject(i++, ts(at));
-                    ps.setString(i, actor);
-                    ps.executeUpdate();
-                } catch (SQLException e) {
-                    if (Sql.UNIQUE_VIOLATION.equals(e.getSQLState())) {
-                        throw FieldDefinitionException.keyTaken(spec.key());
-                    }
-                    throw e;
-                }
-                history(c, d, change);
-                out.add(d);
+                out.add(create(c, scope, spec, change, actor, at));
             }
             return out;
         });
     }
 
     @Override
+    public List<FieldDefinition> saveAll(FieldScope scope, List<Save> saves, String actor, Instant at) {
+        for (Save s : saves) {
+            requireSameKey(s.current(), s.next());
+        }
+        return Sql.inTransaction(ds, "save a list of field definitions", c -> {
+            // Rows are locked in key order, so two lists saved at once wait for each other instead of deadlocking.
+            List<Integer> order = new ArrayList<>();
+            for (int i = 0; i < saves.size(); i++) {
+                order.add(i);
+            }
+            order.sort(java.util.Comparator.comparing(i -> saves.get(i).next().key().folded()));
+            FieldDefinition[] out = new FieldDefinition[saves.size()];
+            for (int i : order) {
+                Save s = saves.get(i);
+                out[i] = s.current() == null ? create(c, scope, s.next(), Change.CREATED, actor, at)
+                        : update(c, s.current(), s.next(), Change.CHANGED, actor, at);
+            }
+            return List.of(out);
+        });
+    }
+
+    private static FieldDefinition create(Connection c, FieldScope scope, FieldSpec spec, Change change, String actor,
+                                          Instant at) throws SQLException {
+        FieldDefinition d = new FieldDefinition(UUID.randomUUID(), scope, spec, 1, at, at, actor);
+        try (PreparedStatement ps = c.prepareStatement("insert into fld_field_definition (" + COLUMNS
+                + ") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                + "?)")) {
+            ps.setObject(1, d.id());
+            ps.setObject(2, scope.entity());
+            ps.setString(3, scope.product());
+            ps.setString(4, spec.key().value());
+            int i = bindSpec(c, ps, 5, spec);
+            ps.setInt(i++, 1);
+            ps.setObject(i++, ts(at));
+            ps.setObject(i++, ts(at));
+            ps.setString(i, actor);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            if (Sql.UNIQUE_VIOLATION.equals(e.getSQLState())) {
+                throw FieldDefinitionException.keyTaken(spec.key());
+            }
+            throw e;
+        }
+        history(c, d, change);
+        return d;
+    }
+
+    @Override
     public FieldDefinition update(FieldDefinition current, FieldSpec next, Change change, String actor, Instant at) {
-        if (!current.key().equals(next.key())) {
+        requireSameKey(current, next);
+        return Sql.inTransaction(ds, "change a field definition", c -> update(c, current, next, change, actor, at));
+    }
+
+    private static void requireSameKey(FieldDefinition current, FieldSpec next) {
+        if (current != null && !current.key().equals(next.key())) {
             throw new FieldDefinitionException(FieldDefinitionException.Code.FIELD_KEY_LOCKED,
                     "Field " + current.key() + ": a field's key never changes");
         }
-        return Sql.inTransaction(ds, "change a field definition", c -> {
-            FieldDefinition d;
-            try (PreparedStatement ps = c.prepareStatement("""
-                    update fld_field_definition set label = ?, field_type = ?, currency = ?, options = ?,
-                        required = ?, exact_length = ?, min_length = ?, max_length = ?, pattern = ?, letter_case = ?,
-                        strip = ?, min_value = ?, max_value = ?, primary_flag = ?, searchable = ?, search_mode = ?,
-                        sensitive = ?, multi_value = ?, displayable = ?, display_order = ?, active = ?,
-                        version = version + 1, updated_at = ?, updated_by = ?
-                    where definition_id = ? and version = ?
-                    returning\s""" + COLUMNS)) {
-                int i = bindSpec(c, ps, 1, next);
-                ps.setObject(i++, ts(at));
-                ps.setString(i++, actor);
-                ps.setObject(i++, current.id());
-                ps.setInt(i, current.version());
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (!rs.next()) {
-                        boolean exists = find(c, current.scope(), current.key()).isPresent();
-                        throw exists ? FieldDefinitionException.changedMeanwhile(current.key())
-                                : FieldDefinitionException.unknown(current.key());
-                    }
-                    d = definition(rs);
+    }
+
+    private static FieldDefinition update(Connection c, FieldDefinition current, FieldSpec next, Change change,
+                                          String actor, Instant at) throws SQLException {
+        FieldDefinition d;
+        try (PreparedStatement ps = c.prepareStatement("""
+                update fld_field_definition set label = ?, field_type = ?, currency = ?, options = ?,
+                    required = ?, exact_length = ?, min_length = ?, max_length = ?, pattern = ?, letter_case = ?,
+                    strip = ?, min_value = ?, max_value = ?, primary_flag = ?, searchable = ?, search_mode = ?,
+                    sensitive = ?, multi_value = ?, displayable = ?, display_order = ?, active = ?,
+                    version = version + 1, updated_at = ?, updated_by = ?
+                where definition_id = ? and version = ?
+                returning\s""" + COLUMNS)) {
+            int i = bindSpec(c, ps, 1, next);
+            ps.setObject(i++, ts(at));
+            ps.setString(i++, actor);
+            ps.setObject(i++, current.id());
+            ps.setInt(i, current.version());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    boolean exists = find(c, current.scope(), current.key()).isPresent();
+                    throw exists ? FieldDefinitionException.changedMeanwhile(current.key())
+                            : FieldDefinitionException.unknown(current.key());
                 }
+                d = definition(rs);
             }
-            history(c, d, change);
-            return d;
-        });
+        }
+        history(c, d, change);
+        return d;
     }
 
     @Override

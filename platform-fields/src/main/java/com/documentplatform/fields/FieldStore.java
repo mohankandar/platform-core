@@ -37,6 +37,30 @@ public interface FieldStore {
      */
     FieldDefinition update(FieldDefinition current, FieldSpec next, Change change, String actor, Instant at);
 
+    /**
+     * Saves every field in the list, or none (one transaction), each as {@link #create} ({@code CREATED}) or
+     * {@link #update} ({@code CHANGED}) would, with a history entry; answered in the list's order. The keys are
+     * different ones.
+     *
+     * @throws FieldDefinitionException as {@link #create} and {@link #update}; nothing is saved then
+     * @throws UnsupportedOperationException (the default) for a store that cannot save a list whole; nothing is saved
+     */
+    default List<FieldDefinition> saveAll(FieldScope scope, List<Save> saves, String actor, Instant at) {
+        throw new UnsupportedOperationException(getClass().getName() + " cannot save a list of fields all or none: "
+                + "implement FieldStore.saveAll");
+    }
+
+    /**
+     * One field of {@link #saveAll}.
+     *
+     * @param current the stored field to change, or null to add one
+     */
+    record Save(FieldDefinition current, FieldSpec next) {
+        public Save {
+            Objects.requireNonNull(next, "next");
+        }
+    }
+
     /** Every version of the field, oldest first. Empty if there is no such field. */
     List<HistoryEntry> history(FieldScope scope, FieldKey key);
 

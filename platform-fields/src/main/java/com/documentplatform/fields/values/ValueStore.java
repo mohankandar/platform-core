@@ -5,7 +5,9 @@ import com.documentplatform.fields.FieldScope;
 import com.documentplatform.fields.FieldValuesCheck;
 
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -27,6 +29,19 @@ public interface ValueStore extends FieldValuesCheck {
 
     /** The record with this type and ID in the entity and product. */
     Optional<StoredRecord> find(RecordRef ref);
+
+    /**
+     * The records with these types and IDs in their entities and products (those that exist), by what was asked for.
+     * One query where the store can ({@code PostgresValueStore}); the default asks {@link #find} for each. Like
+     * {@code find}, whatever the customer: {@link FieldValues} checks that.
+     */
+    default Map<RecordRef, StoredRecord> findAll(Collection<RecordRef> refs) {
+        Map<RecordRef, StoredRecord> out = new LinkedHashMap<>();
+        for (RecordRef ref : refs) {
+            find(ref).ifPresent(r -> out.put(ref, r));
+        }
+        return out;
+    }
 
     /** The record of the entity, product and record type that has one of these identities. */
     Optional<StoredRecord> findByIdentity(FieldScope scope, String recordType, Collection<String> identities);

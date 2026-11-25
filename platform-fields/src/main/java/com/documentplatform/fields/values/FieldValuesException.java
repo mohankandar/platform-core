@@ -1,7 +1,9 @@
 package com.documentplatform.fields.values;
 
+import com.documentplatform.fields.FieldKey;
 import com.documentplatform.fields.ValueProblem;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 
@@ -14,15 +16,35 @@ public final class FieldValuesException extends RuntimeException implements com.
 
     private final FieldValuesError code;
     private final List<ValueProblem> problems;
+    private final List<FieldKey> conflictingKeys;
 
     public FieldValuesException(FieldValuesError code, String message) {
         this(code, message, List.of());
     }
 
     public FieldValuesException(FieldValuesError code, String message, List<ValueProblem> problems) {
+        this(code, message, problems, List.of());
+    }
+
+    private FieldValuesException(FieldValuesError code, String message, List<ValueProblem> problems,
+                                 List<FieldKey> conflictingKeys) {
         super(Objects.requireNonNull(code, "code") + ": " + message, null, false, true);
         this.code = code;
         this.problems = List.copyOf(problems);
+        this.conflictingKeys = List.copyOf(conflictingKeys);
+    }
+
+    /** {@code VALUES_CONFLICT} with the keys that differ. */
+    static FieldValuesException conflict(String message, Collection<FieldKey> keys) {
+        return new FieldValuesException(FieldValuesError.VALUES_CONFLICT, message, List.of(), List.copyOf(keys));
+    }
+
+    /**
+     * For {@link FieldValuesError#VALUES_CONFLICT}: the keys of the fields whose stored value differs from the one
+     * given. Empty for every other code.
+     */
+    public List<FieldKey> conflictingKeys() {
+        return conflictingKeys;
     }
 
     public FieldValuesError code() {

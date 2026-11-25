@@ -48,6 +48,35 @@ class PostgresFieldStoreTest {
     private final FieldDefinitions fields = new FieldDefinitions(store,
             (scope, key) -> withValues.contains(scope.product() + "/" + key.value()), CLOCK);
 
+    /** P056 (LV-25.4): one transaction; a refusal in the middle undoes what came before it. */
+    @Test
+    void aListIsSavedWholeOrNotAtAll() {
+        com.documentplatform.fields.jdbc.Pg pg = Pg.migrated();
+        PostgresFieldStore s = new PostgresFieldStore(pg.appUser("select, insert, update, delete"));
+        FieldScope scope = FieldScope.of(java.util.UUID.fromString("00000000-0000-0000-0000-0000000000c1"), "PRODUCT_A");
+        FieldDefinitions d = new FieldDefinitions(s, (sc, k) -> false);
+        FieldDefinition a = d.create(scope, FieldSpec.builder("a", "A", FieldType.TEXT).build(), "u");
+        FieldDefinition b = d.create(scope, FieldSpec.builder("b", "B", FieldType.TEXT).build(), "u");
+        FieldSpec a2 = FieldSpec.builder("a", "A2", FieldType.TEXT).build();
+        FieldSpec b2 = FieldSpec.builder("b", "B2", FieldType.TEXT).build();
+        // b was changed by someone else after it was read: the store itself refuses, inside the transaction
+        d.change(scope, FieldSpec.builder("b", "B1", FieldType.TEXT).build(), 1, "other");
+        FieldDefinitionException e = assertThrows(FieldDefinitionException.class, () -> s.saveAll(scope, List.of(
+                new com.documentplatform.fields.FieldStore.Save(a, a2),
+                new com.documentplatform.fields.FieldStore.Save(null, FieldSpec.builder("a0", "new", FieldType.TEXT).build()),
+                new com.documentplatform.fields.FieldStore.Save(b, b2)), "u", java.time.Instant.parse("2026-11-25T10:00:00Z")));
+        assertEquals(FieldDefinitionException.Code.FIELD_CHANGED_MEANWHILE, e.code());
+        assertEquals(List.of("A", "B1"), s.list(scope).stream().map(f -> f.spec().label()).sorted().toList());
+        assertEquals(1, s.history(scope, a.key()).size());
+
+        List<FieldDefinition> saved = d.change(scope, List.of(new com.documentplatform.fields.FieldChange(b2, 2),
+                com.documentplatform.fields.FieldChange.create(FieldSpec.builder("a0", "new", FieldType.TEXT).build()),
+                new com.documentplatform.fields.FieldChange(a2, 1)), "u");
+        assertEquals(List.of("b", "a0", "a"), saved.stream().map(f -> f.key().value()).toList());
+        assertEquals(List.of("A2", "B2", "new"), s.list(scope).stream().map(f -> f.spec().label()).sorted().toList());
+        assertEquals(3, s.history(scope, b.key()).size());
+    }
+
     @Test
     void everyKindOfFieldIsStoredAndReadBackExactly() {
         List<FieldSpec> all = FieldListFileTest.everyKind();

@@ -18,7 +18,10 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -51,6 +54,54 @@ public final class PostgresValueStore implements ValueStore {
     @Override
     public Optional<StoredRecord> find(RecordRef ref) {
         return run("read a record's values", c -> find(c, ref));
+    }
+
+    /** One query for all of them, values included. */
+    @Override
+    public Map<RecordRef, StoredRecord> findAll(Collection<RecordRef> refs) {
+        List<RecordRef> asked = List.copyOf(new LinkedHashSet<>(refs));
+        if (asked.isEmpty()) {
+            return Map.of();
+        }
+        return run("read the values of a page of records", c -> {
+            try (PreparedStatement ps = c.prepareStatement("select q.n, " + RECORD + ", v.field_key, v.position, "
+                    + "v.sensitive, v.display_value, v.normalised_value, v.search_value, v.sealed_value, v.fingerprint "
+                    + "from unnest(?::uuid[], ?::text[], ?::text[], ?::text[]) with ordinality "
+                    + "as q(entity_uuid, product_code, record_type, record_id, n) "
+                    + "join fld_record r on r.entity_uuid = q.entity_uuid and r.product_code = q.product_code "
+                    + "and r.record_type = q.record_type and r.record_id = q.record_id "
+                    + "left join fld_value v on v.record_uuid = r.record_uuid "
+                    + "order by q.n, lower(v.field_key), v.position")) {
+                ps.setArray(1, c.createArrayOf("uuid", asked.stream().map(r -> r.scope().entity()).toArray()));
+                ps.setArray(2, c.createArrayOf("text", asked.stream().map(r -> r.scope().product()).toArray()));
+                ps.setArray(3, c.createArrayOf("text", asked.stream().map(RecordRef::recordType).toArray()));
+                ps.setArray(4, c.createArrayOf("text", asked.stream().map(RecordRef::recordId).toArray()));
+                Map<RecordRef, StoredRecord> out = new LinkedHashMap<>();
+                try (ResultSet rs = ps.executeQuery()) {
+                    Row row = null;
+                    List<StoredValue> values = new ArrayList<>();
+                    long at = 0;
+                    while (rs.next()) {
+                        long n = rs.getLong("n");
+                        if (n != at) {
+                            if (row != null) {
+                                out.put(row.ref, row.with(values));
+                            }
+                            row = row(rs);
+                            values = new ArrayList<>();
+                            at = n;
+                        }
+                        if (rs.getString("field_key") != null) {
+                            values.add(value(rs));
+                        }
+                    }
+                    if (row != null) {
+                        out.put(row.ref, row.with(values));
+                    }
+                }
+                return out;
+            }
+        });
     }
 
     @Override
@@ -289,41 +340,47 @@ public final class PostgresValueStore implements ValueStore {
     }
 
     private static Optional<StoredRecord> one(Connection c, PreparedStatement ps) throws SQLException {
-        UUID id;
-        UUID customer;
-        RecordRef ref;
-        String identity;
-        String envelope;
-        int version;
-        Instant created;
-        Instant updated;
+        Row row;
         try (ResultSet rs = ps.executeQuery()) {
             if (!rs.next()) {
                 return Optional.empty();
             }
-            id = rs.getObject("record_uuid", UUID.class);
-            customer = rs.getObject("customer_id", UUID.class);
-            ref = RecordRef.of(FieldScope.of(rs.getObject("entity_uuid", UUID.class), rs.getString("product_code")),
-                    rs.getString("record_type"), rs.getString("record_id"));
-            identity = rs.getString("identity");
-            envelope = rs.getString("envelope");
-            version = rs.getInt("version");
-            created = instant(rs, "created_at");
-            updated = instant(rs, "updated_at");
+            row = row(rs);
         }
         List<StoredValue> values = new ArrayList<>();
         try (PreparedStatement vs = c.prepareStatement("select field_key, position, sensitive, display_value, "
                 + "normalised_value, search_value, sealed_value, fingerprint from fld_value where record_uuid = ? "
                 + "order by lower(field_key), position")) {
-            vs.setObject(1, id);
+            vs.setObject(1, row.id);
             try (ResultSet rs = vs.executeQuery()) {
                 while (rs.next()) {
-                    values.add(new StoredValue(FieldKey.of(rs.getString(1)), rs.getInt(2), rs.getBoolean(3),
-                            rs.getString(4), rs.getString(5), rs.getString(6), rs.getString(7), rs.getString(8)));
+                    values.add(value(rs));
                 }
             }
         }
-        return Optional.of(new StoredRecord(id, customer, ref, identity, envelope, version, created, updated, values));
+        return Optional.of(row.with(values));
+    }
+
+    /** A record's own columns, before its values. */
+    private record Row(UUID id, UUID customer, RecordRef ref, String identity, String envelope, int version,
+                       Instant created, Instant updated) {
+        StoredRecord with(List<StoredValue> values) {
+            return new StoredRecord(id, customer, ref, identity, envelope, version, created, updated, values);
+        }
+    }
+
+    private static Row row(ResultSet rs) throws SQLException {
+        return new Row(rs.getObject("record_uuid", UUID.class), rs.getObject("customer_id", UUID.class),
+                RecordRef.of(FieldScope.of(rs.getObject("entity_uuid", UUID.class), rs.getString("product_code")),
+                        rs.getString("record_type"), rs.getString("record_id")),
+                rs.getString("identity"), rs.getString("envelope"), rs.getInt("version"), instant(rs, "created_at"),
+                instant(rs, "updated_at"));
+    }
+
+    private static StoredValue value(ResultSet rs) throws SQLException {
+        return new StoredValue(FieldKey.of(rs.getString("field_key")), rs.getInt("position"),
+                rs.getBoolean("sensitive"), rs.getString("display_value"), rs.getString("normalised_value"),
+                rs.getString("search_value"), rs.getString("sealed_value"), rs.getString("fingerprint"));
     }
 
     private static void insertValues(Connection c, StoredRecord r) throws SQLException {
