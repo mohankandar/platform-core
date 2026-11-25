@@ -22,23 +22,31 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # SEC-15: only a commit that is on main, and whose own CI run on main passed, is ever published.
-      - name: The tagged commit is on main and its CI on main passed
+      # SEC-15: only a commit that is on main, or for a patch of an earlier minor on that version's own branch
+      # release/<major>.<minor>.x (P055), and whose own CI run on that branch passed, is ever published.
+      - name: The tagged commit is on main or its patch branch, and its CI there passed
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           sha="${GITHUB_SHA}" # on a tag push: the commit the tag points to
-          git fetch --no-tags origin main
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          branch=main
           if ! git merge-base --is-ancestor "${sha}" origin/main; then
-            echo "The tag ${GITHUB_REF_NAME} points to ${sha}, which is not on main. Only commits merged into main through a pull request are released." >&2
-            exit 1
+            version="${GITHUB_REF_NAME#platform-core-v}"; version="${version%%-*}"
+            branch="release/${version%.*}.x"
+            if ! [[ "${branch}" =~ ^release/[0-9]+\.[0-9]+\.x$ ]] \
+                || ! git fetch --no-tags origin "+refs/heads/${branch}:refs/remotes/origin/${branch}" \
+                || ! git merge-base --is-ancestor "${sha}" "origin/${branch}"; then
+              echo "The tag ${GITHUB_REF_NAME} points to ${sha}, which is neither on main nor on ${branch}. Only commits merged there through a pull request are released." >&2
+              exit 1
+            fi
           fi
-          runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${sha}&branch=main&event=push&status=success&per_page=1" --jq '.total_count')"
+          runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${sha}&branch=${branch}&event=push&status=success&per_page=1" --jq '.total_count')"
           if [ "${runs}" -lt 1 ]; then
-            echo "No successful CI run on main for ${sha}. Wait for main's CI on the merge commit to pass, then tag again with a new version." >&2
+            echo "No successful CI run on ${branch} for ${sha}. Wait for its CI on the merge commit to pass, then tag again with a new version." >&2
             exit 1
           fi
-          echo "commit ${sha} is on main; CI on main passed"
+          echo "commit ${sha} is on ${branch}; CI there passed"
 
       - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:

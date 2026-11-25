@@ -43,6 +43,9 @@ keyed: every entry carries a MAC made with the customer's key, which never leave
 erasure the app would act on: the app refuses the forged entry (`ERASE_LOG_CHAIN_BROKEN`, naming the first bad entry)
 and erases nothing. The app's runtime policy already has the right it needs (`transit/hmac` on `customer-*`).
 
+A new, empty log needs no sealing: the app starts on it, and its first entry seals it (1.1.0 and earlier refused to
+start work on it, `ERASE_LOG_NOT_SEALED`).
+
 **Sealing an existing log (once, when upgrading from 0.6 or earlier).** A log written before 0.7 has no seal; with the
 key service configured, the app then takes no work (`ERASE_LOG_NOT_SEALED`) until you seal it:
 
@@ -110,9 +113,20 @@ value. It goes away once that entry is applied (the next erasure or the replay a
 
 ## 5. Restore runbook (in plain words)
 
-After restoring the app's database from a backup:
+**Restore the database and the app's file storage together, from backups of the same time.** File storage is where the
+app keeps documents and copies. The erase log itself stays as it is; it is restored only when its own storage was lost,
+and then from its own newest backup. What the app says when the parts do not match:
 
-1. **Do not let users in yet.** The app would refuse work anyway: on start it sees that the database is behind the
+| What was restored | What you see | What to do |
+|---|---|---|
+| Database and file storage, same time | at startup `ERASE_LOG_RESTORE_DETECTED`: the database is behind the log ("database at entry 40, erase log at entry 52") | the steps below |
+| The database alone | the same | the steps below; documents stored after the database backup have no record in it: the app's own guide says how to find them |
+| The file storage alone | **nothing at startup**: the database and the log are in step, and the log does not read the file storage | restore the database of the same time too, or, if that is not wanted, run the steps below **before letting users in** (from 1.1.1): the replay finds the erased data that came back, erases it again and checks; while any is left, every instance is blocked |
+| An older copy of the erase log | at startup `ERASE_LOG_BEHIND_DATABASE`: the log ends before the entry the database has applied | put back the log's newest files; if they are lost, call support before starting work |
+
+After restoring the app's database or its file storage from a backup:
+
+1. **Do not let users in yet.** After a restore of the database the app would refuse work anyway: on start it sees that the database is behind the
    erase log and shows "Restored from backup: run the erase replay before starting work". Since 0.7 (P044) it sees
    this also when the database is restored **while the app keeps running** (an in-place or managed restore without a
    restart): at the next erase, and at the next recheck (`platform.erase-log.recheck`), every instance stops taking
@@ -127,7 +141,8 @@ After restoring the app's database from a backup:
    ```
 
    It applies again every erasure made after the backup (documents, copies, case fields), then **checks** that nothing
-   in the log can be read any more. It prints a short report and exits: 0 when everything is erased and checked, 1 when
+   in the log can be read any more. An older erasure whose data came back with the file storage is applied again too
+   (from 1.1.1) and checked once more. It prints a short report and exits: 0 when everything is erased and checked, 1 when
    not.
 4. **If it says NOT complete:** the first line names the code and the handler's code (for example
    `Erase replay NOT complete: ERASE_HANDLER_FAILED (DOC_STORE_DOWN)`: the document store did not answer). The last
