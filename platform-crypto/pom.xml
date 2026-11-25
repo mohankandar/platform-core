@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.documentplatform.platform</groupId>
         <artifactId>platform-core</artifactId>
-        <version>1.1.0-rc.1</version>
+        <version>1.1.0</version>
     </parent>
     <artifactId>platform-crypto</artifactId>
     <description>Encryption and keys (plain Java, no Spring, no runtime dependencies): the key service plug-in point
