@@ -4,10 +4,13 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * The erase replay after a restore, and the verify step. Run it after restoring the database and before the system
@@ -21,8 +24,11 @@ import java.util.Optional;
  *       stops the replay with its code ({@link EraseLogError#ERASE_HANDLER_FAILED}); a kind without a handler with
  *       {@link EraseLogError#ERASE_HANDLER_MISSING}. What was applied before stays applied; a rerun goes on from
  *       there.</li>
- *   <li><b>Verify:</b> every handler confirms that nothing of any entry in the log can be read. Only then is the
- *       restore cleared in the database, and the guard lifts ({@link EraseGuard#refresh()} sees it).</li>
+ *   <li><b>Verify:</b> every handler confirms that nothing of any entry in the log can be read. An entry the database
+ *       had applied before this run but that can be read again (the app's file storage restored without the database,
+ *       P055) goes through its handler once more, without moving the position, and is checked again. Only then is the
+ *       restore cleared in the database, and the guard lifts ({@link EraseGuard#refresh()} sees it). While something is
+ *       readable the restore is recorded in the database, so every instance takes no work.</li>
  * </ol>
  */
 public final class EraseReplay {
@@ -132,6 +138,30 @@ public final class EraseReplay {
                 Verify v = new Verify();
                 try {
                     log.scan(v);
+                    if (v.failure == null && v.readableCount > 0) {
+                        if (!locked.position().replayRequired()) {
+                            locked.markRestoreDetected(now);
+                        }
+                        Set<Long> again = v.seqs.stream().filter(s -> s <= from[0])
+                                .collect(Collectors.toCollection(HashSet::new));
+                        if (!again.isEmpty()) {
+                            for (EraseEntry e : log.pending(log.checkpoint())) { // checked again before acting
+                                if (!again.contains(e.seq())) {
+                                    continue;
+                                }
+                                try {
+                                    applied.merge(Applying.again(handlers, locked, e, guard), 1, Integer::sum);
+                                } catch (EraseLogException x) {
+                                    return failed(x.code(), x.handlerCode().orElse(null), x.reason() + "; the data of "
+                                            + "this entry came back (file storage restored without the database): fix "
+                                            + "the cause and run the replay again", from[0], head[0], applied, v.count,
+                                            v.readable, e.seq(), now);
+                                }
+                            }
+                            v = new Verify();
+                            log.scan(v);
+                        }
+                    }
                 } catch (EraseLogException x) {
                     return failed(x.code(), null, x.reason(), from[0], head[0], applied, v.count, v.readable, null,
                             now);
@@ -158,6 +188,7 @@ public final class EraseReplay {
         long count;
         long readableCount;
         final List<Long> readable = new ArrayList<>();
+        final List<Long> seqs = new ArrayList<>();
         String failure;
         String failureCode;
 
@@ -187,6 +218,7 @@ public final class EraseReplay {
             count++;
             if (result != EraseHandler.Verified.GONE) {
                 readableCount++;
+                seqs.add(e.seq());
                 if (readable.size() < 100) {
                     readable.add(e.seq());
                 }
