@@ -39,6 +39,43 @@ class FieldDefinitionsTest {
                 "u-admin");
     }
 
+    /** P056 (LV-25.4): every change of a list, or none. */
+    @Test
+    void aListOfChangesIsSavedWholeOrNotAtAll() {
+        InMemoryFieldStore s = new InMemoryFieldStore();
+        FieldDefinitions d = new FieldDefinitions(s, (scope, key) -> false);
+        FieldScope scope = FieldScope.of(java.util.UUID.fromString("00000000-0000-0000-0000-0000000000a1"), "PRODUCT_A");
+        d.create(scope, FieldSpec.builder("a", "A", FieldType.TEXT).build(), "u");
+        d.create(scope, FieldSpec.builder("b", "B", FieldType.TEXT).build(), "u");
+        FieldSpec a2 = FieldSpec.builder("a", "A2", FieldType.TEXT).build();
+        FieldSpec b2 = FieldSpec.builder("b", "B2", FieldType.TEXT).build();
+        FieldSpec c = FieldSpec.builder("c", "C", FieldType.TEXT).build();
+
+        FieldDefinitionException stale = assertThrows(FieldDefinitionException.class, () -> d.change(scope, List.of(
+                new FieldChange(a2, 1), FieldChange.create(c), new FieldChange(b2, 7)), "u"));
+        assertEquals(FieldDefinitionException.Code.FIELD_CHANGED_MEANWHILE, stale.code());
+        assertEquals(List.of("A", "B"), d.list(scope).stream().map(f -> f.spec().label()).sorted().toList());
+        FieldDefinitionException taken = assertThrows(FieldDefinitionException.class, () -> d.change(scope, List.of(
+                new FieldChange(a2, 1), FieldChange.create(b2)), "u"));
+        assertEquals(FieldDefinitionException.Code.FIELD_KEY_TAKEN, taken.code());
+        FieldDefinitionException twice = assertThrows(FieldDefinitionException.class, () -> d.change(scope, List.of(
+                new FieldChange(a2, 1), new FieldChange(a2, 1)), "u"));
+        assertEquals(FieldDefinitionException.Code.FIELD_KEY_TAKEN, twice.code());
+        assertEquals(1, d.find(scope, FieldKey.of("a")).orElseThrow().version());
+
+        List<FieldDefinition> saved = d.change(scope, List.of(new FieldChange(b2, 1), FieldChange.create(c),
+                new FieldChange(FieldSpec.builder("a", "A", FieldType.TEXT).build(), 1)), "u");
+        assertEquals(List.of("b", "c", "a"), saved.stream().map(f -> f.key().value()).toList(), "in the order given");
+        assertEquals(List.of(2, 1, 1), saved.stream().map(FieldDefinition::version).toList(), "a did not change");
+        assertEquals(2, d.history(scope, FieldKey.of("b")).size());
+        assertTrue(d.change(scope, List.<FieldChange>of(), "u").isEmpty());
+        FieldDefinitions locked = new FieldDefinitions(s, (sc, key) -> key.equals(FieldKey.of("c")));
+        FieldDefinitionException type = assertThrows(FieldDefinitionException.class, () -> locked.change(scope, List.of(
+                new FieldChange(a2, 1), new FieldChange(FieldSpec.builder("c", "C", FieldType.DATE).build(), 1)), "u"));
+        assertEquals(FieldDefinitionException.Code.FIELD_TYPE_LOCKED, type.code());
+        assertEquals(1, d.find(scope, FieldKey.of("a")).orElseThrow().version());
+    }
+
     @Test
     void theLabelMayChangeAtAnyTime() {
         loanAmount();

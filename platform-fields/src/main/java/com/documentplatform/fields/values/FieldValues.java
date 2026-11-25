@@ -90,14 +90,55 @@ public final class FieldValues {
     /** With the app's legal hold check, asked by {@link #erase}. */
     public FieldValues(CustomerId customer, FieldStore definitions, ValueStore store, KeyService keys, Clock clock,
                        LegalHolds holds) {
+        this(customer, definitions, store, clock, holds, Objects.requireNonNull(keys, "keys"));
+    }
+
+    private FieldValues(CustomerId customer, FieldStore definitions, ValueStore store, Clock clock, LegalHolds holds,
+                        KeyService keys) {
         this.customer = Objects.requireNonNull(customer, "customer");
         this.definitions = Objects.requireNonNull(definitions, "definitions");
         this.store = Objects.requireNonNull(store, "store");
-        this.keys = Objects.requireNonNull(keys, "keys");
-        this.cipher = new RecordCipher(keys);
-        this.fingerprinter = new Fingerprinter(keys);
+        this.keys = keys;
+        this.cipher = keys == null ? null : new RecordCipher(keys);
+        this.fingerprinter = keys == null ? null : new Fingerprinter(keys);
         this.clock = Objects.requireNonNull(clock, "clock");
         this.holds = Objects.requireNonNull(holds, "legal holds");
+    }
+
+    /**
+     * For an app none of whose fields is sensitive: no key service is needed. A call that would seal, open or
+     * fingerprint a sensitive value is refused with {@code VALUES_KEY_SERVICE_REQUIRED}, and nothing is written.
+     */
+    public static FieldValues withoutKeyService(CustomerId customer, FieldStore definitions, ValueStore store,
+                                                Clock clock) {
+        return withoutKeyService(customer, definitions, store, clock, LegalHolds.NONE);
+    }
+
+    /** {@link #withoutKeyService(CustomerId, FieldStore, ValueStore, Clock)} with the app's legal hold check. */
+    public static FieldValues withoutKeyService(CustomerId customer, FieldStore definitions, ValueStore store,
+                                                Clock clock, LegalHolds holds) {
+        return new FieldValues(customer, definitions, store, clock, holds, (KeyService) null);
+    }
+
+    private KeyService keys() {
+        return need(keys);
+    }
+
+    private RecordCipher cipher() {
+        return need(cipher);
+    }
+
+    private Fingerprinter fingerprinter() {
+        return need(fingerprinter);
+    }
+
+    private static <T> T need(T part) {
+        if (part == null) {
+            throw new FieldValuesException(FieldValuesError.VALUES_KEY_SERVICE_REQUIRED, "A sensitive field was used, "
+                    + "but the app runs its field values without a key service; configure the key service, or make "
+                    + "the field not sensitive before it has values");
+        }
+        return part;
     }
 
     /**
@@ -231,10 +272,10 @@ public final class FieldValues {
     public boolean rewrap(RecordRef ref) {
         StoredRecord current = mine(store.find(ref).orElseThrow(() -> unknown(ref)));
         if (current.envelope() == null
-                || cipher.keyVersion(current.envelope()) == keys.wrappingKey(customer).latest()) {
+                || cipher().keyVersion(current.envelope()) == keys().wrappingKey(customer).latest()) {
             return false;
         }
-        String again = cipher.rewrap(customer, current.envelope());
+        String again = cipher().rewrap(customer, current.envelope());
         store.replace(current.with(current.identity(), again, clock.instant(), current.values()));
         return true;
     }
@@ -310,17 +351,36 @@ public final class FieldValues {
     }
 
     /**
+     * {@link #read(RecordRef)} of many records (a results page), one result per record in the order given, with
+     * <b>one</b> query for all of them and no key service call. What the single read would refuse for one record is
+     * that record's result; a store failure throws, and nothing is returned. At most {@link KeyService#MAX_BATCH}
+     * records; an empty list calls nothing.
+     */
+    public List<SensitiveRead> read(List<RecordRef> refs) {
+        return readAll(refs, false);
+    }
+
+    /**
      * {@link #readSensitive(RecordRef)} of many records (a results page), one result per record in the order given,
-     * with <b>one</b> batched key service call for all of them (none when no record has a sensitive value). What the
+     * with <b>one</b> query for all of them and <b>one</b> batched key service call (none when no record has a
+     * sensitive value). What the
      * single read would refuse or fail for one record is that record's result; a failure that is not about one record
      * (key service away or refusing, customer's key missing, store failure) throws, and nothing is returned. At most
      * {@link KeyService#MAX_BATCH} records; an empty list calls nothing.
      */
     public List<SensitiveRead> readSensitive(List<RecordRef> refs) {
+        return readAll(refs, true);
+    }
+
+    private List<SensitiveRead> readAll(List<RecordRef> refs, boolean open) {
         List<RecordRef> all = List.copyOf(refs);
         if (all.size() > KeyService.MAX_BATCH) {
             throw new IllegalArgumentException("A batch has at most " + KeyService.MAX_BATCH + " records");
         }
+        if (all.isEmpty()) {
+            return List.of();
+        }
+        Map<RecordRef, StoredRecord> stored = store.findAll(all);
         SensitiveRead[] out = new SensitiveRead[all.size()];
         StoredRecord[] records = new StoredRecord[all.size()];
         Map<FieldScope, FieldSet> sets = new HashMap<>();
@@ -329,7 +389,7 @@ public final class FieldValues {
         for (int i = 0; i < out.length; i++) {
             RecordRef ref = all.get(i);
             try {
-                records[i] = mine(store.find(ref).orElseThrow(() -> unknown(ref)));
+                records[i] = mine(Optional.ofNullable(stored.get(ref)).orElseThrow(() -> unknown(ref)));
             } catch (FieldValuesException e) {
                 if (e.code() != FieldValuesError.VALUES_RECORD_UNKNOWN
                         && e.code() != FieldValuesError.VALUES_WRONG_CUSTOMER) {
@@ -339,12 +399,12 @@ public final class FieldValues {
                 continue;
             }
             sets.computeIfAbsent(ref.scope(), this::fields);
-            if (anySensitive(records[i])) {
+            if (open && anySensitive(records[i])) {
                 sealed.add(i);
                 toOpen.add(new RecordCipher.StoredKey(recordContext(ref), records[i].envelope()));
             }
         }
-        List<RecordCipher.OpenedKey> opened = toOpen.isEmpty() ? List.of() : cipher.openKeys(customer, toOpen);
+        List<RecordCipher.OpenedKey> opened = toOpen.isEmpty() ? List.of() : cipher().openKeys(customer, toOpen);
         try {
             RecordCipher.OpenedKey[] keyOf = new RecordCipher.OpenedKey[out.length];
             for (int n = 0; n < opened.size(); n++) {
@@ -444,7 +504,7 @@ public final class FieldValues {
             String form = ValueCodec.search(c.valid());
             if (spec.sensitive()) {
                 List<String> terms = new ArrayList<>();
-                fingerprinter.searchTerms(customer, fingerprintContext(scope, spec.key()), form)
+                fingerprinter().searchTerms(customer, fingerprintContext(scope, spec.key()), form)
                         .forEach(f -> terms.add(f.text()));
                 match = new SearchMatch.Fingerprints(terms);
             } else {
@@ -526,9 +586,9 @@ public final class FieldValues {
                 }
             }
         }
-        List<Integer> versions = inputs.isEmpty() ? List.of() : fingerprinter.usableVersions(customer);
+        List<Integer> versions = inputs.isEmpty() ? List.of() : fingerprinter().usableVersions(customer);
         if (!inputs.isEmpty()) {
-            List<Fingerprinter.Fingerprint> fps = fingerprinter.ofAll(customer, versions.get(0), inputs);
+            List<Fingerprinter.Fingerprint> fps = fingerprinter().ofAll(customer, versions.get(0), inputs);
             for (int i = 0; i < needing.size(); i++) {
                 Draft d = out.get(needing.get(i));
                 out.set(needing.get(i), new Draft(d.spec, d.position, d.value, d.search, fps.get(i).text()));
@@ -540,7 +600,7 @@ public final class FieldValues {
             if (latest != null) {
                 identities.add(latest);
                 for (int v = 1; v < versions.size() && !primaryInputs.isEmpty(); v++) {
-                    List<Fingerprinter.Fingerprint> older = fingerprinter.ofAll(customer, versions.get(v),
+                    List<Fingerprinter.Fingerprint> older = fingerprinter().ofAll(customer, versions.get(v),
                             primaryInputs);
                     List<Draft> again = new ArrayList<>(out);
                     int n = 0;
@@ -563,7 +623,7 @@ public final class FieldValues {
         if (!anySensitive) {
             return new Sealed(envelope, plainRows(drafts));
         }
-        try (RecordCipher.RecordKey key = cipher.newKey(customer, recordContext(ref))) {
+        try (RecordCipher.RecordKey key = cipher().newKey(customer, recordContext(ref))) {
             return new Sealed(key.envelope(), rows(drafts, key));
         }
     }
@@ -579,8 +639,8 @@ public final class FieldValues {
             return new Sealed(current.envelope(), sorted(rows));
         }
         try (RecordCipher.RecordKey key = current.envelope() == null
-                ? cipher.newKey(customer, recordContext(current.ref()))
-                : cipher.openKey(customer, recordContext(current.ref()), current.envelope())) {
+                ? cipher().newKey(customer, recordContext(current.ref()))
+                : cipher().openKey(customer, recordContext(current.ref()), current.envelope())) {
             List<StoredValue> rows = new ArrayList<>(fingerprinted(current.ref().scope(), kept, needFingerprint, key));
             rows.addAll(rows(drafts, key));
             return new Sealed(key.envelope(), sorted(rows));
@@ -598,7 +658,7 @@ public final class FieldValues {
             ValidValue value = ValueCodec.fromSealedForm(key.openText(itemContext(v), v.sealed()));
             inputs.add(new Fingerprinter.Input(fingerprintContext(scope, v.key()), ValueCodec.search(value)));
         }
-        List<Fingerprinter.Fingerprint> fps = fingerprinter.fingerprintAll(customer, inputs);
+        List<Fingerprinter.Fingerprint> fps = fingerprinter().fingerprintAll(customer, inputs);
         List<StoredValue> out = new ArrayList<>();
         for (StoredValue v : kept) {
             int at = need.indexOf(v);
@@ -660,7 +720,7 @@ public final class FieldValues {
             }
         }
         if (!compareSensitive.isEmpty()) {
-            try (RecordCipher.RecordKey key = cipher.openKey(customer, recordContext(current.ref()),
+            try (RecordCipher.RecordKey key = cipher().openKey(customer, recordContext(current.ref()),
                     current.envelope())) {
                 for (FieldKey k : compareSensitive) {
                     List<String> normalised = new ArrayList<>();
@@ -676,8 +736,8 @@ public final class FieldValues {
             }
         }
         if (!conflicts.isEmpty()) {
-            throw new FieldValuesException(FieldValuesError.VALUES_CONFLICT, "Record " + current.ref()
-                    + " already holds other values for " + conflicts + "; nothing was written");
+            throw FieldValuesException.conflict("Record " + current.ref() + " already holds other values for "
+                    + conflicts + "; nothing was written", conflicts);
         }
         if (added.isEmpty()) {
             return new Claim(current.ref(), false, false);
@@ -704,7 +764,7 @@ public final class FieldValues {
         StoredRecord r = mine(store.find(Objects.requireNonNull(ref, "ref")).orElseThrow(() -> unknown(ref)));
         FieldSet set = fields(ref.scope());
         RecordCipher.RecordKey key = open && anySensitive(r)
-                ? cipher.openKey(customer, recordContext(ref), r.envelope()) : null;
+                ? cipher().openKey(customer, recordContext(ref), r.envelope()) : null;
         try {
             return values(r, set, key);
         } finally {

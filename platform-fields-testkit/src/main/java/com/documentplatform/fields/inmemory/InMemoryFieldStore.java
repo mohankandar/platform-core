@@ -86,6 +86,27 @@ public final class InMemoryFieldStore implements FieldStore {
     }
 
     @Override
+    public synchronized List<FieldDefinition> saveAll(FieldScope scope, List<Save> saves, String actor, Instant at) {
+        Map<String, FieldDefinition> before = new LinkedHashMap<>(fields);
+        Map<UUID, List<HistoryEntry>> historyBefore = new HashMap<>();
+        history.forEach((id, h) -> historyBefore.put(id, new ArrayList<>(h)));
+        List<FieldDefinition> out = new ArrayList<>();
+        try {
+            for (Save s : saves) {
+                out.add(s.current() == null ? create(scope, List.of(s.next()), Change.CREATED, actor, at).get(0)
+                        : update(s.current(), s.next(), Change.CHANGED, actor, at));
+            }
+            return out;
+        } catch (RuntimeException e) {
+            fields.clear();
+            fields.putAll(before);
+            history.clear();
+            history.putAll(historyBefore);
+            throw e;
+        }
+    }
+
+    @Override
     public synchronized List<HistoryEntry> history(FieldScope scope, FieldKey key) {
         return find(scope, key).map(d -> List.copyOf(history.get(d.id()))).orElse(List.of());
     }
