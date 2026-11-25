@@ -6,6 +6,7 @@ import com.documentplatform.notifications.FailureCode;
 import com.documentplatform.notifications.Message;
 import com.documentplatform.notifications.MessageKind;
 import com.documentplatform.notifications.OutgoingMessage;
+import com.documentplatform.notifications.Recipient;
 import com.documentplatform.notifications.SendResult;
 import com.documentplatform.notifications.secret.Secret;
 import com.documentplatform.notifications.secret.SecretRef;
@@ -14,16 +15,17 @@ import com.documentplatform.notifications.support.ScriptedSmtpServer;
 import com.icegreen.greenmail.configuration.GreenMailConfiguration;
 import com.icegreen.greenmail.util.GreenMail;
 import com.icegreen.greenmail.util.ServerSetup;
-import jakarta.mail.Address;
 import jakarta.mail.internet.MimeMessage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
 import java.net.ServerSocket;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -98,15 +100,63 @@ class EmailChannelTest {
         assertTrue(r.sent(), String.valueOf(r.failure()));
 
         MimeMessage[] received = greenMail.getReceivedMessages();
-        assertEquals(2, received.length, "one copy per recipient mailbox");
+        assertEquals(2, received.length, "one message per recipient");
         MimeMessage m = received[0];
         assertEquals("Approval waiting: LN 12345", m.getSubject());
         assertEquals(MESSAGE.text(), ((String) m.getContent()).replace("\r\n", "\n").stripTrailing());
-        assertEquals("<" + KEY + "@customer.example>", m.getMessageID());
+        assertTrue(m.getMessageID().startsWith("<" + KEY + "."), m.getMessageID());
         assertEquals("auto-generated", m.getHeader("Auto-Submitted")[0]);
         assertEquals("Notifications <notifications@customer.example>", m.getFrom()[0].toString());
-        assertEquals(Set.of("ann@customer.example", "cy@customer.example"),
-                Set.copyOf(Arrays.stream(m.getAllRecipients()).map(Address::toString).toList()));
+    }
+
+    private static final Recipient BEA = new Recipient("bea", "bea@customer.example");
+
+    /** P055 (LV-24.1): the holders of a role must not learn each other's address from the message. */
+    @Test
+    void eachRecipientGetsAMessageOfTheirOwn() throws Exception {
+        for (Set<Recipient> people : List.of(Set.of(ANN, CY), Set.of(ANN, BEA, CY))) {
+            greenMail.purgeEmailFromAllMailboxes();
+            SendResult r = channel(greenMailServer("notify", PASSWORD_REF)).send(
+                    new OutgoingMessage(TENANT, MAIL, ChannelKind.EMAIL, people, MESSAGE, KEY));
+            assertTrue(r.sent(), String.valueOf(r.failure()));
+
+            MimeMessage[] received = greenMail.getReceivedMessages();
+            assertEquals(people.size(), received.length);
+            Set<String> addressed = new HashSet<>();
+            Set<String> ids = new HashSet<>();
+            for (MimeMessage m : received) {
+                assertEquals(1, m.getAllRecipients().length);
+                String own = m.getAllRecipients()[0].toString();
+                addressed.add(own);
+                ids.add(m.getMessageID());
+                ByteArrayOutputStream raw = new ByteArrayOutputStream();
+                m.writeTo(raw);
+                for (Recipient other : people) {
+                    if (!other.emailAddress().equals(own)) {
+                        assertFalse(raw.toString(StandardCharsets.UTF_8).contains(other.emailAddress()),
+                                "another recipient's address is in the message");
+                    }
+                }
+                assertEquals(MESSAGE.subject(), m.getSubject());
+                assertEquals(MESSAGE.text(), ((String) m.getContent()).replace("\r\n", "\n").stripTrailing());
+                assertEquals("auto-generated", m.getHeader("Auto-Submitted")[0]);
+                assertEquals("All", m.getHeader("X-Auto-Response-Suppress")[0]);
+                assertEquals("Notifications <notifications@customer.example>", m.getFrom()[0].toString());
+            }
+            assertEquals(Set.copyOf(people.stream().map(Recipient::emailAddress).toList()), addressed);
+            assertEquals(people.size(), ids.size(), "different messages have different ids");
+        }
+    }
+
+    @Test
+    void oneBadAddressDoesNotStopTheOthers() {
+        scripted.rcptReply = address -> address.startsWith("ann@") ? "550 5.1.1 User unknown" : "250 OK";
+        SendResult r = channel(scriptedServer(MailSecurity.NONE)).send(
+                new OutgoingMessage(TENANT, MAIL, ChannelKind.EMAIL, Set.of(ANN, BEA, CY), MESSAGE, KEY));
+        assertFailed(FailureCode.MAIL_RECIPIENT_REFUSED, false, r);
+        assertEquals(List.of("To: bea@customer.example", "To: cy@customer.example"),
+                scripted.received().stream().filter(l -> l.startsWith("To: ")).sorted().toList());
+        assertEquals(1, scripted.received().stream().filter(l -> l.startsWith("AUTH")).count(), "one sign-in");
     }
 
     @Test

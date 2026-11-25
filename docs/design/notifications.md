@@ -110,7 +110,11 @@ apps; each app's real catalogue lives in that app.
 5. **Which failures are retried:** temporary ones (unreachable, timeout, 4xx mail reply, 429, 5xx, secret store down,
    recipient lookup down, unexpected sender fault). A TLS failure is permanent: a certificate or configuration problem
    does not fix itself.
-6. **One refused recipient:** the others still get the message; the refusal is reported and not retried.
+6. **One message per recipient** (1.1.1): an e-mail notice goes to each person on their own, so nobody sees another
+   recipient's address. What became final for one person (sent, or refused for good) is kept in the outbox under that
+   person's key; a temporary failure of one is retried for that one only. A refusal for good is reported (the notice
+   ends FAILED, `MAIL_RECIPIENT_REFUSED`) and not retried; the others still get theirs. A failure of the server or its
+   sign-in ends the attempt after one try, and the people not reached yet get it on the retry.
 7. **Recipients are looked up again on every attempt.** The outbox stores roles, never e-mail addresses.
 8. **Mail server and webhook settings come from the install config**, not the database. The database keeps only
    destination ids and their channel. Since P005 one mail server serves every e-mail destination.

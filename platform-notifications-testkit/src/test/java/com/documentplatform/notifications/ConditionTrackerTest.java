@@ -163,7 +163,7 @@ class ConditionTrackerTest {
         f.clock.advance(Duration.ofMinutes(5));
         f.via(f.notifier).conditionCleared(ConditionKey.of(event(DELIVERY_FAILING).identifier(RecordIdentifier.of("target-1")).build()));
         f.advance(Duration.ofMinutes(35)); // 11:00
-        assertEquals(1, f.email.sent().size());
+        assertEquals(2, f.email.sent().size(), "one each to the IT Admin and ops");
         String text = f.email.sent().get(0).message().text();
         assertTrue(text.contains("Delivery failing: 2"), text);
         assertTrue(text.contains("- Alert: target-1") && text.contains("- Recovered: target-1"), text);

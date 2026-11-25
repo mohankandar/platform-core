@@ -197,18 +197,21 @@ class LicensingNoticesTest {
         app.store(subscription(app, "2026-11-10"));
 
         app.check();
-        assertEquals(List.of(MessageKind.CONDITION_ALERT), app.kinds(), "critical: alert at once");
+        assertEquals(List.of(MessageKind.CONDITION_ALERT, MessageKind.CONDITION_ALERT), app.kinds(),
+                "critical: alert at once, one message per recipient");
         OutgoingMessage alert = app.email.sent().get(0);
-        assertEquals(Set.of(BIZ, IT), alert.recipients(), "Business Admin and IT Admin");
+        assertEquals(Set.of(Set.of(BIZ), Set.of(IT)), Set.copyOf(app.email.sent().stream()
+                .map(OutgoingMessage::recipients).toList()), "Business Admin and IT Admin");
         assertTrue(alert.message().text().contains("Grace days left: 29"), alert.message().text());
         assertTrue(alert.message().text().contains("Grace period ends: 2026-12-11 00:00"), alert.message().text());
 
         app.runFor(Duration.ofHours(22));
         app.restart();
         app.runFor(Duration.ofHours(1));
-        assertEquals(1, app.email.sent().size(), "no duplicate alert, also after a restart");
+        assertEquals(2, app.email.sent().size(), "no duplicate alert, also after a restart");
         app.runFor(Duration.ofHours(2));
-        assertEquals(List.of(MessageKind.CONDITION_ALERT, MessageKind.CONDITION_ONGOING), app.kinds(), "daily repeat");
+        assertEquals(List.of(MessageKind.CONDITION_ALERT, MessageKind.CONDITION_ALERT, MessageKind.CONDITION_ONGOING,
+                MessageKind.CONDITION_ONGOING), app.kinds(), "daily repeat");
 
         app.clock.set(Instant.parse("2026-12-11T00:30:00Z")); // grace over
         app.check();
@@ -237,7 +240,8 @@ class LicensingNoticesTest {
         app.store(licence("LIC-TEST-0003", 2, LicenceType.SUBSCRIPTION, LocalDate.parse("2026-11-01"),
                 LocalDate.parse("2027-12-31"), null, app.licences.keyId()));
         app.check();
-        assertEquals(List.of(MessageKind.CONDITION_ALERT, MessageKind.RECOVERED), app.kinds());
+        assertEquals(List.of(MessageKind.CONDITION_ALERT, MessageKind.CONDITION_ALERT, MessageKind.RECOVERED,
+                MessageKind.RECOVERED), app.kinds(), "to the Business Admin and the IT Admin");
     }
 
     @Test
