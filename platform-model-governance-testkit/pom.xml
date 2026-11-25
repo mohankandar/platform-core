@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.documentplatform.platform</groupId>
         <artifactId>platform-core</artifactId>
-        <version>1.1.1-rc.2</version>
+        <version>1.1.1</version>
     </parent>
     <artifactId>platform-model-governance-testkit</artifactId>
     <description>Test support for model governance: an in-memory register and gate store with the same rules as the
