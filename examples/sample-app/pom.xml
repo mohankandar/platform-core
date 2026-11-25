@@ -19,7 +19,7 @@
     </modules>
     <properties>
         <java.version>21</java.version>
-        <platform.version>1.1.0</platform.version>
+        <platform.version>1.1.1</platform.version>
     </properties>
     <repositories>
         <repository>
