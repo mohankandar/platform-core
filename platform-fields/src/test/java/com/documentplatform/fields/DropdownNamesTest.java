@@ -89,7 +89,8 @@ class DropdownNamesTest {
         FieldSpec named = status().namedOptions(new FieldSpec.Option("Z", "Zeta stage"), new FieldSpec.Option("A",
                 null)).build();
         String file = FieldListFile.write(List.of(named), Instant.parse("2026-11-26T10:00:00Z"));
-        assertTrue(file.contains("{\"code\":\"Z\",\"name\":\"Zeta stage\"}"), file);
+        String json = FieldListFile.toJsonText(named);
+        assertTrue(json.contains("\"options\":[{\"code\":\"Z\",\"name\":\"Zeta stage\"},\"A\"]"), json);
         FieldSpec back = FieldListFile.read(file).fields().get(0);
         assertEquals(named, back);
         assertEquals(List.of("Z", "A"), back.options());

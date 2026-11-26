@@ -42,6 +42,9 @@ import java.util.TreeMap;
  * <p>Written with every member; read strictly: unknown members are refused, and only {@code key}, {@code label} and
  * {@code type} are required (the others default as in {@link FieldSpec#builder}). Decimals ({@code minValue},
  * {@code maxValue}) are strings. The file holds definitions only: no values, no entity, no app-only settings.
+ *
+ * <p>Since 1.3.0 (P059, LV-28) a dropdown value with a display name is an object {@code {"code": "OPN", "name":
+ * "Open"}} in {@code options}; a value without a name stays a string, so a file without names is written as before.
  */
 public final class FieldListFile {
 
@@ -53,6 +56,7 @@ public final class FieldListFile {
     private static final Set<String> FIELD = Set.of("key", "label", "type", "currency", "options", "required",
             "exactLength", "minLength", "maxLength", "pattern", "letterCase", "strip", "minValue", "maxValue",
             "primary", "searchable", "searchMode", "sensitive", "multiValue", "displayable", "displayOrder", "active");
+    private static final Set<String> OPTION = Set.of("code", "name");
 
     private FieldListFile() {
     }
@@ -144,7 +148,18 @@ public final class FieldListFile {
             m.put("currency", s.currency());
         }
         if (!s.options().isEmpty()) {
-            m.put("options", s.options());
+            List<Object> options = new ArrayList<>();
+            for (FieldSpec.Option o : s.namedOptions()) {
+                if (o.name() == null) {
+                    options.add(o.code());
+                } else {
+                    Map<String, Object> named = new TreeMap<>();
+                    named.put("code", o.code());
+                    named.put("name", o.name());
+                    options.add(named);
+                }
+            }
+            m.put("options", options);
         }
         m.put("required", s.required());
         putIf(m, "exactLength", s.exactLength());
@@ -197,14 +212,22 @@ public final class FieldListFile {
                 b.currency(f.string("currency"));
             }
             if (f.has("options")) {
-                List<String> options = new ArrayList<>();
+                List<FieldSpec.Option> options = new ArrayList<>();
+                int n = 0;
                 for (Object o : f.list("options")) {
-                    if (!(o instanceof String s)) {
-                        throw new JsonException(where + ".options must be a list of strings");
+                    n++;
+                    if (o instanceof String s) {
+                        options.add(new FieldSpec.Option(s, null));
+                    } else if (o instanceof Map<?, ?>) {
+                        JsonFields named = JsonFields.of(o, where + ".options[" + n + "]").only(OPTION);
+                        options.add(new FieldSpec.Option(named.string("code"),
+                                named.has("name") ? named.string("name") : null));
+                    } else {
+                        throw new JsonException(where + ".options must be a list of strings or of objects with "
+                                + "a code and a name");
                     }
-                    options.add(s);
                 }
-                b.options(options);
+                b.namedOptions(options);
             }
             if (f.has("required")) {
                 b.required(f.bool("required"));

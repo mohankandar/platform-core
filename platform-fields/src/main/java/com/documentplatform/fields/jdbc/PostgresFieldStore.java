@@ -40,8 +40,8 @@ import static com.documentplatform.fields.jdbc.Sql.ts;
 public final class PostgresFieldStore implements FieldStore {
 
     private static final String COLUMNS = "definition_id, entity_uuid, product_code, field_key, label, field_type, "
-            + "currency, options, required, exact_length, min_length, max_length, pattern, letter_case, strip, "
-            + "min_value, max_value, primary_flag, searchable, search_mode, sensitive, multi_value, displayable, "
+            + "currency, options, option_names, required, exact_length, min_length, max_length, pattern, letter_case, "
+            + "strip, min_value, max_value, primary_flag, searchable, search_mode, sensitive, multi_value, displayable, "
             + "display_order, active, version, created_at, updated_at, updated_by";
 
     private final Db db;
@@ -134,7 +134,7 @@ public final class PostgresFieldStore implements FieldStore {
                                           Instant at) throws SQLException {
         FieldDefinition d = new FieldDefinition(UUID.randomUUID(), scope, spec, 1, at, at, actor);
         try (PreparedStatement ps = c.prepareStatement("insert into fld_field_definition (" + COLUMNS
-                + ") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                + ") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
                 + "?)")) {
             ps.setObject(1, d.id());
             ps.setObject(2, scope.entity());
@@ -173,7 +173,7 @@ public final class PostgresFieldStore implements FieldStore {
                                           String actor, Instant at) throws SQLException {
         FieldDefinition d;
         try (PreparedStatement ps = c.prepareStatement("""
-                update fld_field_definition set label = ?, field_type = ?, currency = ?, options = ?,
+                update fld_field_definition set label = ?, field_type = ?, currency = ?, options = ?, option_names = ?,
                     required = ?, exact_length = ?, min_length = ?, max_length = ?, pattern = ?, letter_case = ?,
                     strip = ?, min_value = ?, max_value = ?, primary_flag = ?, searchable = ?, search_mode = ?,
                     sensitive = ?, multi_value = ?, displayable = ?, display_order = ?, active = ?,
@@ -305,6 +305,12 @@ public final class PostgresFieldStore implements FieldStore {
             Array options = c.createArrayOf("text", s.options().toArray());
             ps.setArray(i++, options);
         }
+        // P059: the display names, only when a value has one; a code-only dropdown is stored as before.
+        if (s.namedOptions().stream().allMatch(o -> o.name() == null)) {
+            ps.setNull(i++, Types.ARRAY);
+        } else {
+            ps.setArray(i++, c.createArrayOf("text", s.namedOptions().stream().map(FieldSpec.Option::name).toArray()));
+        }
         ps.setBoolean(i++, s.required());
         setInt(ps, i++, s.exactLength());
         setInt(ps, i++, s.minLength());
@@ -341,6 +347,15 @@ public final class PostgresFieldStore implements FieldStore {
     private static FieldDefinition definition(ResultSet rs) throws SQLException {
         Array a = rs.getArray("options");
         List<String> options = a == null ? List.of() : List.of((String[]) a.getArray());
+        Array n = rs.getArray("option_names");
+        List<FieldSpec.Option> named = null;
+        if (n != null) {
+            String[] names = (String[]) n.getArray();
+            named = new ArrayList<>();
+            for (int i = 0; i < options.size(); i++) {
+                named.add(new FieldSpec.Option(options.get(i), names[i]));
+            }
+        }
         FieldSpec spec = new FieldSpec(FieldKey.of(rs.getString("field_key")), rs.getString("label"),
                 FieldType.valueOf(rs.getString("field_type")), rs.getString("currency"), options,
                 rs.getBoolean("required"), getInt(rs, "exact_length"), getInt(rs, "min_length"),
@@ -350,7 +365,7 @@ public final class PostgresFieldStore implements FieldStore {
                 rs.getBigDecimal("min_value"), rs.getBigDecimal("max_value"), rs.getBoolean("primary_flag"),
                 rs.getBoolean("searchable"), SearchMode.valueOf(rs.getString("search_mode")),
                 rs.getBoolean("sensitive"), rs.getBoolean("multi_value"), rs.getBoolean("displayable"),
-                rs.getInt("display_order"), rs.getBoolean("active"));
+                rs.getInt("display_order"), rs.getBoolean("active"), named);
         return new FieldDefinition(rs.getObject("definition_id", UUID.class),
                 new FieldScope(rs.getObject("entity_uuid", UUID.class), rs.getString("product_code")), spec,
                 rs.getInt("version"), instant(rs, "created_at"), instant(rs, "updated_at"),

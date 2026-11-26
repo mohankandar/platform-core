@@ -73,9 +73,9 @@ public final class FieldDefinitionException extends IllegalArgumentException imp
          * than READ COMMITTED (P059); nothing was saved.
          */
         FIELD_TRANSACTION_UNSUITABLE,
-        /** STUB P059 */
+        /** A dropdown value's display name is longer than a label may be, or has control characters (P059). */
         FIELD_OPTION_NAME_INVALID,
-        /** STUB P059 */
+        /** Two dropdown values of the field have the same display name, ignoring capitals and extra spaces (P059). */
         FIELD_OPTION_NAME_REPEATED
     }
 
