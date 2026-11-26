@@ -68,7 +68,10 @@ public final class FieldDefinitionException extends IllegalArgumentException imp
         FIELD_CHANGED_MEANWHILE,
         /** The app's values check could not say whether values exist (it failed): nothing locked was changed. */
         FIELD_VALUES_CHECK_FAILED,
-        /** STUB P059 */
+        /**
+         * The connection handed over with {@link FieldDefinitions#in} has auto-commit on, or an isolation other
+         * than READ COMMITTED (P059); nothing was saved.
+         */
         FIELD_TRANSACTION_UNSUITABLE
     }
 

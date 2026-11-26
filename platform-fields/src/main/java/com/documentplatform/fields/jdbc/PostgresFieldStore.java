@@ -44,17 +44,30 @@ public final class PostgresFieldStore implements FieldStore {
             + "min_value, max_value, primary_flag, searchable, search_mode, sensitive, multi_value, displayable, "
             + "display_order, active, version, created_at, updated_at, updated_by";
 
-    private final DataSource ds;
+    private final Db db;
 
+    /** Each call in a transaction of its own on the app's data source. */
     public PostgresFieldStore(DataSource dataSource) {
-        this.ds = Objects.requireNonNull(dataSource, "dataSource");
+        this.db = Db.own(Objects.requireNonNull(dataSource, "dataSource"), FieldStoreException::new);
     }
 
-    /** STUB P059 */
+    private PostgresFieldStore(Db db) {
+        this.db = db;
+    }
+
+    /**
+     * A store whose calls run in the app's transaction on {@code c} (P059, LV-25.2): it never commits, rolls back
+     * the whole transaction, changes auto-commit or the isolation, or closes the connection; the app does. Each
+     * write runs in a savepoint, so a refused write leaves the app's transaction usable. Every call is refused with
+     * {@code FIELD_TRANSACTION_UNSUITABLE}, before anything is written, unless auto-commit is off and the isolation
+     * is READ COMMITTED. Use it only in that transaction and on the thread that owns it.
+     */
     public static PostgresFieldStore onConnection(Connection c) {
-        throw new UnsupportedOperationException("stub");
+        return new PostgresFieldStore(Db.bound(c, FieldStoreException::new, why -> new FieldDefinitionException(
+                FieldDefinitionException.Code.FIELD_TRANSACTION_UNSUITABLE, "Field definitions: " + why)));
     }
 
+    /** {@link #onConnection}. */
     @Override
     public FieldStore joined(Connection c) {
         return onConnection(c);
@@ -62,7 +75,7 @@ public final class PostgresFieldStore implements FieldStore {
 
     @Override
     public List<FieldDefinition> list(FieldScope scope) {
-        return Sql.run(ds, "list field definitions", c -> {
+        return db.read("list field definitions", c -> {
             try (PreparedStatement ps = c.prepareStatement("select " + COLUMNS + " from fld_field_definition "
                     + "where entity_uuid = ? and product_code = ? order by display_order, field_key")) {
                 ps.setObject(1, scope.entity());
@@ -80,13 +93,13 @@ public final class PostgresFieldStore implements FieldStore {
 
     @Override
     public Optional<FieldDefinition> find(FieldScope scope, FieldKey key) {
-        return Sql.run(ds, "read a field definition", c -> find(c, scope, key));
+        return db.read("read a field definition", c -> find(c, scope, key));
     }
 
     @Override
     public List<FieldDefinition> create(FieldScope scope, List<FieldSpec> specs, Change change, String actor,
                                         Instant at) {
-        return Sql.inTransaction(ds, "save field definitions", c -> {
+        return db.write("save field definitions", c -> {
             List<FieldDefinition> out = new ArrayList<>();
             for (FieldSpec spec : specs) {
                 out.add(create(c, scope, spec, change, actor, at));
@@ -100,7 +113,7 @@ public final class PostgresFieldStore implements FieldStore {
         for (Save s : saves) {
             requireSameKey(s.current(), s.next());
         }
-        return Sql.inTransaction(ds, "save a list of field definitions", c -> {
+        return db.write("save a list of field definitions", c -> {
             // Rows are locked in key order, so two lists saved at once wait for each other instead of deadlocking.
             List<Integer> order = new ArrayList<>();
             for (int i = 0; i < saves.size(); i++) {
@@ -146,7 +159,7 @@ public final class PostgresFieldStore implements FieldStore {
     @Override
     public FieldDefinition update(FieldDefinition current, FieldSpec next, Change change, String actor, Instant at) {
         requireSameKey(current, next);
-        return Sql.inTransaction(ds, "change a field definition", c -> update(c, current, next, change, actor, at));
+        return db.write("change a field definition", c -> update(c, current, next, change, actor, at));
     }
 
     private static void requireSameKey(FieldDefinition current, FieldSpec next) {
@@ -187,7 +200,7 @@ public final class PostgresFieldStore implements FieldStore {
 
     @Override
     public List<HistoryEntry> history(FieldScope scope, FieldKey key) {
-        return Sql.run(ds, "read a field's history", c -> {
+        return db.read("read a field's history", c -> {
             try (PreparedStatement ps = c.prepareStatement("""
                     select h.version, h.change, h.changed_at, h.changed_by, h.definition
                     from fld_field_definition_history h join fld_field_definition d using (definition_id)
@@ -211,7 +224,7 @@ public final class PostgresFieldStore implements FieldStore {
 
     @Override
     public Map<String, String> extensions(FieldScope scope, FieldKey key) {
-        return Sql.run(ds, "read a field's app settings", c -> {
+        return db.read("read a field's app settings", c -> {
             try (PreparedStatement ps = c.prepareStatement("""
                     select e.name, e.value from fld_field_extension e join fld_field_definition d using (definition_id)
                     where d.entity_uuid = ? and d.product_code = ? and lower(d.field_key) = lower(?)
@@ -232,7 +245,7 @@ public final class PostgresFieldStore implements FieldStore {
 
     @Override
     public void putExtension(FieldScope scope, FieldKey key, String name, String value, Instant at) {
-        Sql.inTransaction(ds, "save a field's app setting", c -> {
+        db.write("save a field's app setting", c -> {
             FieldDefinition d = find(c, scope, key).orElseThrow(() -> FieldDefinitionException.unknown(key));
             if (value == null) {
                 try (PreparedStatement ps = c.prepareStatement(

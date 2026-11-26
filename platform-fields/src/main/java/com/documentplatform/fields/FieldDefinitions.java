@@ -68,9 +68,27 @@ public final class FieldDefinitions {
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
-    /** STUB P059 */
+    /**
+     * These definitions with every call in the app's transaction on {@code connection} (P059, LV-25.2): what is
+     * saved is committed or rolled back with the app's own work, by the app. The connection must have auto-commit off
+     * and READ COMMITTED isolation, else {@code FIELD_TRANSACTION_UNSUITABLE}; the store never commits, rolls back
+     * the whole transaction or closes it. The values check sees the same transaction when it is a
+     * {@code ValueStore} that can join it; otherwise it is asked as it is. Use the copy only in that transaction and
+     * on its thread.
+     *
+     * @throws UnsupportedOperationException when the store cannot join a transaction (the in-memory store)
+     */
     public FieldDefinitions in(java.sql.Connection connection) {
-        throw new UnsupportedOperationException("stub");
+        java.util.Objects.requireNonNull(connection, "connection");
+        FieldValuesCheck check = values;
+        if (values instanceof com.documentplatform.fields.values.ValueStore v) {
+            try {
+                check = v.joined(connection);
+            } catch (UnsupportedOperationException e) {
+                check = values;
+            }
+        }
+        return new FieldDefinitions(store.joined(connection), check, clock);
     }
 
     /** Every field, switched-off ones included, in display order. */

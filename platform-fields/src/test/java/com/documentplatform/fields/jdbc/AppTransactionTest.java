@@ -161,7 +161,7 @@ class AppTransactionTest {
 
     @Test
     void aRefusedWriteLeavesTheAppsTransactionUsable() throws Exception {
-        values.claim(ref(A, "c1"), vals("contract_number", "AB-1"));
+        values.claim(ref(A, "c1"), vals("contract_number", "AB-1", "notes", "n1"));
         values.claim(ref(A, "c2"), vals("contract_number", "AB-2"));
         try (Connection c = begin()) {
             appRow(c, "before");

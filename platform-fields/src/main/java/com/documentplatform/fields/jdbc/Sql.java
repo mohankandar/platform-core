@@ -1,6 +1,5 @@
 package com.documentplatform.fields.jdbc;
 
-import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -19,34 +18,6 @@ final class Sql {
     }
 
     private Sql() {
-    }
-
-    static <T> T run(DataSource ds, String operation, Work<T> work) {
-        try (Connection c = ds.getConnection()) {
-            return work.run(c);
-        } catch (SQLException e) {
-            throw new FieldStoreException(operation, e);
-        }
-    }
-
-    /** Runs the work in one transaction; a runtime exception (such as a refusal) rolls it back and is rethrown. */
-    static <T> T inTransaction(DataSource ds, String operation, Work<T> work) {
-        try (Connection c = ds.getConnection()) {
-            boolean auto = c.getAutoCommit();
-            c.setAutoCommit(false);
-            try {
-                T result = work.run(c);
-                c.commit();
-                return result;
-            } catch (SQLException | RuntimeException e) {
-                c.rollback();
-                throw e;
-            } finally {
-                c.setAutoCommit(auto);
-            }
-        } catch (SQLException e) {
-            throw new FieldStoreException(operation, e);
-        }
     }
 
     static OffsetDateTime ts(Instant instant) {
