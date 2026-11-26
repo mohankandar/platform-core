@@ -70,9 +70,16 @@ public interface FieldStore {
     /** Sets, or with a null value removes, one of the app's settings for an existing field. */
     void putExtension(FieldScope scope, FieldKey key, String name, String value, Instant at);
 
-    /** STUB P059 */
+    /**
+     * This store with its calls in the app's transaction on {@code connection} (P059, LV-25.2), for
+     * {@link FieldDefinitions#in}. {@code PostgresFieldStore} answers {@code PostgresFieldStore.onConnection}.
+     *
+     * @throws UnsupportedOperationException (the default) for a store that has no database connection, such as the
+     *                                       in-memory stores
+     */
     default FieldStore joined(java.sql.Connection connection) {
-        throw new UnsupportedOperationException("stub");
+        throw new UnsupportedOperationException(getClass().getName() + " cannot join the app's transaction: "
+                + "implement FieldStore.joined");
     }
 
     /** Why a version was written. */

@@ -46,7 +46,10 @@ public enum FieldValuesError implements com.documentplatform.errors.PlatformCode
      * ({@link FieldValues#withoutKeyService}); nothing was written or opened.
      */
     VALUES_KEY_SERVICE_REQUIRED,
-    /** STUB P059 */
+    /**
+     * The connection handed over with {@link FieldValues#in} has auto-commit on, or an isolation other than READ
+     * COMMITTED (P059); nothing was written.
+     */
     VALUES_TRANSACTION_UNSUITABLE,
     /** The database refused or failed the call (the message has the SQL state only). */
     VALUES_STORE_FAILED,

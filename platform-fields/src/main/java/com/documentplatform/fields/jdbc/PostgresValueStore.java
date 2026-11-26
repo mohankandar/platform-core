@@ -45,17 +45,33 @@ public final class PostgresValueStore implements ValueStore {
             + "r.record_id, r.identity, r.envelope, r.version, r.created_at, r.updated_at";
     private static final int ATTEMPTS = 5;
 
-    private final DataSource ds;
+    private final Db db;
 
+    /** Each call in a transaction of its own on the app's data source. */
     public PostgresValueStore(DataSource dataSource) {
-        this.ds = Objects.requireNonNull(dataSource, "dataSource");
+        this.db = Db.own(Objects.requireNonNull(dataSource, "dataSource"), PostgresValueStore::failed);
     }
 
-    /** STUB P059 */
+    private PostgresValueStore(Db db) {
+        this.db = db;
+    }
+
+    /**
+     * A store whose calls run in the app's transaction on {@code c} (P059, LV-25.2): it never commits, rolls back
+     * the whole transaction, changes auto-commit or the isolation, or closes the connection; the app does. Each
+     * write runs in a savepoint, so a refused write ({@code VALUES_PRIMARY_TAKEN}, {@code VALUES_CHANGED_MEANWHILE},
+     * a driver error) leaves the app's transaction usable. Every call is refused with
+     * {@code VALUES_TRANSACTION_UNSUITABLE}, before anything is written, unless auto-commit is off and the isolation
+     * is READ COMMITTED. Row locks are held until the app commits. Erasing is refused here: it has its own
+     * transaction, through the erase log. Use it only in that transaction and on the thread that owns it; apps use
+     * it through {@code FieldValues.in(Connection)}.
+     */
     public static PostgresValueStore onConnection(Connection c) {
-        throw new UnsupportedOperationException("stub");
+        return new PostgresValueStore(Db.bound(c, PostgresValueStore::failed, why -> new FieldValuesException(
+                FieldValuesError.VALUES_TRANSACTION_UNSUITABLE, "Field values: " + why)));
     }
 
+    /** {@link #onConnection}. */
     @Override
     public ValueStore joined(Connection c) {
         return onConnection(c);
@@ -63,7 +79,7 @@ public final class PostgresValueStore implements ValueStore {
 
     @Override
     public Optional<StoredRecord> find(RecordRef ref) {
-        return run("read a record's values", c -> find(c, ref));
+        return db.read("read a record's values", c -> find(c, ref));
     }
 
     /** One query for all of them, values included. */
@@ -73,7 +89,7 @@ public final class PostgresValueStore implements ValueStore {
         if (asked.isEmpty()) {
             return Map.of();
         }
-        return run("read the values of a page of records", c -> {
+        return db.read("read the values of a page of records", c -> {
             try (PreparedStatement ps = c.prepareStatement("select q.n, " + RECORD + ", v.field_key, v.position, "
                     + "v.sensitive, v.display_value, v.normalised_value, v.search_value, v.sealed_value, v.fingerprint "
                     + "from unnest(?::uuid[], ?::text[], ?::text[], ?::text[]) with ordinality "
@@ -119,13 +135,13 @@ public final class PostgresValueStore implements ValueStore {
         if (identities.isEmpty()) {
             return Optional.empty();
         }
-        return run("look up a record by primary value", c -> byIdentity(c, scope, recordType, identities));
+        return db.read("look up a record by primary value", c -> byIdentity(c, scope, recordType, identities));
     }
 
     @Override
     public Inserted insert(StoredRecord record) {
         for (int attempt = 0; attempt < ATTEMPTS; attempt++) {
-            Inserted done = inTransaction("store a new record", c -> {
+            Inserted done = db.write("store a new record", c -> {
                 try (PreparedStatement ps = c.prepareStatement("""
                         insert into fld_record (record_uuid, customer_id, entity_uuid, product_code, record_type,
                             record_id, identity, envelope, version, created_at, updated_at)
@@ -171,7 +187,7 @@ public final class PostgresValueStore implements ValueStore {
             throw new FieldValuesException(FieldValuesError.VALUES_ERASE_OUTSIDE_LOG, "Record " + next.ref() + " was "
                     + "not changed: removing every value of a record is an erasure, done only through the erase log");
         }
-        return inTransaction("change a record's values", c -> {
+        return db.write("change a record's values", c -> {
             try (PreparedStatement ps = c.prepareStatement("""
                     update fld_record set identity = ?, envelope = ?, version = version + 1, updated_at = ?
                     where record_uuid = ? and version = ?""")) {
@@ -211,7 +227,12 @@ public final class PostgresValueStore implements ValueStore {
     @Override
     public void delete(StoredRecord record, com.documentplatform.fields.values.EraseTicket ticket) {
         com.documentplatform.fields.values.EraseTicket.check(ticket, record);
-        inTransaction("erase a record", c -> {
+        if (db.isBound()) {
+            throw new FieldValuesException(FieldValuesError.VALUES_ERASE_OUTSIDE_LOG, "Record " + record.ref()
+                    + " was not erased: an erasure runs in its own transaction through the erase log, never in the "
+                    + "app's transaction");
+        }
+        db.write("erase a record", c -> {
             try (PreparedStatement ps = c.prepareStatement(
                     "select 1 from fld_record where record_uuid = ? and version = ? for update")) {
                 ps.setObject(1, record.id());
@@ -262,7 +283,7 @@ public final class PostgresValueStore implements ValueStore {
                 term = f.fingerprints();
             }
         }
-        return run("search records", c -> {
+        return db.read("search records", c -> {
             try (PreparedStatement ps = c.prepareStatement("select distinct r.record_id from fld_value v "
                     + "join fld_record r using (record_uuid) where v.customer_id = ? and v.entity_uuid = ? "
                     + "and v.product_code = ? and v.record_type = ? and v.field_key = ? and " + condition
@@ -291,7 +312,7 @@ public final class PostgresValueStore implements ValueStore {
 
     @Override
     public boolean partialSearchAvailable() {
-        return run("check partial search", c -> {
+        return db.read("check partial search", c -> {
             try (PreparedStatement ps = c.prepareStatement("select exists (select 1 from pg_indexes "
                     + "where schemaname = current_schema() and indexname = ?)")) {
                 ps.setString(1, FieldSchema.PARTIAL_SEARCH_INDEX);
@@ -305,7 +326,7 @@ public final class PostgresValueStore implements ValueStore {
 
     @Override
     public boolean valuesExist(FieldScope scope, FieldKey key) {
-        return run("check whether a field has values", c -> {
+        return db.read("check whether a field has values", c -> {
             try (PreparedStatement ps = c.prepareStatement("select exists (select 1 from fld_value "
                     + "where entity_uuid = ? and product_code = ? and lower(field_key) = lower(?))")) {
                 ps.setObject(1, scope.entity());
@@ -418,33 +439,6 @@ public final class PostgresValueStore implements ValueStore {
                 ps.addBatch();
             }
             ps.executeBatch();
-        }
-    }
-
-    private <T> T run(String operation, Sql.Work<T> work) {
-        try (Connection c = ds.getConnection()) {
-            return work.run(c);
-        } catch (SQLException e) {
-            throw failed(operation, e);
-        }
-    }
-
-    private <T> T inTransaction(String operation, Sql.Work<T> work) {
-        try (Connection c = ds.getConnection()) {
-            boolean auto = c.getAutoCommit();
-            c.setAutoCommit(false);
-            try {
-                T result = work.run(c);
-                c.commit();
-                return result;
-            } catch (SQLException | RuntimeException e) {
-                c.rollback();
-                throw e;
-            } finally {
-                c.setAutoCommit(auto);
-            }
-        } catch (SQLException e) {
-            throw failed(operation, e);
         }
     }
 

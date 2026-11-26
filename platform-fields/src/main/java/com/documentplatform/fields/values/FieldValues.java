@@ -81,6 +81,8 @@ public final class FieldValues {
     private final Fingerprinter fingerprinter;
     private final Clock clock;
     private final LegalHolds holds;
+    /** In the app's transaction ({@link #in}): erasing is refused. */
+    private final boolean bound;
 
     /** Without legal holds: {@link #erase} is refused for no record. */
     public FieldValues(CustomerId customer, FieldStore definitions, ValueStore store, KeyService keys, Clock clock) {
@@ -90,11 +92,12 @@ public final class FieldValues {
     /** With the app's legal hold check, asked by {@link #erase}. */
     public FieldValues(CustomerId customer, FieldStore definitions, ValueStore store, KeyService keys, Clock clock,
                        LegalHolds holds) {
-        this(customer, definitions, store, clock, holds, Objects.requireNonNull(keys, "keys"));
+        this(customer, definitions, store, clock, holds, Objects.requireNonNull(keys, "keys"), false);
     }
 
     private FieldValues(CustomerId customer, FieldStore definitions, ValueStore store, Clock clock, LegalHolds holds,
-                        KeyService keys) {
+                        KeyService keys, boolean bound) {
+        this.bound = bound;
         this.customer = Objects.requireNonNull(customer, "customer");
         this.definitions = Objects.requireNonNull(definitions, "definitions");
         this.store = Objects.requireNonNull(store, "store");
@@ -117,7 +120,7 @@ public final class FieldValues {
     /** {@link #withoutKeyService(CustomerId, FieldStore, ValueStore, Clock)} with the app's legal hold check. */
     public static FieldValues withoutKeyService(CustomerId customer, FieldStore definitions, ValueStore store,
                                                 Clock clock, LegalHolds holds) {
-        return new FieldValues(customer, definitions, store, clock, holds, (KeyService) null);
+        return new FieldValues(customer, definitions, store, clock, holds, (KeyService) null, false);
     }
 
     private KeyService keys() {
@@ -156,9 +159,42 @@ public final class FieldValues {
     public record SearchStatus(boolean partialSearch, String code, String note) {
     }
 
-    /** STUB P059 */
+    /**
+     * These field values with every store call in the app's transaction on {@code connection} (P059, LV-25.2):
+     * the same customer, key service, clock and legal holds. What a claim or update writes is committed or rolled
+     * back with the app's own rows, by the app; the store never commits, rolls back the whole transaction, changes
+     * auto-commit or the isolation, or closes the connection.
+     *
+     * <ul>
+     *   <li>The connection must have auto-commit off and READ COMMITTED isolation; otherwise every call is refused
+     *       with {@code VALUES_TRANSACTION_UNSUITABLE} before anything is written.</li>
+     *   <li>Each write runs in a savepoint: a refusal ({@code VALUES_PRIMARY_TAKEN}, {@code VALUES_CONFLICT},
+     *       {@code VALUES_CHANGED_MEANWHILE}) is thrown as usual and leaves the app's work and transaction usable.
+     *       The app decides whether to roll back all.</li>
+     *   <li>Row locks are held until the app commits: two claims of the same new primary value wait for each
+     *       other that long. A deadlock (SQL state 40P01, {@code VALUES_STORE_FAILED}) means the app retries its
+     *       whole transaction.</li>
+     *   <li>Key service calls (sealing, fingerprints, opening) run while the transaction is open.</li>
+     *   <li>{@link #erase} is refused ({@code VALUES_ERASE_OUTSIDE_LOG}): an erasure has its own transaction,
+     *       through the erase log.</li>
+     * </ul>
+     *
+     * <p>The definitions are read in the same transaction when their store can join it, otherwise as they are. Use
+     * the copy only in that transaction and on its thread. With Spring: the connection of the current transaction is
+     * {@code DataSourceUtils.getConnection(dataSource)} (docs/install/fields.md).
+     *
+     * @throws UnsupportedOperationException when the value store cannot join a transaction (the in-memory store)
+     */
     public FieldValues in(java.sql.Connection connection) {
-        throw new UnsupportedOperationException("stub");
+        Objects.requireNonNull(connection, "connection");
+        ValueStore joined = store.joined(connection);
+        FieldStore fields;
+        try {
+            fields = definitions.joined(connection);
+        } catch (UnsupportedOperationException e) {
+            fields = definitions;
+        }
+        return new FieldValues(customer, fields, joined, clock, holds, keys, true);
     }
 
     /** For {@code FieldDefinitions}: values exist for a field once any record holds one. */
@@ -314,6 +350,11 @@ public final class FieldValues {
     /** The erase itself, without the caller check; for this package's tests. */
     Erased eraseRecord(RecordRef ref) {
         Objects.requireNonNull(ref, "ref");
+        if (bound) {
+            throw new FieldValuesException(FieldValuesError.VALUES_ERASE_OUTSIDE_LOG, "Record " + ref + " was not "
+                    + "erased: an erasure runs in its own transaction through the erase log, never in the app's "
+                    + "transaction (FieldValues.in)");
+        }
         for (int attempt = 0; attempt < ATTEMPTS; attempt++) {
             StoredRecord current = mine(store.find(ref).orElseThrow(() -> unknown(ref)));
             boolean held;
@@ -562,7 +603,16 @@ public final class FieldValues {
     }
 
     private FieldSet fields(FieldScope scope) {
-        return FieldSet.ofDefinitions(definitions.list(Objects.requireNonNull(scope, "scope")));
+        Objects.requireNonNull(scope, "scope");
+        try {
+            return FieldSet.ofDefinitions(definitions.list(scope));
+        } catch (com.documentplatform.fields.FieldDefinitionException e) {
+            if (e.code() != com.documentplatform.fields.FieldDefinitionException.Code.FIELD_TRANSACTION_UNSUITABLE) {
+                throw e;
+            }
+            // In the app's transaction the definitions are read first: the refusal speaks of values here.
+            throw new FieldValuesException(FieldValuesError.VALUES_TRANSACTION_UNSUITABLE, e.getMessage());
+        }
     }
 
     /**
