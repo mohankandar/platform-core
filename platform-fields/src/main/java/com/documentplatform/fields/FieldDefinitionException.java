@@ -72,7 +72,11 @@ public final class FieldDefinitionException extends IllegalArgumentException imp
          * The connection handed over with {@link FieldDefinitions#in} has auto-commit on, or an isolation other
          * than READ COMMITTED (P059); nothing was saved.
          */
-        FIELD_TRANSACTION_UNSUITABLE
+        FIELD_TRANSACTION_UNSUITABLE,
+        /** STUB P059 */
+        FIELD_OPTION_NAME_INVALID,
+        /** STUB P059 */
+        FIELD_OPTION_NAME_REPEATED
     }
 
     private final Code code;
