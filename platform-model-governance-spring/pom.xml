@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.documentplatform.platform</groupId>
         <artifactId>platform-core</artifactId>
-        <version>1.3.0</version>
+        <version>1.4.0-SNAPSHOT</version>
     </parent>
     <artifactId>platform-model-governance-spring</artifactId>
     <description>Spring Boot wiring for model governance: validated properties (platform.model-governance: approver and
