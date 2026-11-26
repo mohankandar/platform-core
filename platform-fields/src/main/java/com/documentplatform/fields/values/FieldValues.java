@@ -156,6 +156,11 @@ public final class FieldValues {
     public record SearchStatus(boolean partialSearch, String code, String note) {
     }
 
+    /** STUB P059 */
+    public FieldValues in(java.sql.Connection connection) {
+        throw new UnsupportedOperationException("stub");
+    }
+
     /** For {@code FieldDefinitions}: values exist for a field once any record holds one. */
     public FieldValuesCheck valuesCheck() {
         return store;

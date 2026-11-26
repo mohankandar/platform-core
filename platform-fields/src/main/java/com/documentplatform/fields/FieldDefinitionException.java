@@ -67,7 +67,9 @@ public final class FieldDefinitionException extends IllegalArgumentException imp
         /** Someone else changed the field since it was read: read it again. */
         FIELD_CHANGED_MEANWHILE,
         /** The app's values check could not say whether values exist (it failed): nothing locked was changed. */
-        FIELD_VALUES_CHECK_FAILED
+        FIELD_VALUES_CHECK_FAILED,
+        /** STUB P059 */
+        FIELD_TRANSACTION_UNSUITABLE
     }
 
     private final Code code;

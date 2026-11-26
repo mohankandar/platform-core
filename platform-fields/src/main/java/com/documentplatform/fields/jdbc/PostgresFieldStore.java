@@ -50,6 +50,16 @@ public final class PostgresFieldStore implements FieldStore {
         this.ds = Objects.requireNonNull(dataSource, "dataSource");
     }
 
+    /** STUB P059 */
+    public static PostgresFieldStore onConnection(Connection c) {
+        throw new UnsupportedOperationException("stub");
+    }
+
+    @Override
+    public FieldStore joined(Connection c) {
+        return onConnection(c);
+    }
+
     @Override
     public List<FieldDefinition> list(FieldScope scope) {
         return Sql.run(ds, "list field definitions", c -> {

@@ -70,6 +70,11 @@ public interface FieldStore {
     /** Sets, or with a null value removes, one of the app's settings for an existing field. */
     void putExtension(FieldScope scope, FieldKey key, String name, String value, Instant at);
 
+    /** STUB P059 */
+    default FieldStore joined(java.sql.Connection connection) {
+        throw new UnsupportedOperationException("stub");
+    }
+
     /** Why a version was written. */
     enum Change {
         CREATED, IMPORTED, CHANGED, SWITCHED_OFF, SWITCHED_ON
