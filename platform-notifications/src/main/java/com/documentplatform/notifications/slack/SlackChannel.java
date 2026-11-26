@@ -39,6 +39,12 @@ public final class SlackChannel implements Channel, AutoCloseable {
         this.client = new WebhookClient(ChannelKind.SLACK, webhooks, secrets, options);
     }
 
+    /** STUB P059 */
+    public SlackChannel(WebhookDirectory webhooks, SecretResolver secrets, WebhookOptions options,
+                        com.documentplatform.notifications.transport.HttpTransport transport) {
+        throw new UnsupportedOperationException("stub");
+    }
+
     @Override
     public ChannelKind kind() {
         return ChannelKind.SLACK;

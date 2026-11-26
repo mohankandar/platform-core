@@ -25,6 +25,7 @@ public enum FailureCode implements com.documentplatform.errors.PlatformCode {
     MAIL_OAUTH_CREDENTIAL_INVALID("The app credential in the secret store is not a usable certificate with its private key", false),
     MAIL_OAUTH_TOKEN_REFUSED("Microsoft refused to issue a token for sending mail", false),
     MAIL_OAUTH_UNEXPECTED_REPLY("Microsoft sign-in replied in an unexpected way", false),
+    MAIL_OUTBOUND_REFUSED("STUB", false),
     MAIL_OAUTH_SEND_AS_NOT_ALLOWED("The app is not allowed to send as the sender mailbox (Exchange permission missing)", false),
     MAIL_SMTP_AUTH_DISABLED("SMTP AUTH is disabled for the sender mailbox", false),
 
@@ -39,6 +40,7 @@ public enum FailureCode implements com.documentplatform.errors.PlatformCode {
     WEBHOOK_UNEXPECTED_REPLY("%s replied in an unexpected way", false),
     WEBHOOK_CONNECTOR_RETIRED("The address is a retired Office 365 connector; use a Teams Workflows webhook", false),
     WEBHOOK_ADDRESS_NOT_SECURE("%s webhook address must use https", false),
+    WEBHOOK_OUTBOUND_REFUSED("STUB", false),
 
     // Configuration and secrets
     DESTINATION_NOT_CONFIGURED("No %s server or webhook is configured for the destination", false),

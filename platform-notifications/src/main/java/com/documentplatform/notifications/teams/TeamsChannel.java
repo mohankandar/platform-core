@@ -41,6 +41,12 @@ public final class TeamsChannel implements Channel, AutoCloseable {
         this.client = new WebhookClient(ChannelKind.TEAMS, webhooks, secrets, options);
     }
 
+    /** STUB P059 */
+    public TeamsChannel(WebhookDirectory webhooks, SecretResolver secrets, WebhookOptions options,
+                        com.documentplatform.notifications.transport.HttpTransport transport) {
+        throw new UnsupportedOperationException("stub");
+    }
+
     @Override
     public ChannelKind kind() {
         return ChannelKind.TEAMS;
