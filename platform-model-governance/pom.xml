@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.documentplatform.platform</groupId>
         <artifactId>platform-core</artifactId>
-        <version>1.3.0-rc.1</version>
+        <version>1.3.0</version>
     </parent>
     <artifactId>platform-model-governance</artifactId>
     <description>AI model governance (plain Java, no Spring; package com.documentplatform.modelgov;
