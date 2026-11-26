@@ -42,12 +42,17 @@ import java.util.regex.PatternSyntaxException;
  * @param displayable  shown with the case
  * @param displayOrder position in lists, 0–10000 (ties by key)
  * @param active       switched on; a removed field is switched off, never deleted
+ * @param namedOptions DROPDOWN only (P059, LV-28): the same options with an optional display name each, in the same
+ *                     order; null or empty when given by {@code options} alone. The code is what is stored, matched
+ *                     and searched; the name is shown only. Names have a label's limits and are unique within the
+ *                     field (ignoring capitals and extra spaces). When both are given, their codes must be the same.
  */
 public record FieldSpec(FieldKey key, String label, FieldType type, String currency, List<String> options,
                         boolean required, Integer exactLength, Integer minLength, Integer maxLength, String pattern,
                         Normalisation normalisation, BigDecimal minValue, BigDecimal maxValue,
                         boolean primary, boolean searchable, SearchMode searchMode, boolean sensitive,
-                        boolean multiValue, boolean displayable, int displayOrder, boolean active) {
+                        boolean multiValue, boolean displayable, int displayOrder, boolean active,
+                        List<Option> namedOptions) {
 
     /** The longest value, in characters. */
     public static final int MAX_VALUE_LENGTH = 512;
@@ -78,11 +83,25 @@ public record FieldSpec(FieldKey key, String label, FieldType type, String curre
         }
 
         if (type == FieldType.DROPDOWN) {
+            List<Option> named = namedOptions == null || namedOptions.isEmpty() ? null : List.copyOf(namedOptions);
+            if (named != null) {
+                List<String> codes = new ArrayList<>();
+                for (Option o : named) {
+                    codes.add(o.code());
+                }
+                if (options != null && !options.isEmpty() && !options.equals(codes)) {
+                    throw new FieldDefinitionException(Code.FIELD_OPTION_INVALID, what + ": the codes of the named "
+                            + "dropdown values are not the dropdown values given");
+                }
+                options = codes;
+            }
             options = options(options, normalisation, what);
-        } else if (options != null && !options.isEmpty()) {
+            namedOptions = names(options, named, what);
+        } else if (options != null && !options.isEmpty() || namedOptions != null && !namedOptions.isEmpty()) {
             throw notForType(what, "a list of values", type);
         } else {
             options = List.of();
+            namedOptions = List.of();
         }
 
         if (!type.takesLength() && (exactLength != null || minLength != null || maxLength != null)) {
@@ -136,21 +155,55 @@ public record FieldSpec(FieldKey key, String label, FieldType type, String curre
         }
     }
 
-    /** STUB P059 */
+    /**
+     * The spec of 1.2.0, without display names for a dropdown's values: each option is its code alone (kept by
+     * P059).
+     */
+    public FieldSpec(FieldKey key, String label, FieldType type, String currency, List<String> options,
+                     boolean required, Integer exactLength, Integer minLength, Integer maxLength, String pattern,
+                     Normalisation normalisation, BigDecimal minValue, BigDecimal maxValue,
+                     boolean primary, boolean searchable, SearchMode searchMode, boolean sensitive,
+                     boolean multiValue, boolean displayable, int displayOrder, boolean active) {
+        this(key, label, type, currency, options, required, exactLength, minLength, maxLength, pattern, normalisation,
+                minValue, maxValue, primary, searchable, searchMode, sensitive, multiValue, displayable, displayOrder,
+                active, null);
+    }
+
+    /**
+     * One value of a DROPDOWN field (P059, LV-28): the code, which is stored, matched and searched, and an optional
+     * name for display, which can change without touching stored values. Configuration, not sensitive. The rules are
+     * checked by the {@link FieldSpec} that holds it.
+     *
+     * @param code the value as stored (the dropdown value rules)
+     * @param name what people see, or null to show the code; a label's limits
+     */
     public record Option(String code, String name) {
+
+        /** The name, or the code when there is none. */
         public String displayName() {
-            throw new UnsupportedOperationException("stub");
+            return name == null ? code : name;
         }
     }
 
-    /** STUB P059 */
-    public List<Option> namedOptions() {
-        throw new UnsupportedOperationException("stub");
-    }
-
-    /** STUB P059 */
+    /**
+     * What to show for a stored value of this dropdown: the option's name, or the code itself when the option has no
+     * name or is no longer listed.
+     */
     public String displayName(String code) {
-        throw new UnsupportedOperationException("stub");
+        for (Option o : namedOptions) {
+            if (o.code().equals(code)) {
+                return o.displayName();
+            }
+        }
+        if (code != null) {
+            String given = normalisation.apply(code);
+            for (Option o : namedOptions) {
+                if (normalisation.apply(o.code()).equals(given)) {
+                    return o.displayName();
+                }
+            }
+        }
+        return code;
     }
 
     /** A new spec with the defaults: optional, not searchable, displayable, active, sensitive as suggested. */
@@ -274,6 +327,30 @@ public record FieldSpec(FieldKey key, String label, FieldType type, String curre
         return List.copyOf(out);
     }
 
+    /** The checked codes with their checked names (none given: code-only). */
+    private static List<Option> names(List<String> codes, List<Option> given, String what) {
+        List<Option> out = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (int i = 0; i < codes.size(); i++) {
+            String name = given == null ? null : given.get(i).name();
+            if (name != null) {
+                name = name.strip();
+                if (name.isEmpty()) {
+                    name = null;
+                } else if (name.length() > MAX_LABEL_LENGTH || CONTROL.matcher(name).find()) {
+                    throw new FieldDefinitionException(Code.FIELD_OPTION_NAME_INVALID, what + ": the name of dropdown "
+                            + "value " + (i + 1) + " has more than " + MAX_LABEL_LENGTH + " characters or control "
+                            + "characters");
+                } else if (!seen.add(Normalisation.spaces(name).toLowerCase(Locale.ROOT))) {
+                    throw new FieldDefinitionException(Code.FIELD_OPTION_NAME_REPEATED, what + ": the name of "
+                            + "dropdown value " + (i + 1) + " repeats an earlier one");
+                }
+            }
+            out.add(new Option(codes.get(i), name));
+        }
+        return List.copyOf(out);
+    }
+
     private static void lengths(Integer exact, Integer min, Integer max, String what) {
         for (Integer l : new Integer[]{exact, min, max}) {
             if (l != null && (l < 1 || l > MAX_VALUE_LENGTH)) {
@@ -340,6 +417,7 @@ public record FieldSpec(FieldKey key, String label, FieldType type, String curre
         private FieldType type;
         private String currency;
         private List<String> options;
+        private List<Option> namedOptions;
         private boolean required;
         private Integer exactLength;
         private Integer minLength;
@@ -367,6 +445,7 @@ public record FieldSpec(FieldKey key, String label, FieldType type, String curre
             this(s.key, s.label, s.type);
             currency = s.currency;
             options = s.options;
+            namedOptions = s.namedOptions;
             required = s.required;
             exactLength = s.exactLength;
             minLength = s.minLength;
@@ -400,8 +479,10 @@ public record FieldSpec(FieldKey key, String label, FieldType type, String curre
             return this;
         }
 
+        /** The dropdown values as codes alone (no display names), in the order shown. */
         public Builder options(List<String> options) {
             this.options = options;
+            this.namedOptions = null;
             return this;
         }
 
@@ -409,12 +490,14 @@ public record FieldSpec(FieldKey key, String label, FieldType type, String curre
             return options(List.of(options));
         }
 
-        /** STUB P059 */
+        /** The dropdown values with their optional display names, in the order shown (P059, LV-28). */
         public Builder namedOptions(List<Option> options) {
-            throw new UnsupportedOperationException("stub");
+            this.namedOptions = options;
+            this.options = null;
+            return this;
         }
 
-        /** STUB P059 */
+        /** {@link #namedOptions(List)}. */
         public Builder namedOptions(Option... options) {
             return namedOptions(List.of(options));
         }
@@ -520,7 +603,7 @@ public record FieldSpec(FieldKey key, String label, FieldType type, String curre
             boolean s = sensitive != null ? sensitive : suggestsSensitive(key.value(), label, type);
             return new FieldSpec(key, label, type, currency, options, required, exactLength, minLength, maxLength,
                     pattern, normalisation, minValue, maxValue, primary, searchable, searchMode, s, multiValue,
-                    displayable, displayOrder, active);
+                    displayable, displayOrder, active, namedOptions);
         }
     }
 }
