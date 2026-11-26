@@ -61,6 +61,14 @@ Each step works on its own and can be released on its own. Later ones use earlie
 - `platform-notifications*`: `mail-servers.*`; `Approvals.decidedElsewhere` and `ApprovalAudit.recordElsewhere`.
 - `platform-licensing*`: the admin's warning days; `LicenceBuild.isDevelopment()`.
 
+**New in 1.3.0, per module (additive; every new setting is off):**
+
+- `platform-fields`: the stores in the app's own transaction, `values.in(connection)` and `definitions.in(connection)`
+  (`docs/install/fields.md` section 6); dropdown values with display names (section 7); **schema version 3**.
+- `platform-notifications*`: the Microsoft 365 sign-in and the Teams and Slack posts through `platform.outbound.*`, with
+  `mail.via-outbound` and `webhook.via-outbound` (`docs/install/notifications.md`, "Through the outbound settings").
+- `platform-app-check`: a Spring `@Transactional` test of the field stores (build check only).
+
 ## 4. Schema runs
 
 Each module's files run as their **own Flyway run with their own history table**, as the schema owner, before the app starts.
@@ -71,7 +79,7 @@ The platform never creates tables at start-up. The runs do not depend on each ot
 | 1 | `db/platform/licensing` | `lic_schema_history` | 2 |
 | 2 | `db/platform/identity` | `idn_schema_history` | 5 (6 from 1.2.0) |
 | 3 | `db/platform/notifications` | your choice, for example `notif_schema_history` | 1 |
-| 4 | `db/platform/fields` | `fld_schema_history` | 2 |
+| 4 | `db/platform/fields` | `fld_schema_history` | 2 (3 from 1.3.0) |
 | 5 | `db/platform/erase-log` | `erl_schema_history` | 3 |
 | 6 | `db/platform/integration` | `int_schema_history` | 3 |
 | 7 | `db/platform/modelgov` | `mg_schema_history` | 5 |

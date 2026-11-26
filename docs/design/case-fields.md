@@ -275,3 +275,22 @@ P020 found that erase removes a record from the live database, but a backup take
   the value store read by the verify step), and customer key destruction (`docs/design/crypto.md` section 11). Apps
   erase case fields through `Eraser.erase` with kind `case-fields`; since P022 a direct call of `FieldValues.erase`
   is refused (`VALUES_ERASE_OUTSIDE_LOG`), so every erasure is in the log.
+
+## Added in P059 (1.3.0)
+
+- **The app's own transaction (LV-25.2)**, as `docs/design/1.3.0-transactions-and-outbound.md` section 1: `FieldValues.in(Connection)`,
+  `FieldDefinitions.in(Connection)`, `PostgresValueStore.onConnection`, `PostgresFieldStore.onConnection`, SPI `ValueStore.joined`
+  and `FieldStore.joined` (default: `UnsupportedOperationException`). Both stores' transaction code is one place
+  (`jdbc.Db`): its own transaction on the data source, or a savepoint per write in the app's. Every call on a bound store
+  checks auto-commit off and READ COMMITTED first (`VALUES_TRANSACTION_UNSUITABLE`, `FIELD_TRANSACTION_UNSUITABLE`; a values
+  call that is refused while reading the definitions reports the values code). A bound `FieldValues` refuses `erase`, and a
+  bound `PostgresValueStore` refuses `delete`, with `VALUES_ERASE_OUTSIDE_LOG`. `FieldValues.in` reads the definitions in
+  the same transaction when their store can join it, else through the store as it is; `FieldDefinitions.in` asks the values
+  check in the transaction when it is a `ValueStore` that can join it. No Spring bean: the guide's `DataSourceUtils` helper.
+- **Dropdown display names (LV-28):** an option is `FieldSpec.Option(code, name)`; `FieldSpec.namedOptions()` (a new last record
+  component; the 21-argument constructor of 1.2.0 stays and reads as code-only), `displayName(code)`, `Builder.namedOptions`.
+  `options()` stays the codes, so values, fingerprints, search, imports and the primary rule are unchanged. Names: a label's
+  limits, unique within the field ignoring capitals and extra spaces (`FIELD_OPTION_NAME_INVALID`, `_REPEATED`); a blank name
+  is no name. Stored in `fld_field_definition.option_names` (schema V3, nullable, same length as `options`; null when no option
+  has a name, so code-only rows stay as they were). The order was already kept (a Postgres array, a list in the file and the
+  history); tests now pin it. In the field list file a named option is `{"code", "name"}`, an unnamed one a string.

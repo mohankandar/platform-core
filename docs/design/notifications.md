@@ -383,6 +383,18 @@ supported. Password login and the internal relay stay as they are.
   `warnDaysLast` 1; 0 to 180, the first at least 1), set like any threshold on the app's settings screen. The licence states are
   unchanged: EXPIRING still starts at 60 days.
 
+### Added in P059 (1.3.0): calls through platform-outbound, step 1
+
+As `docs/design/1.3.0-transactions-and-outbound.md` section 2, for the Microsoft sign-in token request and the Teams and Slack posts;
+SMTP is step 2 (1.4.0). One port for all three, `transport.HttpTransport` (`post` → `Reply` or `Failed` with kind REFUSED,
+UNREACHABLE or TIMEOUT and an outbound code name as the reason), instead of the note's mail-only `MailTransport`, as its open
+question 4 foresaw; SMTP sockets join in 1.4.0. platform-outbound depends on platform-notifications, so the port is here and
+platform-notifications-spring implements it (`internal.OutboundHttpTransport`, platform-outbound optional). New constructors
+`MicrosoftTokens(Clock, Duration, Function<MicrosoftOAuth, HttpTransport>)` (null for a sign-in: its own client) and
+`TeamsChannel` / `SlackChannel` with a transport; without one, the 1.2.0 code path runs unchanged. Settings
+`mail.via-outbound`, `mail-servers.<name>.via-outbound`, `webhook.via-outbound`, all false. Codes `MAIL_OUTBOUND_REFUSED`,
+`WEBHOOK_OUTBOUND_REFUSED` (not retried). `mail.allowed-hosts` and `smtp-proxy` are not built (1.4.0, with SMTP).
+
 ## 7. Time zone per entity (P020, requirement 20 of `integration-standards.md`)
 
 - Entities can be separate companies in different places. The tenant settings keep the tenant's zone; the app may

@@ -914,6 +914,8 @@ com.documentplatform.fields.FieldDefinitionException$Code field static com.docum
 com.documentplatform.fields.FieldDefinitionException$Code field static com.documentplatform.fields.FieldDefinitionException$Code FIELD_OPTIONS_REQUIRED
 com.documentplatform.fields.FieldDefinitionException$Code field static com.documentplatform.fields.FieldDefinitionException$Code FIELD_OPTIONS_TOO_MANY
 com.documentplatform.fields.FieldDefinitionException$Code field static com.documentplatform.fields.FieldDefinitionException$Code FIELD_OPTION_INVALID
+com.documentplatform.fields.FieldDefinitionException$Code field static com.documentplatform.fields.FieldDefinitionException$Code FIELD_OPTION_NAME_INVALID
+com.documentplatform.fields.FieldDefinitionException$Code field static com.documentplatform.fields.FieldDefinitionException$Code FIELD_OPTION_NAME_REPEATED
 com.documentplatform.fields.FieldDefinitionException$Code field static com.documentplatform.fields.FieldDefinitionException$Code FIELD_OPTION_REPEATED
 com.documentplatform.fields.FieldDefinitionException$Code field static com.documentplatform.fields.FieldDefinitionException$Code FIELD_PATTERN_INVALID
 com.documentplatform.fields.FieldDefinitionException$Code field static com.documentplatform.fields.FieldDefinitionException$Code FIELD_PATTERN_REQUIRED
@@ -926,6 +928,7 @@ com.documentplatform.fields.FieldDefinitionException$Code field static com.docum
 com.documentplatform.fields.FieldDefinitionException$Code field static com.documentplatform.fields.FieldDefinitionException$Code FIELD_SEARCH_MODE_INVALID
 com.documentplatform.fields.FieldDefinitionException$Code field static com.documentplatform.fields.FieldDefinitionException$Code FIELD_SENSITIVE_EXACT_ONLY
 com.documentplatform.fields.FieldDefinitionException$Code field static com.documentplatform.fields.FieldDefinitionException$Code FIELD_SENSITIVE_LOCKED
+com.documentplatform.fields.FieldDefinitionException$Code field static com.documentplatform.fields.FieldDefinitionException$Code FIELD_TRANSACTION_UNSUITABLE
 com.documentplatform.fields.FieldDefinitionException$Code field static com.documentplatform.fields.FieldDefinitionException$Code FIELD_TYPE_LOCKED
 com.documentplatform.fields.FieldDefinitionException$Code field static com.documentplatform.fields.FieldDefinitionException$Code FIELD_UNKNOWN
 com.documentplatform.fields.FieldDefinitionException$Code field static com.documentplatform.fields.FieldDefinitionException$Code FIELD_VALUES_CHECK_FAILED
@@ -938,6 +941,7 @@ com.documentplatform.fields.FieldDefinitions method com.documentplatform.fields.
 com.documentplatform.fields.FieldDefinitions method com.documentplatform.fields.FieldDefinition relabel[com.documentplatform.fields.FieldScope, com.documentplatform.fields.FieldKey, java.lang.String, java.lang.String]
 com.documentplatform.fields.FieldDefinitions method com.documentplatform.fields.FieldDefinition switchOff[com.documentplatform.fields.FieldScope, com.documentplatform.fields.FieldKey, java.lang.String]
 com.documentplatform.fields.FieldDefinitions method com.documentplatform.fields.FieldDefinition switchOn[com.documentplatform.fields.FieldScope, com.documentplatform.fields.FieldKey, java.lang.String]
+com.documentplatform.fields.FieldDefinitions method com.documentplatform.fields.FieldDefinitions in[java.sql.Connection]
 com.documentplatform.fields.FieldDefinitions method com.documentplatform.fields.FieldSet fieldSet[com.documentplatform.fields.FieldScope]
 com.documentplatform.fields.FieldDefinitions method com.documentplatform.fields.file.ImportReport importFile[com.documentplatform.fields.FieldScope, java.lang.String, java.lang.String]
 com.documentplatform.fields.FieldDefinitions method com.documentplatform.fields.file.ImportReport previewImport[com.documentplatform.fields.FieldScope, java.lang.String]
@@ -1005,15 +1009,18 @@ com.documentplatform.fields.FieldSpec method java.lang.Integer exactLength[]
 com.documentplatform.fields.FieldSpec method java.lang.Integer maxLength[]
 com.documentplatform.fields.FieldSpec method java.lang.Integer minLength[]
 com.documentplatform.fields.FieldSpec method java.lang.String currency[]
+com.documentplatform.fields.FieldSpec method java.lang.String displayName[java.lang.String]
 com.documentplatform.fields.FieldSpec method java.lang.String label[]
 com.documentplatform.fields.FieldSpec method java.lang.String pattern[]
 com.documentplatform.fields.FieldSpec method java.lang.String toString[]
 com.documentplatform.fields.FieldSpec method java.math.BigDecimal maxValue[]
 com.documentplatform.fields.FieldSpec method java.math.BigDecimal minValue[]
+com.documentplatform.fields.FieldSpec method java.util.List<com.documentplatform.fields.FieldSpec$Option> namedOptions[]
 com.documentplatform.fields.FieldSpec method java.util.List<java.lang.String> options[]
 com.documentplatform.fields.FieldSpec method java.util.regex.Pattern compiledPattern[]
 com.documentplatform.fields.FieldSpec method static boolean suggestsSensitive[java.lang.String, java.lang.String, com.documentplatform.fields.FieldType]
 com.documentplatform.fields.FieldSpec method static com.documentplatform.fields.FieldSpec$Builder builder[java.lang.String, java.lang.String, com.documentplatform.fields.FieldType]
+com.documentplatform.fields.FieldSpec new [com.documentplatform.fields.FieldKey, java.lang.String, com.documentplatform.fields.FieldType, java.lang.String, java.util.List<java.lang.String>, boolean, java.lang.Integer, java.lang.Integer, java.lang.Integer, java.lang.String, com.documentplatform.fields.Normalisation, java.math.BigDecimal, java.math.BigDecimal, boolean, boolean, com.documentplatform.fields.SearchMode, boolean, boolean, boolean, int, boolean, java.util.List<com.documentplatform.fields.FieldSpec$Option>]
 com.documentplatform.fields.FieldSpec new [com.documentplatform.fields.FieldKey, java.lang.String, com.documentplatform.fields.FieldType, java.lang.String, java.util.List<java.lang.String>, boolean, java.lang.Integer, java.lang.Integer, java.lang.Integer, java.lang.String, com.documentplatform.fields.Normalisation, java.math.BigDecimal, java.math.BigDecimal, boolean, boolean, com.documentplatform.fields.SearchMode, boolean, boolean, boolean, int, boolean]
 com.documentplatform.fields.FieldSpec type record extends java.lang.Record implements []
 com.documentplatform.fields.FieldSpec$Builder method com.documentplatform.fields.FieldSpec build[]
@@ -1028,6 +1035,8 @@ com.documentplatform.fields.FieldSpec$Builder method com.documentplatform.fields
 com.documentplatform.fields.FieldSpec$Builder method com.documentplatform.fields.FieldSpec$Builder minLength[java.lang.Integer]
 com.documentplatform.fields.FieldSpec$Builder method com.documentplatform.fields.FieldSpec$Builder minValue[java.math.BigDecimal]
 com.documentplatform.fields.FieldSpec$Builder method com.documentplatform.fields.FieldSpec$Builder multiValue[boolean]
+com.documentplatform.fields.FieldSpec$Builder method com.documentplatform.fields.FieldSpec$Builder namedOptions[com.documentplatform.fields.FieldSpec$Option[]]
+com.documentplatform.fields.FieldSpec$Builder method com.documentplatform.fields.FieldSpec$Builder namedOptions[java.util.List<com.documentplatform.fields.FieldSpec$Option>]
 com.documentplatform.fields.FieldSpec$Builder method com.documentplatform.fields.FieldSpec$Builder normalisation[com.documentplatform.fields.Normalisation$LetterCase, com.documentplatform.fields.Normalisation$Strip]
 com.documentplatform.fields.FieldSpec$Builder method com.documentplatform.fields.FieldSpec$Builder normalisation[com.documentplatform.fields.Normalisation]
 com.documentplatform.fields.FieldSpec$Builder method com.documentplatform.fields.FieldSpec$Builder options[java.lang.String[]]
@@ -1041,6 +1050,14 @@ com.documentplatform.fields.FieldSpec$Builder method com.documentplatform.fields
 com.documentplatform.fields.FieldSpec$Builder method com.documentplatform.fields.FieldSpec$Builder sensitive[boolean]
 com.documentplatform.fields.FieldSpec$Builder method com.documentplatform.fields.FieldSpec$Builder type[com.documentplatform.fields.FieldType]
 com.documentplatform.fields.FieldSpec$Builder type class final extends java.lang.Object implements []
+com.documentplatform.fields.FieldSpec$Option method boolean equals[java.lang.Object]
+com.documentplatform.fields.FieldSpec$Option method int hashCode[]
+com.documentplatform.fields.FieldSpec$Option method java.lang.String code[]
+com.documentplatform.fields.FieldSpec$Option method java.lang.String displayName[]
+com.documentplatform.fields.FieldSpec$Option method java.lang.String name[]
+com.documentplatform.fields.FieldSpec$Option method java.lang.String toString[]
+com.documentplatform.fields.FieldSpec$Option new [java.lang.String, java.lang.String]
+com.documentplatform.fields.FieldSpec$Option type record extends java.lang.Record implements []
 com.documentplatform.fields.FieldStore method abstract com.documentplatform.fields.FieldDefinition update[com.documentplatform.fields.FieldDefinition, com.documentplatform.fields.FieldSpec, com.documentplatform.fields.FieldStore$Change, java.lang.String, java.time.Instant]
 com.documentplatform.fields.FieldStore method abstract java.util.List<com.documentplatform.fields.FieldDefinition> create[com.documentplatform.fields.FieldScope, java.util.List<com.documentplatform.fields.FieldSpec>, com.documentplatform.fields.FieldStore$Change, java.lang.String, java.time.Instant]
 com.documentplatform.fields.FieldStore method abstract java.util.List<com.documentplatform.fields.FieldDefinition> list[com.documentplatform.fields.FieldScope]
@@ -1048,6 +1065,7 @@ com.documentplatform.fields.FieldStore method abstract java.util.List<com.docume
 com.documentplatform.fields.FieldStore method abstract java.util.Map<java.lang.String, java.lang.String> extensions[com.documentplatform.fields.FieldScope, com.documentplatform.fields.FieldKey]
 com.documentplatform.fields.FieldStore method abstract java.util.Optional<com.documentplatform.fields.FieldDefinition> find[com.documentplatform.fields.FieldScope, com.documentplatform.fields.FieldKey]
 com.documentplatform.fields.FieldStore method abstract void putExtension[com.documentplatform.fields.FieldScope, com.documentplatform.fields.FieldKey, java.lang.String, java.lang.String, java.time.Instant]
+com.documentplatform.fields.FieldStore method com.documentplatform.fields.FieldStore joined[java.sql.Connection]
 com.documentplatform.fields.FieldStore method java.util.List<com.documentplatform.fields.FieldDefinition> saveAll[com.documentplatform.fields.FieldScope, java.util.List<com.documentplatform.fields.FieldStore$Save>, java.lang.String, java.time.Instant]
 com.documentplatform.fields.FieldStore type interface extends - implements []
 com.documentplatform.fields.FieldStore$Change field static com.documentplatform.fields.FieldStore$Change CHANGED
@@ -1393,23 +1411,27 @@ com.documentplatform.fields.jdbc.FieldStoreException method com.documentplatform
 com.documentplatform.fields.jdbc.FieldStoreException method java.lang.String sqlState[]
 com.documentplatform.fields.jdbc.FieldStoreException type class final extends java.lang.RuntimeException implements [com.documentplatform.errors.HasPlatformCode]
 com.documentplatform.fields.jdbc.PostgresFieldStore method com.documentplatform.fields.FieldDefinition update[com.documentplatform.fields.FieldDefinition, com.documentplatform.fields.FieldSpec, com.documentplatform.fields.FieldStore$Change, java.lang.String, java.time.Instant]
+com.documentplatform.fields.jdbc.PostgresFieldStore method com.documentplatform.fields.FieldStore joined[java.sql.Connection]
 com.documentplatform.fields.jdbc.PostgresFieldStore method java.util.List<com.documentplatform.fields.FieldDefinition> create[com.documentplatform.fields.FieldScope, java.util.List<com.documentplatform.fields.FieldSpec>, com.documentplatform.fields.FieldStore$Change, java.lang.String, java.time.Instant]
 com.documentplatform.fields.jdbc.PostgresFieldStore method java.util.List<com.documentplatform.fields.FieldDefinition> list[com.documentplatform.fields.FieldScope]
 com.documentplatform.fields.jdbc.PostgresFieldStore method java.util.List<com.documentplatform.fields.FieldDefinition> saveAll[com.documentplatform.fields.FieldScope, java.util.List<com.documentplatform.fields.FieldStore$Save>, java.lang.String, java.time.Instant]
 com.documentplatform.fields.jdbc.PostgresFieldStore method java.util.List<com.documentplatform.fields.FieldStore$HistoryEntry> history[com.documentplatform.fields.FieldScope, com.documentplatform.fields.FieldKey]
 com.documentplatform.fields.jdbc.PostgresFieldStore method java.util.Map<java.lang.String, java.lang.String> extensions[com.documentplatform.fields.FieldScope, com.documentplatform.fields.FieldKey]
 com.documentplatform.fields.jdbc.PostgresFieldStore method java.util.Optional<com.documentplatform.fields.FieldDefinition> find[com.documentplatform.fields.FieldScope, com.documentplatform.fields.FieldKey]
+com.documentplatform.fields.jdbc.PostgresFieldStore method static com.documentplatform.fields.jdbc.PostgresFieldStore onConnection[java.sql.Connection]
 com.documentplatform.fields.jdbc.PostgresFieldStore method void putExtension[com.documentplatform.fields.FieldScope, com.documentplatform.fields.FieldKey, java.lang.String, java.lang.String, java.time.Instant]
 com.documentplatform.fields.jdbc.PostgresFieldStore new [javax.sql.DataSource]
 com.documentplatform.fields.jdbc.PostgresFieldStore type class final extends java.lang.Object implements [com.documentplatform.fields.FieldStore]
 com.documentplatform.fields.jdbc.PostgresValueStore method boolean partialSearchAvailable[]
 com.documentplatform.fields.jdbc.PostgresValueStore method boolean valuesExist[com.documentplatform.fields.FieldScope, com.documentplatform.fields.FieldKey]
 com.documentplatform.fields.jdbc.PostgresValueStore method com.documentplatform.fields.values.StoredRecord replace[com.documentplatform.fields.values.StoredRecord]
+com.documentplatform.fields.jdbc.PostgresValueStore method com.documentplatform.fields.values.ValueStore joined[java.sql.Connection]
 com.documentplatform.fields.jdbc.PostgresValueStore method com.documentplatform.fields.values.ValueStore$Inserted insert[com.documentplatform.fields.values.StoredRecord]
 com.documentplatform.fields.jdbc.PostgresValueStore method java.util.List<com.documentplatform.fields.values.RecordRef> search[java.util.UUID, com.documentplatform.fields.FieldScope, java.lang.String, com.documentplatform.fields.FieldKey, com.documentplatform.fields.values.SearchMatch, int]
 com.documentplatform.fields.jdbc.PostgresValueStore method java.util.Map<com.documentplatform.fields.values.RecordRef, com.documentplatform.fields.values.StoredRecord> findAll[java.util.Collection<com.documentplatform.fields.values.RecordRef>]
 com.documentplatform.fields.jdbc.PostgresValueStore method java.util.Optional<com.documentplatform.fields.values.StoredRecord> findByIdentity[com.documentplatform.fields.FieldScope, java.lang.String, java.util.Collection<java.lang.String>]
 com.documentplatform.fields.jdbc.PostgresValueStore method java.util.Optional<com.documentplatform.fields.values.StoredRecord> find[com.documentplatform.fields.values.RecordRef]
+com.documentplatform.fields.jdbc.PostgresValueStore method static com.documentplatform.fields.jdbc.PostgresValueStore onConnection[java.sql.Connection]
 com.documentplatform.fields.jdbc.PostgresValueStore method void delete[com.documentplatform.fields.values.StoredRecord, com.documentplatform.fields.values.EraseTicket]
 com.documentplatform.fields.jdbc.PostgresValueStore new [javax.sql.DataSource]
 com.documentplatform.fields.jdbc.PostgresValueStore type class final extends java.lang.Object implements [com.documentplatform.fields.values.ValueStore]
@@ -1419,6 +1441,7 @@ com.documentplatform.fields.values.EraseTicket type class final extends java.lan
 com.documentplatform.fields.values.FieldValues field static java.lang.String ERASE_LOG_HANDLER
 com.documentplatform.fields.values.FieldValues method boolean rewrap[com.documentplatform.fields.values.RecordRef]
 com.documentplatform.fields.values.FieldValues method com.documentplatform.fields.FieldValuesCheck valuesCheck[]
+com.documentplatform.fields.values.FieldValues method com.documentplatform.fields.values.FieldValues in[java.sql.Connection]
 com.documentplatform.fields.values.FieldValues method com.documentplatform.fields.values.FieldValues$Claim claim[com.documentplatform.fields.values.RecordRef, java.util.Map<java.lang.String, ? extends java.util.List<? extends com.documentplatform.fields.FieldValue>>]
 com.documentplatform.fields.values.FieldValues method com.documentplatform.fields.values.FieldValues$Erased erase[com.documentplatform.fields.values.RecordRef]
 com.documentplatform.fields.values.FieldValues method com.documentplatform.fields.values.FieldValues$SearchStatus searchStatus[]
@@ -1477,6 +1500,7 @@ com.documentplatform.fields.values.FieldValuesError field static com.documentpla
 com.documentplatform.fields.values.FieldValuesError field static com.documentplatform.fields.values.FieldValuesError VALUES_SEARCH_MODE_NOT_ALLOWED
 com.documentplatform.fields.values.FieldValuesError field static com.documentplatform.fields.values.FieldValuesError VALUES_SENSITIVE_EXACT_ONLY
 com.documentplatform.fields.values.FieldValuesError field static com.documentplatform.fields.values.FieldValuesError VALUES_STORE_FAILED
+com.documentplatform.fields.values.FieldValuesError field static com.documentplatform.fields.values.FieldValuesError VALUES_TRANSACTION_UNSUITABLE
 com.documentplatform.fields.values.FieldValuesError field static com.documentplatform.fields.values.FieldValuesError VALUES_WRONG_CUSTOMER
 com.documentplatform.fields.values.FieldValuesError method static com.documentplatform.fields.values.FieldValuesError valueOf[java.lang.String]
 com.documentplatform.fields.values.FieldValuesError method static com.documentplatform.fields.values.FieldValuesError[] values[]
@@ -1601,6 +1625,7 @@ com.documentplatform.fields.values.ValueStore method abstract java.util.List<com
 com.documentplatform.fields.values.ValueStore method abstract java.util.Optional<com.documentplatform.fields.values.StoredRecord> findByIdentity[com.documentplatform.fields.FieldScope, java.lang.String, java.util.Collection<java.lang.String>]
 com.documentplatform.fields.values.ValueStore method abstract java.util.Optional<com.documentplatform.fields.values.StoredRecord> find[com.documentplatform.fields.values.RecordRef]
 com.documentplatform.fields.values.ValueStore method abstract void delete[com.documentplatform.fields.values.StoredRecord, com.documentplatform.fields.values.EraseTicket]
+com.documentplatform.fields.values.ValueStore method com.documentplatform.fields.values.ValueStore joined[java.sql.Connection]
 com.documentplatform.fields.values.ValueStore method java.util.Map<com.documentplatform.fields.values.RecordRef, com.documentplatform.fields.values.StoredRecord> findAll[java.util.Collection<com.documentplatform.fields.values.RecordRef>]
 com.documentplatform.fields.values.ValueStore type interface extends - implements [com.documentplatform.fields.FieldValuesCheck]
 com.documentplatform.fields.values.ValueStore$Inserted method boolean created[]
@@ -6792,6 +6817,7 @@ com.documentplatform.notifications.FailureCode field static com.documentplatform
 com.documentplatform.notifications.FailureCode field static com.documentplatform.notifications.FailureCode MAIL_OAUTH_TOKEN_REFUSED
 com.documentplatform.notifications.FailureCode field static com.documentplatform.notifications.FailureCode MAIL_OAUTH_TOKEN_UNREACHABLE
 com.documentplatform.notifications.FailureCode field static com.documentplatform.notifications.FailureCode MAIL_OAUTH_UNEXPECTED_REPLY
+com.documentplatform.notifications.FailureCode field static com.documentplatform.notifications.FailureCode MAIL_OUTBOUND_REFUSED
 com.documentplatform.notifications.FailureCode field static com.documentplatform.notifications.FailureCode MAIL_RECIPIENT_REFUSED
 com.documentplatform.notifications.FailureCode field static com.documentplatform.notifications.FailureCode MAIL_SERVER_UNREACHABLE
 com.documentplatform.notifications.FailureCode field static com.documentplatform.notifications.FailureCode MAIL_SMTP_AUTH_DISABLED
@@ -6806,6 +6832,7 @@ com.documentplatform.notifications.FailureCode field static com.documentplatform
 com.documentplatform.notifications.FailureCode field static com.documentplatform.notifications.FailureCode WEBHOOK_ADDRESS_INVALID
 com.documentplatform.notifications.FailureCode field static com.documentplatform.notifications.FailureCode WEBHOOK_ADDRESS_NOT_SECURE
 com.documentplatform.notifications.FailureCode field static com.documentplatform.notifications.FailureCode WEBHOOK_CONNECTOR_RETIRED
+com.documentplatform.notifications.FailureCode field static com.documentplatform.notifications.FailureCode WEBHOOK_OUTBOUND_REFUSED
 com.documentplatform.notifications.FailureCode field static com.documentplatform.notifications.FailureCode WEBHOOK_PAYLOAD_REJECTED
 com.documentplatform.notifications.FailureCode field static com.documentplatform.notifications.FailureCode WEBHOOK_RATE_LIMITED
 com.documentplatform.notifications.FailureCode field static com.documentplatform.notifications.FailureCode WEBHOOK_REJECTED
@@ -7401,6 +7428,7 @@ com.documentplatform.notifications.email.MicrosoftTokens method com.documentplat
 com.documentplatform.notifications.email.MicrosoftTokens method com.documentplatform.notifications.email.MicrosoftTokens$Status status[com.documentplatform.notifications.email.MicrosoftOAuth]
 com.documentplatform.notifications.email.MicrosoftTokens method void invalidate[com.documentplatform.notifications.email.MicrosoftOAuth]
 com.documentplatform.notifications.email.MicrosoftTokens new []
+com.documentplatform.notifications.email.MicrosoftTokens new [java.time.Clock, java.time.Duration, java.util.function.Function<com.documentplatform.notifications.email.MicrosoftOAuth, com.documentplatform.notifications.transport.HttpTransport>]
 com.documentplatform.notifications.email.MicrosoftTokens new [java.time.Clock, java.time.Duration]
 com.documentplatform.notifications.email.MicrosoftTokens type class final extends java.lang.Object implements []
 com.documentplatform.notifications.email.MicrosoftTokens$Fetch method boolean equals[java.lang.Object]
@@ -7572,6 +7600,7 @@ com.documentplatform.notifications.secret.SecretResolver type interface extends 
 com.documentplatform.notifications.slack.SlackChannel method com.documentplatform.notifications.ChannelKind kind[]
 com.documentplatform.notifications.slack.SlackChannel method com.documentplatform.notifications.SendResult send[com.documentplatform.notifications.OutgoingMessage]
 com.documentplatform.notifications.slack.SlackChannel method void close[]
+com.documentplatform.notifications.slack.SlackChannel new [com.documentplatform.notifications.webhook.WebhookDirectory, com.documentplatform.notifications.secret.SecretResolver, com.documentplatform.notifications.webhook.WebhookOptions, com.documentplatform.notifications.transport.HttpTransport]
 com.documentplatform.notifications.slack.SlackChannel new [com.documentplatform.notifications.webhook.WebhookDirectory, com.documentplatform.notifications.secret.SecretResolver, com.documentplatform.notifications.webhook.WebhookOptions]
 com.documentplatform.notifications.slack.SlackChannel new [com.documentplatform.notifications.webhook.WebhookDirectory, com.documentplatform.notifications.secret.SecretResolver]
 com.documentplatform.notifications.slack.SlackChannel type class final extends java.lang.Object implements [com.documentplatform.notifications.Channel, java.lang.AutoCloseable]
@@ -7609,6 +7638,7 @@ com.documentplatform.notifications.spring.NotificationsProperties$Approvals meth
 com.documentplatform.notifications.spring.NotificationsProperties$Approvals method void setLinkPath[java.lang.String]
 com.documentplatform.notifications.spring.NotificationsProperties$Approvals new []
 com.documentplatform.notifications.spring.NotificationsProperties$Approvals type class extends java.lang.Object implements []
+com.documentplatform.notifications.spring.NotificationsProperties$Mail method boolean isViaOutbound[]
 com.documentplatform.notifications.spring.NotificationsProperties$Mail method com.documentplatform.notifications.spring.NotificationsProperties$Oauth getOauth[]
 com.documentplatform.notifications.spring.NotificationsProperties$Mail method java.lang.Integer getPort[]
 com.documentplatform.notifications.spring.NotificationsProperties$Mail method java.lang.String getAuth[]
@@ -7630,6 +7660,7 @@ com.documentplatform.notifications.spring.NotificationsProperties$Mail method vo
 com.documentplatform.notifications.spring.NotificationsProperties$Mail method void setReadTimeout[java.time.Duration]
 com.documentplatform.notifications.spring.NotificationsProperties$Mail method void setSecurity[java.lang.String]
 com.documentplatform.notifications.spring.NotificationsProperties$Mail method void setUsername[java.lang.String]
+com.documentplatform.notifications.spring.NotificationsProperties$Mail method void setViaOutbound[boolean]
 com.documentplatform.notifications.spring.NotificationsProperties$Mail new []
 com.documentplatform.notifications.spring.NotificationsProperties$Mail type class extends java.lang.Object implements []
 com.documentplatform.notifications.spring.NotificationsProperties$MailServerSettings method java.util.List<java.lang.String> getDestinations[]
@@ -7666,10 +7697,12 @@ com.documentplatform.notifications.spring.NotificationsProperties$Sender method 
 com.documentplatform.notifications.spring.NotificationsProperties$Sender method void setPollInterval[java.time.Duration]
 com.documentplatform.notifications.spring.NotificationsProperties$Sender new []
 com.documentplatform.notifications.spring.NotificationsProperties$Sender type class extends java.lang.Object implements []
+com.documentplatform.notifications.spring.NotificationsProperties$Webhook method boolean isViaOutbound[]
 com.documentplatform.notifications.spring.NotificationsProperties$Webhook method java.time.Duration getConnectTimeout[]
 com.documentplatform.notifications.spring.NotificationsProperties$Webhook method java.time.Duration getRequestTimeout[]
 com.documentplatform.notifications.spring.NotificationsProperties$Webhook method void setConnectTimeout[java.time.Duration]
 com.documentplatform.notifications.spring.NotificationsProperties$Webhook method void setRequestTimeout[java.time.Duration]
+com.documentplatform.notifications.spring.NotificationsProperties$Webhook method void setViaOutbound[boolean]
 com.documentplatform.notifications.spring.NotificationsProperties$Webhook new []
 com.documentplatform.notifications.spring.NotificationsProperties$Webhook type class extends java.lang.Object implements []
 com.documentplatform.notifications.spring.NotificationsSettingsCode field static com.documentplatform.notifications.spring.NotificationsSettingsCode NOTIF_SETTINGS_INVALID
@@ -7679,9 +7712,31 @@ com.documentplatform.notifications.spring.NotificationsSettingsCode type enum ex
 com.documentplatform.notifications.teams.TeamsChannel method com.documentplatform.notifications.ChannelKind kind[]
 com.documentplatform.notifications.teams.TeamsChannel method com.documentplatform.notifications.SendResult send[com.documentplatform.notifications.OutgoingMessage]
 com.documentplatform.notifications.teams.TeamsChannel method void close[]
+com.documentplatform.notifications.teams.TeamsChannel new [com.documentplatform.notifications.webhook.WebhookDirectory, com.documentplatform.notifications.secret.SecretResolver, com.documentplatform.notifications.webhook.WebhookOptions, com.documentplatform.notifications.transport.HttpTransport]
 com.documentplatform.notifications.teams.TeamsChannel new [com.documentplatform.notifications.webhook.WebhookDirectory, com.documentplatform.notifications.secret.SecretResolver, com.documentplatform.notifications.webhook.WebhookOptions]
 com.documentplatform.notifications.teams.TeamsChannel new [com.documentplatform.notifications.webhook.WebhookDirectory, com.documentplatform.notifications.secret.SecretResolver]
 com.documentplatform.notifications.teams.TeamsChannel type class final extends java.lang.Object implements [com.documentplatform.notifications.Channel, java.lang.AutoCloseable]
+com.documentplatform.notifications.transport.HttpTransport field static int MAX_REPLY_BYTES
+com.documentplatform.notifications.transport.HttpTransport method abstract com.documentplatform.notifications.transport.HttpTransport$Reply post[java.net.URI, java.util.Map<java.lang.String, java.lang.String>, byte[], java.time.Duration, java.time.Duration] throws [com.documentplatform.notifications.transport.HttpTransport$Failed]
+com.documentplatform.notifications.transport.HttpTransport type interface extends - implements []
+com.documentplatform.notifications.transport.HttpTransport$Failed method com.documentplatform.notifications.transport.HttpTransport$Failed$Kind kind[]
+com.documentplatform.notifications.transport.HttpTransport$Failed method java.lang.String reason[]
+com.documentplatform.notifications.transport.HttpTransport$Failed new [com.documentplatform.notifications.transport.HttpTransport$Failed$Kind, java.lang.String]
+com.documentplatform.notifications.transport.HttpTransport$Failed type class final extends java.lang.Exception implements []
+com.documentplatform.notifications.transport.HttpTransport$Failed$Kind field static com.documentplatform.notifications.transport.HttpTransport$Failed$Kind REFUSED
+com.documentplatform.notifications.transport.HttpTransport$Failed$Kind field static com.documentplatform.notifications.transport.HttpTransport$Failed$Kind TIMEOUT
+com.documentplatform.notifications.transport.HttpTransport$Failed$Kind field static com.documentplatform.notifications.transport.HttpTransport$Failed$Kind UNREACHABLE
+com.documentplatform.notifications.transport.HttpTransport$Failed$Kind method static com.documentplatform.notifications.transport.HttpTransport$Failed$Kind valueOf[java.lang.String]
+com.documentplatform.notifications.transport.HttpTransport$Failed$Kind method static com.documentplatform.notifications.transport.HttpTransport$Failed$Kind[] values[]
+com.documentplatform.notifications.transport.HttpTransport$Failed$Kind type enum extends java.lang.Enum implements []
+com.documentplatform.notifications.transport.HttpTransport$Reply method boolean equals[java.lang.Object]
+com.documentplatform.notifications.transport.HttpTransport$Reply method byte[] body[]
+com.documentplatform.notifications.transport.HttpTransport$Reply method int hashCode[]
+com.documentplatform.notifications.transport.HttpTransport$Reply method int status[]
+com.documentplatform.notifications.transport.HttpTransport$Reply method java.lang.String retryAfter[]
+com.documentplatform.notifications.transport.HttpTransport$Reply method java.lang.String toString[]
+com.documentplatform.notifications.transport.HttpTransport$Reply new [int, byte[], java.lang.String]
+com.documentplatform.notifications.transport.HttpTransport$Reply type record extends java.lang.Record implements []
 com.documentplatform.notifications.webhook.WebhookDirectory method abstract java.util.Optional<com.documentplatform.notifications.secret.SecretRef> find[com.documentplatform.notifications.TenantId, com.documentplatform.notifications.DestinationId]
 com.documentplatform.notifications.webhook.WebhookDirectory method static com.documentplatform.notifications.webhook.WebhookDirectory of[java.util.Map<com.documentplatform.notifications.DestinationId, com.documentplatform.notifications.secret.SecretRef>]
 com.documentplatform.notifications.webhook.WebhookDirectory type interface extends - implements []

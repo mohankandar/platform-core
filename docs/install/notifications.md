@@ -129,7 +129,8 @@ If something is wrong, the health page (section 7) shows one of these codes:
    and a short id for this destination, for example `ops-teams`.
 5. **Allow outbound HTTPS (port 443)** from the app server to the Power Platform / Logic Apps hosts
    (`*.logic.azure.com`, `*.api.powerplatform.com`). If you use a proxy, set the Java proxy options (`https.proxyHost`,
-   `https.proxyPort`). Proxies that ask for a login are not supported.
+   `https.proxyPort`). Proxies that ask for a login are not supported this way; since 1.3.0 the posts can follow the
+   installation's outbound settings instead, proxy sign-in included (section 5, "Through the outbound settings").
 6. Old "Incoming Webhook" connector addresses (`…webhook.office.com…`) were retired by Microsoft, and the app refuses
    them. Create a Workflows address instead.
 
@@ -295,6 +296,38 @@ platform.notifications.mail-servers.legal.destinations=legal-mail
   `DESTINATION_NOT_CONFIGURED`.
 - **One entity with its own server:** give that entity's events an e-mail destination of its own, and the server that destination.
 - Health shows the sign-in of each (`mailServers`), and monitoring checks each (`channel-mail-<name>`).
+
+### Through the outbound settings (1.3.0)
+
+The Microsoft 365 sign-in (token request) and the Teams and Slack posts can follow the installation's outbound settings,
+`platform.outbound.*` (`docs/install/integration.md` section 1), like the integrations: the address guard (cloud metadata always
+refused, internal addresses only when `platform.outbound.allow-internal-addresses=true`), the outbound proxy **with its sign-in
+and bypass list**, the private CA added to the system's, https only, no redirects. **Off by default, for new installations too.**
+
+```properties
+platform.notifications.mail.via-outbound=true                 # Microsoft 365 sign-in of mail.*
+platform.notifications.mail-servers.east.via-outbound=true    # and of a further server, each on its own
+platform.notifications.webhook.via-outbound=true              # Teams and Slack
+```
+
+- **The SMTP connection itself does not change in 1.3.0**: it still goes straight to the mail server. It follows in 1.4.0
+  (address guard and private CA, and a proxy only when asked for). A server that signs in with a password has nothing to send
+  through the outbound settings yet; the app logs a warning when `via-outbound` is set for it.
+- **Needs** `platform-outbound-spring` on the class path and `platform.outbound.installation` set. Without them, the app stops
+  at start-up naming each `via-outbound` setting.
+- **Start-up check:** the Microsoft sign-in host is checked by the address guard without connecting. An internal address while
+  `platform.outbound.allow-internal-addresses` is false stops the app; a name that does not resolve yet is only a warning. The
+  Teams and Slack addresses are in the secret store, so they are checked at each send.
+- **When the outbound settings refuse a call** (address blocked, proxy sign-in refused, TLS failed because the private CA is
+  missing): `MAIL_OUTBOUND_REFUSED` or `WEBHOOK_OUTBOUND_REFUSED` on the destination's health, not retried; the app's log
+  names the outbound code (`OUT_ADDRESS_BLOCKED`, `OUT_TLS_FAILED`, …), never an address. No connection or no answer in time
+  stays `MAIL_OAUTH_TOKEN_UNREACHABLE`, `WEBHOOK_UNREACHABLE`, `WEBHOOK_TIMEOUT`, retried as before. The time-outs are the mail
+  and webhook settings', as before.
+- **Firewall:** with a proxy, the app server needs only the proxy; the proxy needs `login.microsoftonline.com` (or your
+  national cloud's sign-in host), the Teams Workflows hosts and `hooks.slack.com` on 443. Without a proxy, as in sections 1a,
+  2 and 3.
+- **Try it:** switch it on, restart, send one notification to each destination, then read health (`notifications`). **Switch back:** set
+  the setting to false (or remove it) and restart.
 
 ## 6. Several app servers
 
