@@ -105,6 +105,12 @@ public final class MicrosoftTokens {
                 .build();
     }
 
+    /** STUB P059 */
+    public MicrosoftTokens(Clock clock, Duration connectTimeout,
+                           java.util.function.Function<MicrosoftOAuth, com.documentplatform.notifications.transport.HttpTransport> transports) {
+        throw new UnsupportedOperationException("stub");
+    }
+
     /** A valid token for this sign-in: the held one, or a new one from the token endpoint. */
     public Fetch token(MicrosoftOAuth oauth, SecretResolver secrets, Duration requestTimeout) {
         Objects.requireNonNull(oauth, "oauth");
