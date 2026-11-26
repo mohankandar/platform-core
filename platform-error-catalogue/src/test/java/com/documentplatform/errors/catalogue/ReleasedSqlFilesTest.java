@@ -30,6 +30,8 @@ class ReleasedSqlFilesTest {
                     "6015d24515ecd352d5b27e9abacbf7b959a60f254633e4129b974bdce598fc8a"),
             Map.entry("platform-fields/src/main/resources/db/platform/fields/V2__fields_search_path.sql",
                     "31e5f1312b325e77e0a0ae6f708ed7124a65f5c8c8195de9d435f9a0244456da"),
+            Map.entry("platform-fields/src/main/resources/db/platform/fields/V3__fields_option_names.sql",
+                    "f7b76bea5881b1531f430e8585603c5e57c5ecffb84465b9d6461464e15fe97a"),
             Map.entry("platform-identity-jdbc/src/main/resources/db/platform/identity/V5__identity_history_and_search_path.sql",
                     "535fa07ec564a18d588d258df28349a076b0536d91d400937ba408b54ad4a0df"),
             Map.entry("platform-identity-jdbc/src/main/resources/db/platform/identity/V6__test_sign_in.sql",

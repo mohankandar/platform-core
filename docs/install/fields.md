@@ -15,7 +15,10 @@ The tables are created only by the app's schema step, never at app startup.
 - **Schema step:** a separate Flyway run with location `classpath:db/platform/fields` and history table
   `fld_schema_history`, run as the schema owner, in the same database schema the app uses. Set `baselineOnMigrate=true` and `baselineVersion=0` for the run when
   the schema already holds other tables; Flyway refuses a schema it has no history for otherwise. Files today:
-  `V1__fields.sql`, `V2__fields_search_path.sql` (since 0.7.0).
+  `V1__fields.sql`, `V2__fields_search_path.sql` (since 0.7.0), `V3__fields_option_names.sql` (since 1.3.0: one nullable
+  column, `fld_field_definition.option_names`, for the display names of dropdown values; no new rights). An app of 1.3.0
+  starts only on version 3 (`FLD_VERSION_OLDER` otherwise), and an app of 1.2.x does not start on it (`FLD_VERSION_NEWER`):
+  run the step while every instance is stopped.
 - **Tables:** `fld_schema_version`, `fld_field_definition`, `fld_field_definition_history`, `fld_field_extension`,
   `fld_record` (one row per record of the app that has field values), `fld_value` (one row per value).
 - **Runtime user:** data rights only:
@@ -103,3 +106,60 @@ records, one database query each (and one key service call for the sensitive one
 `legalHolds` is the app's own `LegalHolds` (leave it out when the app has none). To erase case fields, the app also
 registers `new CaseFieldsEraseHandler(values, valueStore, legalHolds)` as an `EraseHandler` bean for the erase log
 (`docs/install/erase-log.md`). Codes: `docs/errors/platform-error-codes.md`.
+
+## 6. In the app's transaction (1.3.0)
+
+By default each call of the field stores is its own transaction, as before. When the app's own row and the field values
+must be committed together (or not at all), it hands its connection over for the call: `values.in(connection)` and
+`definitions.in(connection)` (for a store alone: `PostgresValueStore.onConnection(c)`, `PostgresFieldStore.onConnection(c)`).
+
+```java
+// without Spring
+c.setAutoCommit(false);
+saveMyRow(c, ...);
+values.in(c).claim(ref, given);
+c.commit();
+
+// with Spring, inside @Transactional: the connection of the current transaction, given back after the call
+Connection c = DataSourceUtils.getConnection(dataSource);
+try {
+    values.in(c).claim(ref, given);
+} finally {
+    DataSourceUtils.releaseConnection(c, dataSource);
+}
+```
+
+There is no Spring bean for this; the three lines above are all it takes.
+
+- **The connection:** auto-commit off and **READ COMMITTED** (PostgreSQL's default). Anything else is refused before anything is
+  written: `VALUES_TRANSACTION_UNSUITABLE` (definitions: `FIELD_TRANSACTION_UNSUITABLE`). REPEATABLE READ and SERIALIZABLE
+  are refused because the retry after a concurrent change, and the claim of a primary value another transaction is writing,
+  must see that other transaction's commit.
+- **The store never ends the app's transaction:** no `commit`, no full `rollback`, no change of auto-commit or isolation,
+  no `close`. The app commits or rolls back.
+- **A refused write leaves the app's work usable:** each write runs in its own savepoint, rolled back to when the write is
+  refused (`VALUES_PRIMARY_TAKEN`, `VALUES_CONFLICT`, `VALUES_CHANGED_MEANWHILE`). The same exception as before is thrown;
+  the app decides whether to roll back everything.
+- **Locks are held until the app commits.** Two claims of the same new primary value wait for each other that long; the second
+  joins the first's record when it commits, or makes its own when it rolls back. Deadlocks between the app's rows and field rows
+  become possible: PostgreSQL ends one (SQL state 40P01, `VALUES_STORE_FAILED`) and the app retries its whole transaction.
+  Write several records in one order (for example by record ID).
+- **Key service calls run inside the open transaction** (a claim with sensitive values: up to three calls). Keep such
+  transactions short; never keep one open while a person decides.
+- **Erasing stays outside:** `values.in(c).erase(...)` is refused with `VALUES_ERASE_OUTSIDE_LOG`; erasures go through the
+  erase log, which has its own transaction.
+- **The app must not** use the bound object after its transaction ended or from another thread, catch a driver error it
+  caused and go on, or send a message or erase on the strength of values not yet committed.
+- The in-memory stores of the testkit cannot join a transaction (`UnsupportedOperationException`).
+
+## 7. Dropdown values with display names (1.3.0)
+
+A DROPDOWN field's values are a **code** plus an optional **display name**, in the order the admin sets:
+`FieldSpec.builder(...).namedOptions(new FieldSpec.Option("OPN", "Open"), new FieldSpec.Option("CLS", null))`.
+
+- The code is what is stored, matched, searched, imported and fingerprinted; `options()` still lists the codes.
+- The name is for display only (`spec.displayName(code)`, or the code itself when there is none). It can change at any time
+  without touching a stored value. Names are unique within a field (ignoring capitals and extra spaces), with a label's limits:
+  `FIELD_OPTION_NAME_REPEATED`, `FIELD_OPTION_NAME_INVALID`. They are configuration, not sensitive.
+- Existing definitions read as code-only, in their stored order. In the field list file a named value is
+  `{"code": "OPN", "name": "Open"}`; one without a name stays a string, so a file without names is written as before.
