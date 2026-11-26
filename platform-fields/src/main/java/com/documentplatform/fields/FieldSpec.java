@@ -136,6 +136,23 @@ public record FieldSpec(FieldKey key, String label, FieldType type, String curre
         }
     }
 
+    /** STUB P059 */
+    public record Option(String code, String name) {
+        public String displayName() {
+            throw new UnsupportedOperationException("stub");
+        }
+    }
+
+    /** STUB P059 */
+    public List<Option> namedOptions() {
+        throw new UnsupportedOperationException("stub");
+    }
+
+    /** STUB P059 */
+    public String displayName(String code) {
+        throw new UnsupportedOperationException("stub");
+    }
+
     /** A new spec with the defaults: optional, not searchable, displayable, active, sensitive as suggested. */
     public static Builder builder(String key, String label, FieldType type) {
         return new Builder(FieldKey.of(key), label, type);
@@ -390,6 +407,16 @@ public record FieldSpec(FieldKey key, String label, FieldType type, String curre
 
         public Builder options(String... options) {
             return options(List.of(options));
+        }
+
+        /** STUB P059 */
+        public Builder namedOptions(List<Option> options) {
+            throw new UnsupportedOperationException("stub");
+        }
+
+        /** STUB P059 */
+        public Builder namedOptions(Option... options) {
+            return namedOptions(List.of(options));
         }
 
         public Builder required(boolean required) {
