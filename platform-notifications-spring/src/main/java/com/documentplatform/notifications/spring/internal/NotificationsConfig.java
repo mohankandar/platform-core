@@ -38,7 +38,22 @@ import static com.documentplatform.notifications.spring.NotificationsProperties.
 public record NotificationsConfig(Optional<MailServer> mail, Map<String, MailFor> mailServers, Map<DestinationId, SecretRef> teams,
                                   Map<DestinationId, SecretRef> slack, WebhookOptions webhookOptions,
                                   RetryPolicy retry, Duration lease, Duration retention, Duration tickInterval,
-                                  Duration pollInterval, int batchSize, Optional<ApprovalLinksConfig> approvals) {
+                                  Duration pollInterval, int batchSize, Optional<ApprovalLinksConfig> approvals,
+                                  Map<String, MicrosoftOAuth> outboundSignIns, boolean webhooksViaOutbound,
+                                  List<String> notes) {
+
+    /**
+     * P059: the Microsoft sign-ins whose token requests go through platform-outbound, by the setting's name
+     * ({@code mail} or {@code mail-servers.<name>}).
+     */
+    public boolean viaOutbound(MicrosoftOAuth oauth) {
+        return outboundSignIns.containsValue(oauth);
+    }
+
+    /** Whether any setting asks for platform-outbound. */
+    public boolean anyViaOutbound() {
+        return webhooksViaOutbound || !outboundSignIns.isEmpty();
+    }
 
     /** A further mail server and what it serves; an empty set means every one. */
     public record MailFor(MailServer server, Set<TenantId> tenants, Set<DestinationId> destinations) {
@@ -86,6 +101,8 @@ public record NotificationsConfig(Optional<MailServer> mail, Map<String, MailFor
 
     public NotificationsConfig {
         mailServers = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(mailServers));
+        outboundSignIns = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(outboundSignIns));
+        notes = List.copyOf(notes);
         teams = Map.copyOf(teams);
         slack = Map.copyOf(slack);
     }
@@ -159,11 +176,34 @@ public record NotificationsConfig(Optional<MailServer> mail, Map<String, MailFor
 
         Optional<ApprovalLinksConfig> approvals = approvals(p.getApprovals(), problems);
 
+        // P059 (LV-24.3 step 1): which calls follow platform.outbound.*
+        Map<String, MicrosoftOAuth> outboundSignIns = new LinkedHashMap<>();
+        List<String> notes = new ArrayList<>();
+        viaOutbound("mail", p.getMail(), mail, outboundSignIns, notes);
+        if (p.getMailServers() != null) {
+            p.getMailServers().forEach((name, s) -> viaOutbound("mail-servers." + name, s,
+                    Optional.ofNullable(mailServers.get(name)).map(MailFor::server), outboundSignIns, notes));
+        }
+
         if (!problems.isEmpty()) {
             throw new NotificationsConfigException(problems);
         }
         return new NotificationsConfig(mail, mailServers, teams, slack, webhookOptions, retry, lease, retention,
-                p.getTickInterval(), p.getSender().getPollInterval(), batch, approvals);
+                p.getTickInterval(), p.getSender().getPollInterval(), batch, approvals, outboundSignIns,
+                w.isViaOutbound(), notes);
+    }
+
+    private static void viaOutbound(String name, NotificationsProperties.Mail m, Optional<MailServer> server,
+                                    Map<String, MicrosoftOAuth> signIns, List<String> notes) {
+        if (!m.isViaOutbound() || server.isEmpty()) {
+            return;
+        }
+        if (server.get().oauth() != null) {
+            signIns.put(name, server.get().oauth());
+        } else {
+            notes.add(PREFIX + "." + name + ".via-outbound: true, but this server signs in with a password: nothing "
+                    + "of it goes through platform.outbound in 1.3.0 (its SMTP connection follows in 1.4.0)");
+        }
     }
 
     private static Optional<ApprovalLinksConfig> approvals(NotificationsProperties.Approvals a, List<String> problems) {

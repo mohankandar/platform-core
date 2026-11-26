@@ -36,6 +36,26 @@
             <version>${spring.boot.version}</version>
             <optional>true</optional>
         </dependency>
+        <!-- P059: token requests, Teams and Slack through the installation's outbound rules (via-outbound). -->
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-outbound</artifactId>
+            <version>${project.version}</version>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-outbound-spring</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.documentplatform.platform</groupId>
+            <artifactId>platform-integration-testkit</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
 
         <dependency>
             <groupId>com.documentplatform.platform</groupId>
