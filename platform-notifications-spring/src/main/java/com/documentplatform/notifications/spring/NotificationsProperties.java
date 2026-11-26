@@ -177,6 +177,19 @@ public class NotificationsProperties {
         private String auth = "PASSWORD";
         /** Microsoft 365 sign-in, used only with auth OAUTH2_MICROSOFT. */
         private final Oauth oauth = new Oauth();
+        /**
+         * P059 (LV-24.3 step 1): the Microsoft sign-in token request of this server follows platform.outbound.* (address
+         * guard, proxy, private CA). Off by default. The SMTP connection itself follows in 1.4.0.
+         */
+        private boolean viaOutbound;
+
+        public boolean isViaOutbound() {
+            return viaOutbound;
+        }
+
+        public void setViaOutbound(boolean viaOutbound) {
+            this.viaOutbound = viaOutbound;
+        }
 
         public String getAuth() {
             return auth;
@@ -363,6 +376,16 @@ public class NotificationsProperties {
     public static class Webhook {
         private Duration connectTimeout = Duration.ofSeconds(10);
         private Duration requestTimeout = Duration.ofSeconds(30);
+        /** P059 (LV-24.3 step 1): the Teams and Slack posts follow platform.outbound.*. Off by default. */
+        private boolean viaOutbound;
+
+        public boolean isViaOutbound() {
+            return viaOutbound;
+        }
+
+        public void setViaOutbound(boolean viaOutbound) {
+            this.viaOutbound = viaOutbound;
+        }
 
         public Duration getConnectTimeout() {
             return connectTimeout;

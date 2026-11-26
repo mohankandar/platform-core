@@ -39,10 +39,14 @@ public final class SlackChannel implements Channel, AutoCloseable {
         this.client = new WebhookClient(ChannelKind.SLACK, webhooks, secrets, options);
     }
 
-    /** STUB P059 */
+    /**
+     * P059 (LV-24.3 step 1): posts through {@code transport} (in an app: platform-outbound, when
+     * {@code webhook.via-outbound} is on). The same checks of the address and the same reading of the answer; a post
+     * the outbound rules refuse is {@code WEBHOOK_OUTBOUND_REFUSED}, not retried.
+     */
     public SlackChannel(WebhookDirectory webhooks, SecretResolver secrets, WebhookOptions options,
                         com.documentplatform.notifications.transport.HttpTransport transport) {
-        throw new UnsupportedOperationException("stub");
+        this.client = new WebhookClient(ChannelKind.SLACK, webhooks, secrets, options, transport);
     }
 
     @Override

@@ -7,6 +7,7 @@ import com.documentplatform.notifications.SendResult;
 import com.documentplatform.notifications.secret.Secret;
 import com.documentplatform.notifications.secret.SecretRef;
 import com.documentplatform.notifications.secret.SecretResolver;
+import com.documentplatform.notifications.transport.HttpTransport;
 import com.documentplatform.notifications.webhook.WebhookDirectory;
 import com.documentplatform.notifications.webhook.WebhookOptions;
 
@@ -46,13 +47,27 @@ public final class WebhookClient implements AutoCloseable {
     private final WebhookOptions options;
     private final HttpClient http;
     private final Clock clock;
+    /** P059: the transport the posts go through, or null for this class's own client (as before 1.3.0). */
+    private final HttpTransport transport;
 
     public WebhookClient(ChannelKind kind, WebhookDirectory directory, SecretResolver secrets, WebhookOptions options) {
-        this(kind, directory, secrets, options, Clock.systemUTC());
+        this(kind, directory, secrets, options, Clock.systemUTC(), null);
+    }
+
+    /** P059: posts through {@code transport} (in an app: platform-outbound, with {@code webhook.via-outbound}). */
+    public WebhookClient(ChannelKind kind, WebhookDirectory directory, SecretResolver secrets, WebhookOptions options,
+                         HttpTransport transport) {
+        this(kind, directory, secrets, options, Clock.systemUTC(), Objects.requireNonNull(transport, "transport"));
     }
 
     WebhookClient(ChannelKind kind, WebhookDirectory directory, SecretResolver secrets, WebhookOptions options,
                   Clock clock) {
+        this(kind, directory, secrets, options, clock, null);
+    }
+
+    private WebhookClient(ChannelKind kind, WebhookDirectory directory, SecretResolver secrets,
+                          WebhookOptions options, Clock clock, HttpTransport transport) {
+        this.transport = transport;
         this.kind = Objects.requireNonNull(kind, "kind");
         this.directory = Objects.requireNonNull(directory, "directory");
         this.secrets = Objects.requireNonNull(secrets, "secrets");
@@ -115,6 +130,9 @@ public final class WebhookClient implements AutoCloseable {
         } catch (IllegalArgumentException badAddress) {
             return SendResult.failed(FailureCode.WEBHOOK_ADDRESS_INVALID);
         }
+        if (transport != null) {
+            return viaTransport(uri, json);
+        }
         HttpResponse<Void> response;
         try {
             response = http.send(request, HttpResponse.BodyHandlers.discarding());
@@ -132,6 +150,26 @@ public final class WebhookClient implements AutoCloseable {
         }
         return result(response.statusCode(), response.headers().firstValue("Retry-After").orElse(null));
     }
+
+    /** The same post through the transport; a refusal by the outbound rules is not retried. */
+    private SendResult viaTransport(URI uri, String json) {
+        HttpTransport.Reply reply;
+        try {
+            reply = transport.post(uri, java.util.Map.of("Content-Type", "application/json; charset=utf-8"),
+                    json.getBytes(StandardCharsets.UTF_8), options.connectTimeout(), options.requestTimeout());
+        } catch (HttpTransport.Failed f) {
+            LOG.log(System.Logger.Level.WARNING, "{0} webhook post through platform.outbound: {1}", kind,
+                    f.reason());
+            return SendResult.failed(switch (f.kind()) {
+                case REFUSED -> FailureCode.WEBHOOK_OUTBOUND_REFUSED;
+                case TIMEOUT -> FailureCode.WEBHOOK_TIMEOUT;
+                case UNREACHABLE -> FailureCode.WEBHOOK_UNREACHABLE;
+            });
+        }
+        return result(reply.status(), reply.retryAfter());
+    }
+
+    private static final System.Logger LOG = System.getLogger(WebhookClient.class.getName());
 
     /** The outcome for an HTTP status (and Retry-After header, if any). */
     SendResult result(int status, String retryAfterHeader) {

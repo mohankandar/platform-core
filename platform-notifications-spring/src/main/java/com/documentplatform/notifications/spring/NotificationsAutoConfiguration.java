@@ -28,6 +28,7 @@ import com.documentplatform.notifications.jdbc.PostgresSummaryStore;
 import com.documentplatform.notifications.email.MailServer;
 import com.documentplatform.notifications.email.MicrosoftTokens;
 import com.documentplatform.notifications.secret.SecretResolver;
+import com.documentplatform.notifications.transport.HttpTransport;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -41,6 +42,7 @@ import org.springframework.context.annotation.Lazy;
 
 import javax.sql.DataSource;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -57,7 +59,8 @@ import java.util.List;
  * <p>Every bean backs off when the app defines its own of the same type (for example in-memory stores in tests).
  * {@code platform.notifications.enabled=false} switches the whole module off.
  */
-@AutoConfiguration(afterName = "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration")
+@AutoConfiguration(afterName = {"org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration",
+        "com.documentplatform.outbound.spring.OutboundAutoConfiguration"})
 @ConditionalOnProperty(prefix = NotificationsProperties.PREFIX, name = "enabled", havingValue = "true",
         matchIfMissing = true)
 @EnableConfigurationProperties(NotificationsProperties.class)
@@ -120,21 +123,74 @@ public class NotificationsAutoConfiguration {
     /** Microsoft 365 mail tokens (auth OAUTH2_MICROSOFT): held by the e-mail sender, shown (state only) in health. */
     @Bean
     @ConditionalOnMissingBean
-    MicrosoftTokens notificationMailTokens(NotificationsConfig config) {
-        return new MicrosoftTokens(Clock.systemUTC(),
-                config.mail().map(MailServer::connectTimeout).orElse(MailServer.DEFAULT_CONNECT_TIMEOUT));
+    MicrosoftTokens notificationMailTokens(NotificationsConfig config, ObjectProvider<HttpTransport> transports) {
+        Duration connect = config.mail().map(MailServer::connectTimeout).orElse(MailServer.DEFAULT_CONNECT_TIMEOUT);
+        HttpTransport transport = transport(config, transports);
+        if (transport == null) {
+            return new MicrosoftTokens(Clock.systemUTC(), connect);
+        }
+        // P059: only the sign-ins whose mail server says via-outbound; the others keep the direct client
+        return new MicrosoftTokens(Clock.systemUTC(), connect, oauth -> config.viaOutbound(oauth) ? transport : null);
+    }
+
+    /**
+     * P059 (LV-24.3 step 1): the transport over platform-outbound when a setting says {@code via-outbound}, else
+     * null (every call as before 1.3.0). A {@code via-outbound} without platform-outbound stops the app, listing each
+     * setting.
+     */
+    static HttpTransport transport(NotificationsConfig config, ObjectProvider<HttpTransport> transports) {
+        config.notes().forEach(n -> LOG.log(System.Logger.Level.WARNING, n));
+        if (!config.anyViaOutbound()) {
+            return null;
+        }
+        HttpTransport t = transports.getIfUnique();
+        if (t == null) {
+            List<String> problems = new java.util.ArrayList<>();
+            List<String> keys = new java.util.ArrayList<>(config.outboundSignIns().keySet());
+            if (config.webhooksViaOutbound()) {
+                keys.add("webhook");
+            }
+            for (String k : keys) {
+                problems.add(NotificationsProperties.PREFIX + "." + k + ".via-outbound: true, but "
+                        + "platform.outbound.installation is not set (or platform-outbound-spring is not on the class "
+                        + "path); set the outbound settings (docs/install/integration.md section 1), or switch "
+                        + "via-outbound off");
+            }
+            throw new NotificationsConfigException(problems);
+        }
+        return t;
+    }
+
+    private static final System.Logger LOG = System.getLogger(NotificationsAutoConfiguration.class.getName());
+
+    /** P059: the senders' transport over the installation's {@code Outbound} (platform-outbound-spring). */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(name = "com.documentplatform.outbound.Outbound")
+    static class OutboundTransportConfiguration {
+
+        @Bean
+        @ConditionalOnBean(type = "com.documentplatform.outbound.Outbound")
+        @ConditionalOnMissingBean
+        HttpTransport notificationOutboundTransport(com.documentplatform.outbound.Outbound outbound,
+                                                    NotificationsConfig config) {
+            com.documentplatform.notifications.spring.internal.OutboundHttpTransport.checkAtStart(config,
+                    outbound.installation());
+            return new com.documentplatform.notifications.spring.internal.OutboundHttpTransport(outbound);
+        }
     }
 
     @Bean
     @ConditionalOnMissingBean
     NotificationChannels notificationChannels(NotificationsConfig config, ObjectProvider<SecretResolver> secrets,
-                                              DestinationHealth health, MicrosoftTokens tokens) {
+                                              DestinationHealth health, MicrosoftTokens tokens,
+                                              ObjectProvider<HttpTransport> transports) {
         boolean anyChannel = config.anyMail() || !config.teams().isEmpty() || !config.slack().isEmpty();
         SecretResolver resolver = anyChannel
                 ? required(secrets, SecretResolver.class, "the reader of the secret store (mail password or "
                 + "Microsoft 365 app credential, webhook addresses)")
                 : ref -> java.util.Optional.empty();
-        return new NotificationChannels(config, resolver, health, tokens);
+        return new NotificationChannels(config, resolver, health, tokens,
+                config.webhooksViaOutbound() ? transport(config, transports) : null);
     }
 
     @Bean

@@ -3,6 +3,7 @@ package com.documentplatform.notifications.email;
 import com.documentplatform.notifications.FailureCode;
 import com.documentplatform.notifications.secret.Secret;
 import com.documentplatform.notifications.secret.SecretResolver;
+import com.documentplatform.notifications.transport.HttpTransport;
 
 import java.io.IOException;
 import java.net.URLEncoder;
@@ -19,6 +20,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
 /**
  * Access tokens for Microsoft 365 SMTP, from the Microsoft Entra token endpoint with the OAuth 2.0 client-credentials
@@ -88,6 +90,9 @@ public final class MicrosoftTokens {
 
     private final HttpClient http;
     private final Clock clock;
+    /** P059: the transport for a sign-in, or null for this class's own client (as before 1.3.0). */
+    private final Function<MicrosoftOAuth, HttpTransport> transports;
+    private final Duration connectTimeout;
     private final Map<MicrosoftOAuth, Held> held = new ConcurrentHashMap<>();
     private final Map<MicrosoftOAuth, Last> last = new ConcurrentHashMap<>();
     private final Map<MicrosoftOAuth, Object> locks = new ConcurrentHashMap<>();
@@ -97,18 +102,25 @@ public final class MicrosoftTokens {
     }
 
     public MicrosoftTokens(Clock clock, Duration connectTimeout) {
+        this(clock, connectTimeout, oauth -> null);
+    }
+
+    /**
+     * P059 (LV-24.3 step 1): token requests of the sign-ins for which {@code transports} answers a transport go
+     * through it (in an app: platform-outbound, when the mail server's {@code via-outbound} is on); for the others
+     * it answers null, and they use this class's own client as before. A call the transport refuses (address
+     * blocked, proxy sign-in refused, TLS failed) is {@link FailureCode#MAIL_OUTBOUND_REFUSED}, not retried; one that
+     * finds no connection or no answer in time is {@link FailureCode#MAIL_OAUTH_TOKEN_UNREACHABLE}, retried.
+     */
+    public MicrosoftTokens(Clock clock, Duration connectTimeout, Function<MicrosoftOAuth, HttpTransport> transports) {
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.transports = Objects.requireNonNull(transports, "transports");
+        this.connectTimeout = Objects.requireNonNull(connectTimeout, "connectTimeout");
         this.http = HttpClient.newBuilder()
                 .connectTimeout(Objects.requireNonNull(connectTimeout, "connectTimeout"))
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .version(HttpClient.Version.HTTP_1_1)
                 .build();
-    }
-
-    /** STUB P059 */
-    public MicrosoftTokens(Clock clock, Duration connectTimeout,
-                           java.util.function.Function<MicrosoftOAuth, com.documentplatform.notifications.transport.HttpTransport> transports) {
-        throw new UnsupportedOperationException("stub");
     }
 
     /** A valid token for this sign-in: the held one, or a new one from the token endpoint. */
@@ -186,6 +198,10 @@ public final class MicrosoftTokens {
                 return Fetch.failed(FailureCode.MAIL_OAUTH_CREDENTIAL_REFUSED);
             }
         }
+        HttpTransport transport = transports.apply(oauth);
+        if (transport != null) {
+            return viaTransport(oauth, transport, encode(form), timeout, now);
+        }
         HttpRequest request = HttpRequest.newBuilder(oauth.tokenEndpoint())
                 .timeout(timeout)
                 .header("Content-Type", "application/x-www-form-urlencoded")
@@ -210,6 +226,36 @@ public final class MicrosoftTokens {
         }
         if (status == 400 || status == 401 || status == 403) {
             return Fetch.failed(refusal(response.body()));
+        }
+        return Fetch.failed(FailureCode.MAIL_OAUTH_UNEXPECTED_REPLY);
+    }
+
+    /** The same request and the same reading of the answer, through the transport. */
+    private Fetch viaTransport(MicrosoftOAuth oauth, HttpTransport transport, String form, Duration timeout,
+                               Instant now) {
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Content-Type", "application/x-www-form-urlencoded");
+        headers.put("Accept", "application/json");
+        HttpTransport.Reply reply;
+        try {
+            reply = transport.post(oauth.tokenEndpoint(), headers, form.getBytes(StandardCharsets.UTF_8),
+                    connectTimeout, timeout);
+        } catch (HttpTransport.Failed f) {
+            LOG.log(System.Logger.Level.WARNING, "Microsoft 365 mail sign-in for app {0} through platform.outbound: "
+                    + "{1}", oauth.clientId(), f.reason());
+            return Fetch.failed(f.kind() == HttpTransport.Failed.Kind.REFUSED ? FailureCode.MAIL_OUTBOUND_REFUSED
+                    : FailureCode.MAIL_OAUTH_TOKEN_UNREACHABLE);
+        }
+        int status = reply.status();
+        String body = new String(reply.body(), StandardCharsets.UTF_8);
+        if (status == 200) {
+            return accept(oauth, body, now);
+        }
+        if (status == 429 || status >= 500) {
+            return new Fetch(null, FailureCode.MAIL_OAUTH_TOKEN_UNREACHABLE, retryAfter(reply.retryAfter()));
+        }
+        if (status == 400 || status == 401 || status == 403) {
+            return Fetch.failed(refusal(body));
         }
         return Fetch.failed(FailureCode.MAIL_OAUTH_UNEXPECTED_REPLY);
     }
@@ -264,8 +310,11 @@ public final class MicrosoftTokens {
     }
 
     private static Duration retryAfter(HttpResponse<?> response) {
-        return response.headers().firstValue("Retry-After").filter(v -> v.matches("\\d{1,6}"))
-                .map(v -> Duration.ofSeconds(Long.parseLong(v))).orElse(null);
+        return retryAfter(response.headers().firstValue("Retry-After").orElse(null));
+    }
+
+    private static Duration retryAfter(String header) {
+        return header != null && header.matches("\\d{1,6}") ? Duration.ofSeconds(Long.parseLong(header)) : null;
     }
 
     private static String encode(Map<String, String> form) {

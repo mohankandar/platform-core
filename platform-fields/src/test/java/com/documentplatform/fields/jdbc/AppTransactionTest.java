@@ -187,10 +187,9 @@ class AppTransactionTest {
             assertTrue(values.in(first).claim(ref(A, "x"), vals("contract_number", "N-1")).created());
             Future<FieldValues.Claim> waiting = pool.submit(
                     () -> values.in(second).claim(ref(A, "y"), vals("contract_number", "N-1", "notes", "second")));
-            assertThrows(TimeoutException.class, () -> waiting.get(500, TimeUnit.MILLISECONDS),
-                    "the second waits for the first");
+            awaitLockWait(waiting);
             first.commit();
-            FieldValues.Claim joined = waiting.get(10, TimeUnit.SECONDS);
+            FieldValues.Claim joined = waiting.get(30, TimeUnit.SECONDS);
             assertEquals(new FieldValues.Claim(ref(A, "x"), false, true), joined);
             second.commit();
         } finally {
@@ -207,15 +206,27 @@ class AppTransactionTest {
             values.in(first).claim(ref(A, "x"), vals("contract_number", "N-1"));
             Future<FieldValues.Claim> waiting = pool.submit(
                     () -> values.in(second).claim(ref(A, "y"), vals("contract_number", "N-1")));
-            assertThrows(TimeoutException.class, () -> waiting.get(500, TimeUnit.MILLISECONDS));
+            awaitLockWait(waiting);
             first.rollback();
-            assertEquals(new FieldValues.Claim(ref(A, "y"), true, true), waiting.get(10, TimeUnit.SECONDS));
+            assertEquals(new FieldValues.Claim(ref(A, "y"), true, true), waiting.get(30, TimeUnit.SECONDS));
             second.commit();
         } finally {
             pool.shutdownNow();
         }
         assertEquals(1, count("fld_record"));
         assertTrue(values.findByPrimary(A, CASE, Map.of("contract_number", FieldValue.text("N-1"))).orElseThrow().equals(ref(A, "y")));
+    }
+
+    /** Until the second transaction waits on the first one's lock (seen by the database), and has not finished. */
+    private void awaitLockWait(Future<?> waiting) throws Exception {
+        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (db.count("select count(*) from pg_stat_activity where wait_event_type = 'Lock' "
+                + "and datname = current_database()") == 0) {
+            assertFalse(waiting.isDone(), "the second did not wait for the first");
+            assertTrue(System.nanoTime() < until, "the second never waited for the first");
+            Thread.sleep(20);
+        }
+        assertFalse(waiting.isDone());
     }
 
     // 1.5 test 5
