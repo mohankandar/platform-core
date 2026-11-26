@@ -51,6 +51,16 @@ public final class PostgresValueStore implements ValueStore {
         this.ds = Objects.requireNonNull(dataSource, "dataSource");
     }
 
+    /** STUB P059 */
+    public static PostgresValueStore onConnection(Connection c) {
+        throw new UnsupportedOperationException("stub");
+    }
+
+    @Override
+    public ValueStore joined(Connection c) {
+        return onConnection(c);
+    }
+
     @Override
     public Optional<StoredRecord> find(RecordRef ref) {
         return run("read a record's values", c -> find(c, ref));

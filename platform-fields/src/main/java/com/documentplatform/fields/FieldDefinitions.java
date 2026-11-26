@@ -68,6 +68,11 @@ public final class FieldDefinitions {
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
+    /** STUB P059 */
+    public FieldDefinitions in(java.sql.Connection connection) {
+        throw new UnsupportedOperationException("stub");
+    }
+
     /** Every field, switched-off ones included, in display order. */
     public List<FieldDefinition> list(FieldScope scope) {
         return store.list(scope);

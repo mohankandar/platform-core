@@ -89,4 +89,9 @@ public interface ValueStore extends FieldValuesCheck {
      * partial search as prefix search and says so.
      */
     boolean partialSearchAvailable();
+
+    /** STUB P059 */
+    default ValueStore joined(java.sql.Connection connection) {
+        throw new UnsupportedOperationException("stub");
+    }
 }

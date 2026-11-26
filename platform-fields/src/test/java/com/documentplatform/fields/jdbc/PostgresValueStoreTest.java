@@ -68,11 +68,20 @@ class PostgresValueStoreTest {
 
     private final Pg db = Pg.migrated();
     private final DataSource app = db.appUser("select, insert, update, delete");
-    private final PostgresFieldStore definitionStore = new PostgresFieldStore(app);
-    private final PostgresValueStore store = new PostgresValueStore(app);
+    private final com.documentplatform.fields.FieldStore definitionStore = fieldStore(app);
+    private final com.documentplatform.fields.values.ValueStore store = valueStore(app);
     private final FieldDefinitions definitions = new FieldDefinitions(definitionStore, store, CLOCK);
     private final InMemoryKeyService keys = new InMemoryKeyService();
     private final FieldValues values;
+
+    /** The stores under test; {@link PostgresValueStoreBoundTest} binds every call to an app's transaction. */
+    com.documentplatform.fields.FieldStore fieldStore(DataSource ds) {
+        return new PostgresFieldStore(ds);
+    }
+
+    com.documentplatform.fields.values.ValueStore valueStore(DataSource ds) {
+        return new PostgresValueStore(ds);
+    }
 
     PostgresValueStoreTest() {
         keys.createKeys(CUSTOMER);

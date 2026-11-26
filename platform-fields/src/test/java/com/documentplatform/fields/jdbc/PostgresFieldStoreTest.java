@@ -43,7 +43,12 @@ class PostgresFieldStoreTest {
 
     private final Pg db = Pg.migrated();
     private final DataSource app = db.appUser("select, insert, update, delete");
-    private final PostgresFieldStore store = new PostgresFieldStore(app);
+    private final FieldStore store = fieldStore(app);
+
+    /** The store under test; {@link PostgresFieldStoreBoundTest} binds every call to an app's transaction. */
+    FieldStore fieldStore(DataSource ds) {
+        return new PostgresFieldStore(ds);
+    }
     private final Set<String> withValues = new HashSet<>();
     private final FieldDefinitions fields = new FieldDefinitions(store,
             (scope, key) -> withValues.contains(scope.product() + "/" + key.value()), CLOCK);
